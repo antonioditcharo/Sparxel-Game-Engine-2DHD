@@ -1809,7 +1809,7 @@ TEST_CASE("Tile shapes: half tiles block half their square, and some tiles none"
           std::vector<std::pair<std::int32_t, Shape>>{{2, Shape::Left}});
     CHECK(error.find("5 sideways") != std::string::npos);
     CHECK_FALSE(scene2d::tile_shape_box(Shape::None, 1.0).has_value());
-    CHECK(scene2d::tile_shape_box(Shape::Right, 2.0)->left == 1.0);
+    CHECK(scene2d::tile_shape_box(Shape::Right, 2.0).value_or(scene2d::Box{}).left == 1.0);
 
     reflect::Registry registry;
     scene2d::register_types(registry);
