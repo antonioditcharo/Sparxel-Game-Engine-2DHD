@@ -202,6 +202,9 @@ saves work as before, since it is still that mover.
 | `gravity` | How fast falling speeds up, in tiles per second, every second (default 40) |
 | `jump_height` | How high a jump reaches, in tiles (default 3) |
 | `max_fall_speed` (advanced) | The fastest it falls, in tiles per second (default 20) |
+| `short_jump_height` | Let go of jump early and it rises no higher than this, in tiles: a tap hops, holding leaps the full height (default 1; 0: always the full height) |
+| `coyote_time` (advanced) | Seconds after walking off a ledge that a jump still leaps (default 0.1) |
+| `jump_buffer` (advanced, *Early press*) | Seconds before landing that a press is kept, to leap as it lands (default 0.1) |
 | `fall_speed` (hidden) | How fast it is falling; below 0 it is rising. Saved with the game |
 | `on_ground` (read-only) | Whether it stood on something after the last step |
 
@@ -216,6 +219,12 @@ saves work as before, since it is still that mover.
   on the ground leaps up at √(2 × gravity × height), which rises `jump_height` (a few
   hundredths less with whole steps of 1/60 s: 2.87 of 3 tiles; tested). Holding it does
   not jump again in the air.
+- **As platformers feel** (`fall()` with a `JumpInput`, what the game uses): a press a
+  moment after walking off a ledge still leaps (coyote time), and one a moment before
+  landing leaps as it lands (an early press); either leaps once until it stands again.
+  Letting go of jump while rising caps its speed at what rises `short_jump_height`, so
+  how long jump is held sets the height, as in most platformers since Super Mario Bros.
+  (Tested step by step; the platformer template's hero holds jump to reach its ledges.)
 - **The hitbox** is the mover's: make it as tall as the character (the platformer
   template uses 1 tile), since it bumps its head too.
 

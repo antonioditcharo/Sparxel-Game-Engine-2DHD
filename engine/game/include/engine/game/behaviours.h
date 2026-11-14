@@ -124,7 +124,24 @@ struct Jumping {
     double jump_height = 3.0;     ///< How high a jump reaches, in tiles.
     double max_fall_speed = 20.0; ///< In tiles per second.
     double fall_speed = 0.0;      ///< Downwards, in tiles per second; below 0 rising (hidden).
-    bool on_ground = false;       ///< Standing on something, after the last step (read-only).
+    /// Coyote time: seconds after walking off a ledge that a jump still leaps, so a press
+    /// a moment late is not lost. 0: only from the ground.
+    double coyote_time = 0.1;
+    /// Jump buffering: seconds before landing that a press is kept, to leap on landing.
+    double jump_buffer = 0.1;
+    /// Variable height: letting go of jump while rising keeps it from rising higher than
+    /// this (a tap hops, holding leaps jump_height). 0: always the full height.
+    double short_jump_height = 1.0;
+    double air_time = 0.0;  ///< Seconds since it last stood on something (hidden).
+    double jump_wait = 0.0; ///< Seconds a buffered press is still kept (hidden).
+    bool on_ground = false; ///< Standing on something, after the last step (read-only).
+    bool jumped = false;    ///< Leapt since it last stood on something (hidden).
+};
+
+/// What the player does with jump on a step: pressed it now, and whether it is held.
+struct JumpInput {
+    bool pressed = false;
+    bool held = false;
 };
 
 /// One step of `seconds` for `jumping`: if `jump` and it stands on something, it leaps up
@@ -134,6 +151,11 @@ struct Jumping {
 /// on_ground, and no longer falling. Stopped going up, it bumped its head and falls.
 /// Numbers that are not finite count as 0 (gravity, height, fall speed) or no limit.
 void fall(Jumping& jumping, bool jump, double seconds, const std::function<double(double)>& move);
+/// The same, as players expect of a platformer: a press leaps from the ground, within
+/// coyote_time of leaving it, or as it lands within jump_buffer of the press; letting go
+/// while rising keeps it below short_jump_height. Leaping once until it stands again.
+void fall(Jumping& jumping, const JumpInput& jump, double seconds,
+          const std::function<double(double)>& move);
 
 /// The direction to face when moving by (dx, dy), from `current`: unchanged when not
 /// moving; on a diagonal, unchanged if `current` is one of its two directions, otherwise

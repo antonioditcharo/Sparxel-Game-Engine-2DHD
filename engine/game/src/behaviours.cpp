@@ -174,6 +174,30 @@ void register_behaviours(reflect::Registry& registry) {
         .range(-400.0, 400.0)
         .flags(reflect::property_flag::hidden)
         .tooltip("How fast it is falling, in tiles per second (rising below 0).");
+    jumping.property<&Jumping::coyote_time>("coyote_time")
+        .range(0.0, 1.0)
+        .step(0.05)
+        .unit(reflect::Unit::Seconds)
+        .flags(reflect::property_flag::advanced)
+        .display_name("Coyote time")
+        .tooltip("A jump pressed just after walking off a ledge still leaps.");
+    jumping.property<&Jumping::jump_buffer>("jump_buffer")
+        .range(0.0, 1.0)
+        .step(0.05)
+        .unit(reflect::Unit::Seconds)
+        .flags(reflect::property_flag::advanced)
+        .display_name("Early press")
+        .tooltip("A jump pressed just before landing leaps as it lands.");
+    jumping.property<&Jumping::short_jump_height>("short_jump_height")
+        .range(0.0, 64.0)
+        .step(0.5)
+        .unit(reflect::Unit::Tiles)
+        .display_name("Short jump height")
+        .tooltip("Let go of jump early and it rises no higher than this: a tap hops, "
+                 "holding leaps the full height. 0: always the full height.");
+    jumping.property<&Jumping::air_time>("air_time").flags(reflect::property_flag::hidden);
+    jumping.property<&Jumping::jump_wait>("jump_wait").flags(reflect::property_flag::hidden);
+    jumping.property<&Jumping::jumped>("jumped").flags(reflect::property_flag::hidden);
     jumping.property<&Jumping::on_ground>("on_ground")
         .flags(reflect::property_flag::read_only)
         .display_name("On the ground")
@@ -482,7 +506,11 @@ bool register_behaviour_components(world::World& world) {
 // Movement
 // ---------------------------------------------------------------------------------------
 
-void fall(Jumping& jumping, bool jump, double seconds, const std::function<double(double)>& move) {
+namespace {
+
+/// fall(), with the platformer's helpers or (`assisted` false) a plain leap from the ground.
+void fall_step(Jumping& jumping, const JumpInput& jump, bool assisted, double seconds,
+               const std::function<double(double)>& move) {
     const auto finite_or = [](double value, double otherwise) {
         return std::isfinite(value) ? value : otherwise;
     };
@@ -490,8 +518,35 @@ void fall(Jumping& jumping, bool jump, double seconds, const std::function<doubl
     const double height = std::max(finite_or(jumping.jump_height, 0.0), 0.0);
     const double fastest = std::max(finite_or(jumping.max_fall_speed, 0.0), 0.0);
     double speed = finite_or(jumping.fall_speed, 0.0);
-    if (jump && jumping.on_ground) {
-        speed = -std::sqrt(2.0 * gravity * height); // v^2 = 2 g h: it rises `height`
+    if (!assisted) {
+        if (jump.pressed && jumping.on_ground) {
+            speed = -std::sqrt(2.0 * gravity * height); // v^2 = 2 g h: it rises `height`
+        }
+    } else {
+        const double coyote = std::max(finite_or(jumping.coyote_time, 0.0), 0.0);
+        const double buffer = std::max(finite_or(jumping.jump_buffer, 0.0), 0.0);
+        if (jumping.on_ground) {
+            jumping.air_time = 0.0;
+            jumping.jumped = false;
+        }
+        // A press is kept for a moment (at least this step), to leap on landing.
+        if (jump.pressed) {
+            jumping.jump_wait = std::max(buffer, seconds);
+        }
+        const bool may_leap =
+            !jumping.jumped && (jumping.on_ground || finite_or(jumping.air_time, 0.0) <= coyote);
+        if (jumping.jump_wait > 0.0 && may_leap) {
+            speed = -std::sqrt(2.0 * gravity * height);
+            jumping.jumped = true;
+            jumping.jump_wait = 0.0;
+        }
+        // Let go while rising: no higher than a short jump from here.
+        const double short_height = std::max(finite_or(jumping.short_jump_height, 0.0), 0.0);
+        if (!jump.held && speed < 0.0 && short_height > 0.0 && short_height < height) {
+            speed = std::max(speed, -std::sqrt(2.0 * gravity * short_height));
+        }
+        jumping.jump_wait = std::max(0.0, finite_or(jumping.jump_wait, 0.0) - seconds);
+        jumping.air_time = finite_or(jumping.air_time, 0.0) + seconds;
     }
     speed = std::min(speed + (gravity * seconds), fastest);
     const double wanted = speed * seconds;
@@ -504,6 +559,21 @@ void fall(Jumping& jumping, bool jump, double seconds, const std::function<doubl
         jumping.on_ground = false; // rising
     } // not moving at all (no gravity): as it was
     jumping.fall_speed = stopped ? 0.0 : speed;
+    if (assisted && jumping.on_ground) {
+        jumping.air_time = 0.0;
+        jumping.jumped = false;
+    }
+}
+
+} // namespace
+
+void fall(Jumping& jumping, bool jump, double seconds, const std::function<double(double)>& move) {
+    fall_step(jumping, JumpInput{jump, true}, false, seconds, move);
+}
+
+void fall(Jumping& jumping, const JumpInput& jump, double seconds,
+          const std::function<double(double)>& move) {
+    fall_step(jumping, jump, true, seconds, move);
 }
 
 Facing facing_for(Facing current, double dx, double dy) noexcept {
@@ -638,9 +708,10 @@ void move_characters(world::World& world, const input::InputState& input, double
                     sweep_by(scene2d::Axis::X,
                              (mx > 0.0 ? 1.0 : -1.0) * mover->speed * seconds * scale);
                 }
+                const bool player = mover->enabled && !steered;
                 fall(*jumping,
-                     mover->enabled && !steered &&
-                         (input.pressed("jump") || input.pressed("move_up")),
+                     JumpInput{player && (input.pressed("jump") || input.pressed("move_up")),
+                               player && (input.held("jump") || input.held("move_up"))},
                      seconds, [&](double wanted) { return sweep_by(scene2d::Axis::Y, wanted); });
             }
             if (walk != nullptr && sprite != nullptr) {

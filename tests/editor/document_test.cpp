@@ -1407,8 +1407,8 @@ TEST_CASE("A new platformer: seen from the side, the hero jumps onto a ledge") {
         const auto right = engine::input::Binding::key(engine::input::Key::Right);
         const auto space = engine::input::Binding::key(engine::input::Key::Space);
         replay.record(0, right, true);
-        replay.record(20, space, true);
-        replay.record(22, space, false);
+        replay.record(20, space, true); // held, for the full jump (a tap only hops)
+        replay.record(50, space, false);
         replay.record(60, right, false);
         game::RuntimeOptions options;
         options.graphics = false;
@@ -1460,8 +1460,8 @@ TEST_CASE("A new platformer: seen from the side, the hero jumps onto a ledge") {
         const auto right = engine::input::Binding::key(engine::input::Key::Right);
         const auto space = engine::input::Binding::key(engine::input::Key::Space);
         replay.record(0, right, true);
-        replay.record(20, space, true);
-        replay.record(22, space, false);
+        replay.record(20, space, true); // held, for the full jump (a tap only hops)
+        replay.record(50, space, false);
         replay.record(60, right, false);
         game::RuntimeOptions options;
         options.graphics = false;

@@ -628,3 +628,71 @@ TEST_CASE("Enemies on the Map: walking into one starts its battle, once, until b
     f.at(f.hero) = scene2d::Transform2D{5.0, 5.0};
     CHECK_FALSE(game::update_enemies_on_map(*f.w).has_value());
 }
+
+TEST_CASE("Platformer jumping: coyote time, an early press, and a tap that only hops") {
+    double y = 0.0;
+    double floor_at = 0.0;
+    const auto move = [&](double wanted) {
+        const double to = std::min(y + wanted, floor_at);
+        const double moved = to - y;
+        y = to;
+        return moved;
+    };
+    constexpr double dt = 1.0 / 60.0;
+    const auto rise = [&](game::Jumping& jumping, bool hold) {
+        game::fall(jumping, game::JumpInput{true, hold}, dt, move);
+        double highest = y;
+        for (int i = 0; i < 600 && !jumping.on_ground; ++i) {
+            game::fall(jumping, game::JumpInput{false, hold}, dt, move);
+            highest = std::min(highest, y);
+        }
+        return -highest;
+    };
+    game::Jumping jumping; // jump 3, a short jump 1
+    game::fall(jumping, game::JumpInput{}, dt, move);
+    REQUIRE(jumping.on_ground);
+    // Held: the full height; tapped: about the short one.
+    CHECK(rise(jumping, true) > 2.8);
+    const double hop = rise(jumping, false);
+    CHECK(hop > 0.8);
+    CHECK(hop < 1.2);
+
+    // Walked off a ledge: a press within coyote time still leaps; once only.
+    floor_at = 100.0; // nothing below now
+    game::fall(jumping, game::JumpInput{}, dt, move);
+    game::fall(jumping, game::JumpInput{}, dt, move);
+    CHECK_FALSE(jumping.on_ground);
+    const double before = y;
+    game::fall(jumping, game::JumpInput{true, true}, dt, move);
+    CHECK(jumping.fall_speed < 0.0); // leapt
+    CHECK(y < before);
+    for (int i = 0; i < 30; ++i) {
+        game::fall(jumping, game::JumpInput{}, dt, move);
+    }
+    const double falling = jumping.fall_speed;
+    game::fall(jumping, game::JumpInput{true, true}, dt, move);
+    CHECK(jumping.fall_speed > falling); // no second leap in the air
+
+    // Late, after coyote time: no leap.
+    game::Jumping late;
+    y = 0.0;
+    floor_at = 0.0;
+    game::fall(late, game::JumpInput{}, dt, move);
+    floor_at = 100.0;
+    for (int i = 0; i < 20; ++i) { // a third of a second in the air
+        game::fall(late, game::JumpInput{}, dt, move);
+    }
+    game::fall(late, game::JumpInput{true, true}, dt, move);
+    CHECK(late.fall_speed > 0.0);
+
+    // Pressed just before landing: it leaps as it lands.
+    game::Jumping early;
+    y = -0.05;
+    floor_at = 0.0;
+    early.fall_speed = 3.0;                                   // falling onto the floor
+    game::fall(early, game::JumpInput{true, true}, dt, move); // not landed yet
+    for (int i = 0; i < 3 && early.fall_speed >= 0.0; ++i) {
+        game::fall(early, game::JumpInput{false, true}, dt, move);
+    }
+    CHECK(early.fall_speed < 0.0); // leapt on landing
+}
