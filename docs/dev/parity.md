@@ -141,7 +141,7 @@ action kits (GameMaker), audio mixing (zones, reverb), and team features.
 | F2 | RPG | RPG Maker | **Done**: party, levels and growth, skills, items, equipment, status effects, turn-based battles, encounters, enemies on the map |
 | F3 | Tactics | SRPG Studio | **Not yet** |
 | F4 | Action-adventure | GameMaker | **Not yet** |
-| F5 | Platformer | GameMaker | **Partial**: jumping with coyote time, an early press and variable height, solid half tiles, a template; no moving platforms, ladders or slopes |
+| F5 | Platformer | GameMaker | **Partial**: jumping with coyote time, an early press and variable height, moving platforms that carry the player, solid half tiles, a template; no ladders or slopes |
 | F6 | Adventure | Adventure Game Studio | **Not yet** (interactables and inventory cover part) |
 
 ## G. Story

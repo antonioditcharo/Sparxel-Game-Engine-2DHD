@@ -696,3 +696,37 @@ TEST_CASE("Platformer jumping: coyote time, an early press, and a tap that only 
     }
     CHECK(early.fall_speed < 0.0); // leapt on landing
 }
+
+TEST_CASE("Moving platforms: back and forth, carrying what stands on them") {
+    const Fixture f;
+    // A platform 2 tiles wide, its top at y = 4.5, going 3 tiles right at 1 a second, with
+    // a stop of half a second at each end.
+    const world::Entity lift = f.place("lift", 5.0, 5.0);
+    f.w->add<game::Body>(lift)->width = 2.0;
+    game::MovingPlatform* platform = f.w->add<game::MovingPlatform>(lift);
+    platform->move_x = 3.0;
+    platform->speed = 1.0;
+    platform->wait = 0.5;
+    // The hero stands on it (its feet on the top); a second mover stands beside it.
+    f.w->get<scene2d::Transform2D>(f.hero)->x = 5.0;
+    f.w->get<scene2d::Transform2D>(f.hero)->y = 4.5;
+    const world::Entity bystander = f.place("bystander", 8.0, 5.0);
+    f.w->add<game::TopDownMover>(bystander);
+    constexpr std::uint32_t ppu = 16;
+    for (int i = 0; i < 60; ++i) {
+        game::move_platforms(*f.w, 1.0 / 60.0, ppu);
+    }
+    CHECK(f.w->get<scene2d::Transform2D>(lift)->x == doctest::Approx(6.0));
+    CHECK(f.w->get<scene2d::Transform2D>(f.hero)->x == doctest::Approx(6.0)); // carried
+    CHECK(f.w->get<scene2d::Transform2D>(bystander)->x == 8.0);               // not on it
+    // To the end (3 tiles), a stop, and back: home after 3 + 0.5 + 3 + 0.5 = 7 seconds.
+    for (int i = 0; i < 60 * 6; ++i) {
+        game::move_platforms(*f.w, 1.0 / 60.0, ppu);
+    }
+    CHECK(f.w->get<scene2d::Transform2D>(lift)->x == doctest::Approx(5.0).epsilon(0.001));
+    CHECK(f.w->get<scene2d::Transform2D>(f.hero)->x == doctest::Approx(5.0).epsilon(0.001));
+    // Switched off: it stays.
+    platform->enabled = false;
+    game::move_platforms(*f.w, 1.0, ppu);
+    CHECK(f.w->get<scene2d::Transform2D>(lift)->x == doctest::Approx(5.0).epsilon(0.001));
+}

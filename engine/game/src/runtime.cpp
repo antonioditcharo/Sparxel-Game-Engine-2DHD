@@ -1445,6 +1445,7 @@ void Runtime::step() {
     const double dt = r.clock.step_seconds();
     const std::vector<world::Entity> arrived =
         steer_walkers(*r.world, dt, r.settings.ppu, talking || r.fading != Impl::Fade::None);
+    move_platforms(*r.world, dt, r.settings.ppu);
     move_characters(*r.world, moves, dt, r.settings.ppu);
     for (const world::Entity entity : arrived) {
         emit(*r.vm, *r.world, entity, "arrived");

@@ -228,6 +228,15 @@ saves work as before, since it is still that mover.
 - **The hitbox** is the mover's: make it as tall as the character (the platformer
   template uses 1 tile), since it bumps its head too.
 
+**Moving Platform** (`moving_platform`), beside a Solid Body: it travels from where it was
+placed to *Goes across* and *Goes down* tiles from there (`move_x`, `move_y`) at *Speed*
+tiles a second, stops for *Wait* seconds, and comes back, over and over; *Enabled* off
+keeps it where it is (a lift logic starts by setting it on). Each step, before characters
+move (`move_platforms()`), whatever Top-down Mover stands on its body's top goes with it:
+across and up as far as solid tiles let it, down exactly. Its start and how far along it
+is are hidden properties, saved with the game. Characters it would run into are not
+pushed; it passes them.
+
 ### Walk Animation
 
 The **Walk Animation** component (`walk_animation`) shows a character sheet: one row per

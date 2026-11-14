@@ -187,6 +187,27 @@ struct Body {
     bool enabled = true;
 };
 
+/// "Moving Platform": with a Solid Body, travels back and forth between where it was placed
+/// and `move_x`, `move_y` tiles from there, carrying whatever stands on it (plan/02 F5).
+struct MovingPlatform {
+    double move_x = 3.0;  ///< How far it goes across, in tiles (negative: left).
+    double move_y = 0.0;  ///< How far it goes down, in tiles (negative: up).
+    double speed = 2.0;   ///< Tiles per second.
+    double wait = 0.5;    ///< Seconds it stops at each end.
+    bool enabled = true;  ///< Off, it stays where it is.
+    double start_x = 0.0; ///< Where it was placed (hidden; taken on its first step).
+    double start_y = 0.0;
+    double along = 0.0;  ///< How far along, 0 at the start to 1 at the end (hidden).
+    double paused = 0.0; ///< Seconds left of a stop (hidden).
+    bool placed = false; ///< Its start is known (hidden).
+    bool back = false;   ///< On its way back (hidden).
+};
+
+/// Moves every enabled Moving Platform for `seconds`, back and forth, and carries the Top-down
+/// Movers standing on its Solid Body's top with it (stopped by solid tiles as walking is).
+/// Run it before move_characters(). `ppu` sizes tilemaps.
+void move_platforms(world::World& world, double seconds, std::uint32_t ppu);
+
 /// "Trigger Area": tells Rules when a Top-down Mover walks in ("entered") or out
 /// ("exited"), with the mover's name as "who". For doors, cutscene zones and traps.
 struct Trigger {

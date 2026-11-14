@@ -149,6 +149,40 @@ void register_behaviours(reflect::Registry& registry) {
         .flags(reflect::property_flag::read_only)
         .tooltip("Whether it is walking.");
 
+    auto platform =
+        registry.add_type<MovingPlatform>("moving_platform")
+            .display_name("Moving Platform")
+            .category("Movement")
+            .tooltip("With a Solid Body: travels back and forth, carrying whatever stands on "
+                     "it.");
+    platform.property<&MovingPlatform::move_x>("move_x")
+        .range(-256.0, 256.0)
+        .step(0.5)
+        .unit(reflect::Unit::Tiles)
+        .display_name("Goes across")
+        .tooltip("How far it travels across from where it was placed (negative: left).");
+    platform.property<&MovingPlatform::move_y>("move_y")
+        .range(-256.0, 256.0)
+        .step(0.5)
+        .unit(reflect::Unit::Tiles)
+        .display_name("Goes down")
+        .tooltip("How far it travels down (negative: up).");
+    platform.property<&MovingPlatform::speed>("speed").range(0.0, 64.0).step(0.5).tooltip(
+        "Tiles per second.");
+    platform.property<&MovingPlatform::wait>("wait")
+        .range(0.0, 60.0)
+        .step(0.25)
+        .unit(reflect::Unit::Seconds)
+        .tooltip("How long it stops at each end.");
+    platform.property<&MovingPlatform::enabled>("enabled").tooltip(
+        "Off, it stays where it is: for a lift logic starts.");
+    platform.property<&MovingPlatform::start_x>("start_x").flags(reflect::property_flag::hidden);
+    platform.property<&MovingPlatform::start_y>("start_y").flags(reflect::property_flag::hidden);
+    platform.property<&MovingPlatform::along>("along").flags(reflect::property_flag::hidden);
+    platform.property<&MovingPlatform::paused>("paused").flags(reflect::property_flag::hidden);
+    platform.property<&MovingPlatform::placed>("placed").flags(reflect::property_flag::hidden);
+    platform.property<&MovingPlatform::back>("back").flags(reflect::property_flag::hidden);
+
     auto jumping = registry.add_type<Jumping>("jumping")
                        .display_name("Jumping")
                        .category("Movement")
@@ -496,7 +530,8 @@ bool register_behaviour_components(world::World& world) {
     const bool simulated = world.register_component<PhysicsBody>();
     const bool sound = world.register_component<SoundSource>();
     const bool jumping = world.register_component<Jumping>();
-    const bool enemy = world.register_component<EnemyOnMap>() && world.register_component<Tags>();
+    const bool enemy = world.register_component<EnemyOnMap>() && world.register_component<Tags>() &&
+                       world.register_component<MovingPlatform>();
     const bool hud = register_hud_components(world);
     return mover && walker && particles && prefab && encounter && walk && body && trigger &&
            interactable && simulated && sound && jumping && enemy && hud;
@@ -626,6 +661,99 @@ scene2d::Box feet_box(double x, double y, double width, double height) noexcept 
 
 scene2d::Box hitbox(const TopDownMover& mover, double x, double y) noexcept {
     return feet_box(x, y, mover.hitbox_width, mover.hitbox_height);
+}
+
+void move_platforms(world::World& world, double seconds, std::uint32_t ppu) {
+    const reflect::TypeInfo* platform_type = world.registry().find_type<MovingPlatform>();
+    const reflect::TypeInfo* mover_type = world.registry().find_type<TopDownMover>();
+    if (platform_type == nullptr || !std::isfinite(seconds) || seconds <= 0.0) {
+        return;
+    }
+    world.each(*platform_type, [&](world::Entity entity, reflect::ObjectRef ref) {
+        MovingPlatform* platform = ref.as<MovingPlatform>();
+        scene2d::Transform2D* at = world.get<scene2d::Transform2D>(entity);
+        const Body* body = world.get<Body>(entity);
+        if (platform == nullptr || at == nullptr) {
+            return;
+        }
+        if (!platform->placed) {
+            platform->start_x = at->x;
+            platform->start_y = at->y;
+            platform->placed = true;
+        }
+        const double length = std::hypot(platform->move_x, platform->move_y);
+        if (!platform->enabled || !std::isfinite(length) || length <= 0.0 ||
+            !std::isfinite(platform->speed) || platform->speed <= 0.0) {
+            return;
+        }
+        // Along its path, turning at each end after its wait.
+        double time = seconds;
+        double along = std::clamp(std::isfinite(platform->along) ? platform->along : 0.0, 0.0, 1.0);
+        for (int turns = 0; time > 0.0 && turns < 8; ++turns) {
+            if (platform->paused > 0.0) {
+                const double waited = std::min(platform->paused, time);
+                platform->paused -= waited;
+                time -= waited;
+                continue;
+            }
+            const double left = platform->back ? along : 1.0 - along;
+            const double go = std::min(left, platform->speed * time / length);
+            along += platform->back ? -go : go;
+            time -= go * length / platform->speed;
+            if (go >= left - 1e-12) {
+                along = platform->back ? 0.0 : 1.0;
+                platform->back = !platform->back;
+                platform->paused = std::max(platform->wait, 0.0);
+            } else {
+                break;
+            }
+        }
+        platform->along = along;
+        const double to_x = platform->start_x + (platform->move_x * along);
+        const double to_y = platform->start_y + (platform->move_y * along);
+        const double dx = to_x - at->x;
+        const double dy = to_y - at->y;
+        if (dx == 0.0 && dy == 0.0) {
+            return;
+        }
+        // What stands on its top, before it moves, goes with it.
+        std::vector<world::Entity> riders;
+        if (body != nullptr && body->enabled && mover_type != nullptr) {
+            const scene2d::Box top = feet_box(at->x, at->y, body->width, body->height);
+            world.each(*mover_type, [&](world::Entity other, reflect::ObjectRef mover_ref) {
+                const TopDownMover* mover = mover_ref.as<TopDownMover>();
+                const scene2d::Transform2D* where = world.get<scene2d::Transform2D>(other);
+                if (other == entity || mover == nullptr || where == nullptr) {
+                    return;
+                }
+                const scene2d::Box feet = hitbox(*mover, where->x, where->y);
+                const bool on_top = std::abs(feet.bottom - top.top) < 1e-6 &&
+                                    feet.right > top.left + 1e-9 && feet.left < top.right - 1e-9;
+                if (on_top) {
+                    riders.push_back(other);
+                }
+            });
+        }
+        at->x = to_x;
+        at->y = to_y;
+        for (const world::Entity rider : riders) {
+            const TopDownMover* mover = world.get<TopDownMover>(rider);
+            scene2d::Transform2D* where = world.get<scene2d::Transform2D>(rider);
+            for (const scene2d::Axis axis : {scene2d::Axis::X, scene2d::Axis::Y}) {
+                const double wanted = axis == scene2d::Axis::X ? dx : dy;
+                if (wanted == 0.0) {
+                    continue;
+                }
+                const scene2d::Box box = hitbox(*mover, where->x, where->y);
+                // Down with it exactly (it would land there anyway); otherwise as far as
+                // the tiles let it.
+                const double allowed = axis == scene2d::Axis::Y && wanted > 0.0
+                                           ? wanted
+                                           : scene2d::sweep(world, box, axis, wanted, ppu);
+                (axis == scene2d::Axis::X ? where->x : where->y) += allowed;
+            }
+        }
+    });
 }
 
 void move_characters(world::World& world, const input::InputState& input, double seconds,
