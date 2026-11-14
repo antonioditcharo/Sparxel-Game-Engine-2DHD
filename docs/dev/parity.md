@@ -18,7 +18,7 @@
 | Area | Done | Partial | Not yet |
 |---|---|---|---|
 | A. Project and workflow | 3 | 6 | 3 (+1 later) |
-| B. Pixel art | 2 | 7 | 5 (+1 later) |
+| B. Pixel art | 3 | 6 | 5 (+1 later) |
 | C. World building | 4 | 7 | 3 |
 | D. Rendering and the look | 3 | 10 | 2 (+1 later) |
 | E. No-code logic | 3 | 5 | 3 (+1 later) |
@@ -28,14 +28,14 @@
 | I. Physics | 1 | 3 | 1 |
 | J. Audio | 2 | 4 | 0 (+1 later) |
 | K. UI | 3 | 4 | 0 |
-| **All** | **29** | **52** | **21** (+6 later) |
+| **All** | **30** | **51** | **21** (+6 later) |
 
 The strongest areas match or pass their references: the RPG kit and window skins (RPG
 Maker), auto-tiles and tile variants (RPG Maker, LDtk), no-code Rules with tags, *it*,
 *For each* and *who* (GDevelop, Construct), the editor's everyday workflow (search
 everything, snapshots, copy and paste, playing in the editor: Godot), and the HD-2D look
 (lights, tilt-shift, bloom, day and night). The widest gaps are in pixel-art authoring
-(selections, symmetry, frame events, hitboxes, normal maps: Aseprite), 2D platformer and
+(frame events, hitboxes, layer groups, normal maps: Aseprite), 2D platformer and
 action kits (GameMaker), audio mixing (zones, reverb), and team features.
 
 ## A. Project and workflow
@@ -60,7 +60,7 @@ action kits (GameMaker), audio mixing (zones, reverb), and team features.
 
 | ID | Feature | Best today | Sparxel |
 |---|---|---|---|
-| B1 | Drawing tools | Aseprite | **Partial**: pencil, eraser, line, rectangles and ellipses, fill, rectangle selection with cut, copy, paste and flips, colour picker; no lasso or magic wand |
+| B1 | Drawing tools | Aseprite | **Done**: pencil, eraser, line, rectangles and ellipses, fill (joined or all of a colour), selection by rectangle, magic wand and lasso (any shape, which every tool keeps to), move, cut, copy, paste, flips, colour picker |
 | B2 | Pixel-art helpers | Aseprite | **Partial**: pixel-perfect strokes, mirroring across and down, dither and shade brushes along the palette, an outline generator; no tile and wrap mode |
 | B3 | Layers | Aseprite | **Partial**: add, name, order, opacity, hide, merge, duplicate; no groups, blend modes or reference layers |
 | B4 | Palettes | Aseprite, GameMaker | **Partial**: the sprite's palette, the project's palette, palette swaps per sprite with a hue-shift picker; no palette library or ramps editor |

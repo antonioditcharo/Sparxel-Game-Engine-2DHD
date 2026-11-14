@@ -621,3 +621,54 @@ TEST_CASE("Outline: a pixel round what is drawn, with or without corners, in one
     CHECK(drawn(editor) == 4); // the left side is outside it
     CHECK(editor.sprite().pixel(0, 0, 2, 3) == clear);
 }
+
+TEST_CASE("Magic wand and lasso: selections of any shape, which every tool keeps to") {
+    sprite::Editor editor(sprite::Sprite::blank(8, 8));
+    std::string error;
+    // An L of red, and a red dot apart from it.
+    CHECK(stroke(editor, Tool::Pencil, red, {{1, 1}, {1, 4}}));
+    CHECK(stroke(editor, Tool::Pencil, red, {{2, 4}, {3, 4}}));
+    CHECK(stroke(editor, Tool::Pencil, red, {{6, 6}}));
+    const int reds = drawn(editor);
+    REQUIRE(reds == 7);
+
+    // The wand: the L only (joined); the rectangle round it, and its shape.
+    CHECK_FALSE(stroke(editor, Tool::Wand, red, {{1, 1}})); // no undo step
+    CHECK(editor.selection().x == 1);
+    CHECK(editor.selection().width == 3);
+    CHECK(editor.selection().height == 4);
+    CHECK_FALSE(editor.selection_shape().empty());
+    CHECK(editor.selected(1, 2));
+    CHECK_FALSE(editor.selected(2, 2)); // inside the rectangle, not the L
+    CHECK_FALSE(editor.selected(6, 6));
+    // Drawing keeps to the shape: a stroke across paints only the L's pixels.
+    CHECK_FALSE(stroke(editor, Tool::Pencil, blue, {{2, 2}, {3, 2}}));
+    // Clear takes the L, not the dot.
+    REQUIRE(editor.clear(error));
+    CHECK(drawn(editor) == 1);
+    REQUIRE(editor.undo());
+    // With Fill all of a colour: every red pixel, the dot too.
+    sprite::Brush all;
+    all.fill_all = true;
+    CHECK_FALSE(stroke(editor, Tool::Wand, red, {{1, 1}}, all));
+    CHECK(editor.selected(6, 6));
+    // Copy takes only what is selected; flipping keeps the shape with the pixels.
+    editor.deselect();
+    CHECK(editor.selection_shape().empty());
+
+    // The lasso: a triangle round the top-left corner of the L.
+    CHECK_FALSE(stroke(editor, Tool::Lasso, red, {{0, 0}, {4, 0}, {0, 4}}));
+    CHECK(editor.selected(1, 1));
+    CHECK(editor.selected(0, 0));
+    CHECK_FALSE(editor.selected(4, 4));
+    // Moving it moves only the selected pixels, and the shape with them.
+    CHECK(stroke(editor, Tool::Move, red, {{1, 1}, {2, 1}}));
+    CHECK(editor.sprite().pixel(0, 0, 2, 1) == red); // moved right
+    CHECK(editor.sprite().pixel(0, 0, 3, 4) == red); // outside the lasso: stayed
+    CHECK(editor.selected(2, 1));
+    CHECK(drawn(editor) == reds);
+    // Undo puts the pixels and the selection back.
+    REQUIRE(editor.undo());
+    CHECK(editor.selected(1, 1));
+    CHECK(editor.sprite().pixel(0, 0, 1, 1) == red);
+}

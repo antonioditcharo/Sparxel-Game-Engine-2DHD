@@ -20,6 +20,7 @@
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
+#include <QLineF>
 #include <QListWidget>
 #include <QMenu>
 #include <QMenuBar>
@@ -36,6 +37,7 @@
 #include <QToolButton>
 #include <QTreeWidget>
 #include <QVBoxLayout>
+#include <QVector>
 #include <QWheelEvent>
 #include <algorithm>
 #include <array>
@@ -101,7 +103,7 @@ struct ToolInfo {
     const char* key;
 };
 
-constexpr std::array<ToolInfo, 11> tool_infos{{
+constexpr std::array<ToolInfo, 13> tool_infos{{
     {StudioTool::Pencil, QT_TRANSLATE_NOOP("SpriteStudio", "Pencil"),
      QT_TRANSLATE_NOOP("SpriteStudio", "Draw pixels (B)"), "B"},
     {StudioTool::Eraser, QT_TRANSLATE_NOOP("SpriteStudio", "Eraser"),
@@ -123,11 +125,23 @@ constexpr std::array<ToolInfo, 11> tool_infos{{
      "M"},
     {StudioTool::Move, QT_TRANSLATE_NOOP("SpriteStudio", "Move"),
      QT_TRANSLATE_NOOP("SpriteStudio", "Drag the selected pixels, or the whole layer (V)"), "V"},
+    {StudioTool::Wand, QT_TRANSLATE_NOOP("SpriteStudio", "Magic wand"),
+     QT_TRANSLATE_NOOP("SpriteStudio",
+                       "Click to select a colour's joined pixels; with Fill all of a colour, "
+                       "every pixel of it (W)"),
+     "W"},
+    {StudioTool::Lasso, QT_TRANSLATE_NOOP("SpriteStudio", "Lasso"),
+     QT_TRANSLATE_NOOP("SpriteStudio", "Drag round the pixels to select (Q)"), "Q"},
     {StudioTool::Picker, QT_TRANSLATE_NOOP("SpriteStudio", "Pick colour"),
      QT_TRANSLATE_NOOP("SpriteStudio",
                        "Click to take a colour from the sprite (I, or Alt-click with any tool)"),
      "I"},
 }};
+
+/// The tools that choose what is selected, not pixels.
+bool is_selecting(StudioTool tool) {
+    return tool == StudioTool::Select || tool == StudioTool::Wand || tool == StudioTool::Lasso;
+}
 
 std::optional<sprite::Tool> model_tool(StudioTool tool) {
     if (tool == StudioTool::Picker) {
@@ -273,12 +287,43 @@ void SpriteCanvas::paintEvent(QPaintEvent* /*event*/) {
     }
     // The selection: a dashed line, black over white so it shows on any colour.
     const sprite::Rect& sel = editor_->selection();
-    if (!sel.empty()) {
+    if (!sel.empty() && editor_->selection_shape().empty()) {
         const QRectF box(point_of(sel.x, sel.y), QSizeF(sel.width * zoom_, sel.height * zoom_));
         painter.setPen(QPen(Qt::white, 1));
         painter.drawRect(box);
         painter.setPen(QPen(Qt::black, 1, Qt::DashLine));
         painter.drawRect(box);
+    } else if (!sel.empty()) {
+        // A shape (the wand's, the lasso's): the edges between selected pixels and the rest.
+        QVector<QLineF> edges;
+        for (int y = sel.y; y < sel.y + sel.height; ++y) {
+            for (int x = sel.x; x < sel.x + sel.width; ++x) {
+                if (!editor_->selected(x, y)) {
+                    continue;
+                }
+                const QPointF tl = point_of(x, y);
+                const QPointF br = tl + QPointF(zoom_, zoom_);
+                const auto outside = [&](int ox, int oy) {
+                    return !sel.contains(ox, oy) || !editor_->selected(ox, oy);
+                };
+                if (outside(x, y - 1)) {
+                    edges.append(QLineF(tl, QPointF(br.x(), tl.y())));
+                }
+                if (outside(x, y + 1)) {
+                    edges.append(QLineF(QPointF(tl.x(), br.y()), br));
+                }
+                if (outside(x - 1, y)) {
+                    edges.append(QLineF(tl, QPointF(tl.x(), br.y())));
+                }
+                if (outside(x + 1, y)) {
+                    edges.append(QLineF(QPointF(br.x(), tl.y()), br));
+                }
+            }
+        }
+        painter.setPen(QPen(Qt::white, 1));
+        painter.drawLines(edges);
+        painter.setPen(QPen(Qt::black, 1, Qt::DashLine));
+        painter.drawLines(edges);
     }
 }
 
@@ -309,6 +354,9 @@ void SpriteCanvas::mousePressEvent(QMouseEvent* event) {
         Q_EMIT problem(text_of(error));
         return;
     }
+    if (tool_ == StudioTool::Wand) {
+        Q_EMIT selection_changed(); // chosen at the click
+    }
     update();
 }
 
@@ -332,7 +380,7 @@ void SpriteCanvas::mouseMoveEvent(QMouseEvent* event) {
     }
     if (editor_->dragging()) {
         editor_->drag(at.x(), at.y());
-        if (tool_ == StudioTool::Select) {
+        if (is_selecting(tool_)) {
             Q_EMIT selection_changed();
         }
         update();
@@ -350,7 +398,7 @@ void SpriteCanvas::mouseReleaseEvent(QMouseEvent* event) {
         update();
         if (changed) {
             Q_EMIT edited();
-        } else if (tool_ == StudioTool::Select) {
+        } else if (is_selecting(tool_)) {
             Q_EMIT selection_changed();
         }
     }

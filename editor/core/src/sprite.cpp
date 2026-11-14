@@ -848,7 +848,7 @@ void Editor::set_frame(std::size_t frame) noexcept {
 }
 
 Editor::State Editor::state() const {
-    return {sprite_, layer_, frame_, selection_};
+    return {sprite_, layer_, frame_, selection_, shape_};
 }
 
 void Editor::restore(const State& state) {
@@ -856,6 +856,72 @@ void Editor::restore(const State& state) {
     layer_ = std::min(state.layer, sprite_.layers.size() - 1);
     frame_ = std::min(state.frame, sprite_.frames.size() - 1);
     selection_ = state.selection;
+    shape_ = state.shape;
+}
+
+namespace {
+
+/// Whether x, y is in `rect` and, with a `shape` for it, one of its selected pixels.
+bool in_selection(const Rect& rect, const std::vector<std::uint8_t>& shape, int x, int y) {
+    if (!rect.contains(x, y)) {
+        return false;
+    }
+    if (shape.empty()) {
+        return true;
+    }
+    const auto at = (static_cast<std::size_t>(y - rect.y) * static_cast<std::size_t>(rect.width)) +
+                    static_cast<std::size_t>(x - rect.x);
+    return at < shape.size() && shape[at] != 0;
+}
+
+} // namespace
+
+bool Editor::selected(int x, int y) const noexcept {
+    return selection_.empty() || in_selection(selection_, shape_, x, y);
+}
+
+void Editor::select_pixels(const std::vector<std::uint8_t>& mask) {
+    const int w = sprite_.width;
+    const int h = sprite_.height;
+    int x0 = w;
+    int y0 = h;
+    int x1 = -1;
+    int y1 = -1;
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            const auto at = (static_cast<std::size_t>(y) * static_cast<std::size_t>(w)) +
+                            static_cast<std::size_t>(x);
+            if (at < mask.size() && mask[at] != 0) {
+                x0 = std::min(x0, x);
+                y0 = std::min(y0, y);
+                x1 = std::max(x1, x);
+                y1 = std::max(y1, y);
+            }
+        }
+    }
+    shape_.clear();
+    if (x1 < 0) {
+        selection_ = {};
+        return;
+    }
+    selection_ = {x0, y0, x1 - x0 + 1, y1 - y0 + 1};
+    bool every = true;
+    shape_.reserve(static_cast<std::size_t>(selection_.width) *
+                   static_cast<std::size_t>(selection_.height));
+    for (int y = y0; y <= y1; ++y) {
+        for (int x = x0; x <= x1; ++x) {
+            const std::uint8_t on =
+                mask[(static_cast<std::size_t>(y) * static_cast<std::size_t>(w)) +
+                     static_cast<std::size_t>(x)] != 0
+                    ? 1
+                    : 0;
+            every = every && on != 0;
+            shape_.push_back(on);
+        }
+    }
+    if (every) {
+        shape_.clear(); // a whole rectangle needs no shape
+    }
 }
 
 void Editor::record(std::string label, State before, std::string merge_key) {
@@ -952,6 +1018,45 @@ bool Editor::begin(Tool tool, Color color, const Brush& brush, int x, int y, std
     started.y0 = started.last_y = y;
     started.before = state();
     started.base = sprite_.cels[layer_][frame_];
+    if (tool == Tool::Wand) {
+        // The clicked colour, joined to the clicked pixel (or anywhere, with fill_all).
+        const int w = sprite_.width;
+        const int h = sprite_.height;
+        std::vector<std::uint8_t> mask(static_cast<std::size_t>(w) * static_cast<std::size_t>(h),
+                                       0);
+        if (x >= 0 && y >= 0 && x < w && y < h) {
+            const Color target = sprite_.pixel(layer_, frame_, x, y);
+            const auto index = [w](int px, int py) {
+                return (static_cast<std::size_t>(py) * static_cast<std::size_t>(w)) +
+                       static_cast<std::size_t>(px);
+            };
+            if (brush.fill_all) {
+                for (int py = 0; py < h; ++py) {
+                    for (int px = 0; px < w; ++px) {
+                        mask[index(px, py)] =
+                            sprite_.pixel(layer_, frame_, px, py) == target ? 1 : 0;
+                    }
+                }
+            } else {
+                std::vector<std::array<int, 2>> todo{{x, y}};
+                mask[index(x, y)] = 1;
+                while (!todo.empty()) {
+                    const auto [px, py] = todo.back();
+                    todo.pop_back();
+                    for (const auto& [nx, ny] :
+                         {std::array<int, 2>{px + 1, py}, std::array<int, 2>{px - 1, py},
+                          std::array<int, 2>{px, py + 1}, std::array<int, 2>{px, py - 1}}) {
+                        if (nx >= 0 && ny >= 0 && nx < w && ny < h && mask[index(nx, ny)] == 0 &&
+                            sprite_.pixel(layer_, frame_, nx, ny) == target) {
+                            mask[index(nx, ny)] = 1;
+                            todo.push_back({nx, ny});
+                        }
+                    }
+                }
+            }
+        }
+        select_pixels(mask);
+    }
     if (tool == Tool::Move) {
         const Rect from =
             selection_.empty() ? Rect{0, 0, sprite_.width, sprite_.height} : selection_;
@@ -959,7 +1064,9 @@ bool Editor::begin(Tool tool, Color color, const Brush& brush, int x, int y, std
         if (started.base) {
             for (int py = 0; py < from.height; ++py) {
                 for (int px = 0; px < from.width; ++px) {
-                    put(lifted, px, py, get(*started.base, from.x + px, from.y + py));
+                    if (selected(from.x + px, from.y + py)) {
+                        put(lifted, px, py, get(*started.base, from.x + px, from.y + py));
+                    }
                 }
             }
         }
@@ -976,7 +1083,7 @@ void Editor::drag(int x, int y) {
     if (!drag_ || (x == drag_->last_x && y == drag_->last_y)) {
         return;
     }
-    if (drag_->tool == Tool::Pencil || drag_->tool == Tool::Eraser) {
+    if (drag_->tool == Tool::Pencil || drag_->tool == Tool::Eraser || drag_->tool == Tool::Lasso) {
         line(drag_->last_x, drag_->last_y, x, y, [&](int px, int py) {
             if (drag_->points.empty() || drag_->points.back() != std::array<int, 2>{px, py}) {
                 drag_->points.push_back({px, py});
@@ -1000,10 +1107,57 @@ void Editor::redraw_drag() {
         const int x1 = std::clamp(r.x + r.width, 0, sprite_.width);
         const int y1 = std::clamp(r.y + r.height, 0, sprite_.height);
         selection_ = {x0, y0, x1 - x0, y1 - y0};
+        shape_.clear();
+        return;
+    }
+    if (d.tool == Tool::Wand) {
+        return; // chosen when the click began
+    }
+    if (d.tool == Tool::Lasso) {
+        // The pixels whose middles are inside the outline (closed back to its start), and
+        // those it passes over.
+        const int w = sprite_.width;
+        const int h = sprite_.height;
+        std::vector<std::uint8_t> mask(static_cast<std::size_t>(w) * static_cast<std::size_t>(h),
+                                       0);
+        const auto mark = [&mask, w, h](int x, int y) {
+            if (x >= 0 && y >= 0 && x < w && y < h) {
+                mask[(static_cast<std::size_t>(y) * static_cast<std::size_t>(w)) +
+                     static_cast<std::size_t>(x)] = 1;
+            }
+        };
+        const std::vector<std::array<int, 2>>& p = d.points;
+        for (int y = 0; y < h; ++y) {
+            for (int x = 0; x < w; ++x) {
+                const double cx = x + 0.5;
+                const double cy = y + 0.5;
+                bool in = false;
+                for (std::size_t i = 0, j = p.size() - 1; i < p.size(); j = i++) {
+                    const double xi = p[i][0] + 0.5;
+                    const double yi = p[i][1] + 0.5;
+                    const double xj = p[j][0] + 0.5;
+                    const double yj = p[j][1] + 0.5;
+                    if ((yi > cy) != (yj > cy) && cx < ((xj - xi) * (cy - yi) / (yj - yi)) + xi) {
+                        in = !in;
+                    }
+                }
+                if (in) {
+                    mark(x, y);
+                }
+            }
+        }
+        for (const auto& [x, y] : p) {
+            mark(x, y);
+        }
+        select_pixels(mask);
         return;
     }
     Image image = d.base ? *d.base : blank_image(sprite_.width, sprite_.height);
     const Rect clip = d.before.selection;
+    const std::vector<std::uint8_t>& clip_shape = d.before.shape;
+    const auto clipped = [&clip, &clip_shape](int x, int y) {
+        return !clip.empty() && !in_selection(clip, clip_shape, x, y);
+    };
     const int w = sprite_.width;
     const int h = sprite_.height;
     // Shading reads the picture as it was before the stroke, so each pixel moves one step.
@@ -1017,7 +1171,7 @@ void Editor::redraw_drag() {
     // One pixel of colour, kept inside the selection, mirrored as asked.
     const auto dot = [&](int x, int y) {
         const auto one = [&](int px, int py) {
-            if (!clip.empty() && !clip.contains(px, py)) {
+            if (clipped(px, py)) {
                 return;
             }
             if (d.brush.dither && ((px + py) % 2) != 0) {
@@ -1110,7 +1264,7 @@ void Editor::redraw_drag() {
         break;
     }
     case Tool::Fill: {
-        if (!inside(image, d.x0, d.y0) || (!clip.empty() && !clip.contains(d.x0, d.y0))) {
+        if (!inside(image, d.x0, d.y0) || clipped(d.x0, d.y0)) {
             break;
         }
         const Color target = get(image, d.x0, d.y0);
@@ -1118,8 +1272,7 @@ void Editor::redraw_drag() {
             break;
         }
         const auto fillable = [&](int x, int y) {
-            return inside(image, x, y) && (clip.empty() || clip.contains(x, y)) &&
-                   get(image, x, y) == target;
+            return inside(image, x, y) && !clipped(x, y) && get(image, x, y) == target;
         };
         if (d.brush.fill_all) {
             for (int y = 0; y < h; ++y) {
@@ -1153,7 +1306,10 @@ void Editor::redraw_drag() {
         const Rect from = d.lifted_from;
         for (int y = from.y; y < from.y + from.height; ++y) {
             for (int x = from.x; x < from.x + from.width; ++x) {
-                put(image, x, y, {});
+                if (d.before.selection.empty() ||
+                    in_selection(d.before.selection, d.before.shape, x, y)) {
+                    put(image, x, y, {});
+                }
             }
         }
         for (int y = 0; y < from.height; ++y) {
@@ -1170,7 +1326,9 @@ void Editor::redraw_drag() {
         break;
     }
     case Tool::Select:
-        break;
+    case Tool::Wand:
+    case Tool::Lasso:
+        break; // they choose pixels, not paint them
     }
     sprite_.cels[layer_][frame_] = std::make_shared<const Image>(std::move(image));
 }
@@ -1181,7 +1339,7 @@ bool Editor::end() {
     }
     Drag d = std::move(*drag_);
     drag_.reset();
-    if (d.tool == Tool::Select) {
+    if (d.tool == Tool::Select || d.tool == Tool::Wand || d.tool == Tool::Lasso) {
         return false;
     }
     const Cel& now = sprite_.cels[layer_][frame_];
@@ -1200,7 +1358,9 @@ bool Editor::end() {
                                                   "Draw an ellipse",
                                                   "Fill",
                                                   "Select",
-                                                  "Move pixels"};
+                                                  "Move pixels",
+                                                  "Select",
+                                                  "Select"};
     record(std::string(labels[static_cast<std::size_t>(d.tool)]), std::move(d.before));
     return true;
 }
@@ -1213,14 +1373,17 @@ void Editor::select(const Rect& rect) {
     const int x1 = std::clamp(rect.x + rect.width, 0, sprite_.width);
     const int y1 = std::clamp(rect.y + rect.height, 0, sprite_.height);
     selection_ = {x0, y0, std::max(0, x1 - x0), std::max(0, y1 - y0)};
+    shape_.clear();
 }
 
 void Editor::select_all() {
     selection_ = {0, 0, sprite_.width, sprite_.height};
+    shape_.clear();
 }
 
 void Editor::deselect() {
     selection_ = {};
+    shape_.clear();
 }
 
 bool Editor::clear(std::string& error) {
@@ -1237,6 +1400,9 @@ bool Editor::clear(std::string& error) {
     bool changed = false;
     for (int y = area.y; y < area.y + area.height; ++y) {
         for (int x = area.x; x < area.x + area.width; ++x) {
+            if (!selected(x, y)) {
+                continue;
+            }
             changed = changed || get(image, x, y).a != 0;
             put(image, x, y, {});
         }
@@ -1260,12 +1426,41 @@ bool Editor::flip(bool horizontal, std::string& error) {
     State before = state();
     Image& image = cel_for_writing();
     const Image original = image;
+    const std::vector<std::uint8_t> was_shape = shape_;
+    const Rect was_rect = selection_;
+    const auto chosen = [&](int x, int y) {
+        return was_rect.empty() || in_selection(was_rect, was_shape, x, y);
+    };
+    for (int y = 0; y < area.height; ++y) {
+        for (int x = 0; x < area.width; ++x) {
+            if (chosen(area.x + x, area.y + y)) {
+                put(image, area.x + x, area.y + y, {});
+            }
+        }
+    }
     for (int y = 0; y < area.height; ++y) {
         for (int x = 0; x < area.width; ++x) {
             const int sx = horizontal ? area.width - 1 - x : x;
             const int sy = horizontal ? y : area.height - 1 - y;
-            put(image, area.x + x, area.y + y, get(original, area.x + sx, area.y + sy));
+            if (chosen(area.x + sx, area.y + sy)) {
+                put(image, area.x + x, area.y + y, get(original, area.x + sx, area.y + sy));
+            }
         }
+    }
+    if (!shape_.empty()) {
+        std::vector<std::uint8_t> flipped(shape_.size(), 0);
+        for (int y = 0; y < area.height; ++y) {
+            for (int x = 0; x < area.width; ++x) {
+                const int sx = horizontal ? area.width - 1 - x : x;
+                const int sy = horizontal ? y : area.height - 1 - y;
+                flipped[(static_cast<std::size_t>(y) * static_cast<std::size_t>(area.width)) +
+                        static_cast<std::size_t>(x)] =
+                    was_shape[(static_cast<std::size_t>(sy) *
+                               static_cast<std::size_t>(area.width)) +
+                              static_cast<std::size_t>(sx)];
+            }
+        }
+        shape_ = std::move(flipped);
     }
     if (image.rgba == original.rgba) {
         restore(before);
@@ -1318,7 +1513,9 @@ void Editor::copy() {
     Image out = blank_image(area.width, area.height);
     for (int y = 0; y < area.height; ++y) {
         for (int x = 0; x < area.width; ++x) {
-            put(out, x, y, sprite_.pixel(layer_, frame_, area.x + x, area.y + y));
+            if (selected(area.x + x, area.y + y)) {
+                put(out, x, y, sprite_.pixel(layer_, frame_, area.x + x, area.y + y));
+            }
         }
     }
     clipboard_ = std::make_shared<const Image>(std::move(out));
@@ -1732,6 +1929,7 @@ bool Editor::resize(int width, int height, Anchor anchor, std::string& error) {
     sprite_.width = width;
     sprite_.height = height;
     selection_ = {};
+    shape_.clear();
     record("Resize the canvas", std::move(before));
     return true;
 }

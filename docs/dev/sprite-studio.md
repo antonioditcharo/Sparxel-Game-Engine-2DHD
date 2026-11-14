@@ -36,7 +36,7 @@ opening it again brings that window forward.
 
 | Part | What it does |
 |---|---|
-| **Tools** (left) | One at a time, each with the key pixel artists expect: **Pencil** (B), **Eraser** (E), **Line** (L), **Rectangle** (U) and **Filled rectangle** (Shift+U), **Ellipse** (O) and **Filled ellipse** (Shift+O), **Fill** (G), **Select** (M), **Move** (V) and **Pick colour** (I). Lines, rectangles and ellipses follow the cursor while dragged and are drawn where the button comes up |
+| **Tools** (left) | One at a time, each with the key pixel artists expect: **Pencil** (B), **Eraser** (E), **Line** (L), **Rectangle** (U) and **Filled rectangle** (Shift+U), **Ellipse** (O) and **Filled ellipse** (Shift+O), **Fill** (G), **Select** (M), **Move** (V), **Magic wand** (W: the clicked colour's joined pixels, or with *Fill all of a colour* every pixel of it), **Lasso** (Q: the pixels inside the outline dragged, closed back to its start) and **Pick colour** (I). The wand's and the lasso's selections have any shape, outlined round their pixels; drawing, Fill, Clear, Cut, Copy, Flip and Move all keep to the pixels selected, and the shape moves with them. Lines, rectangles and ellipses follow the cursor while dragged and are drawn where the button comes up |
 | **Brush** (top) | The brush's **size** (a square, 1 to 32 pixels); **Pixel-perfect**: one-pixel pencil strokes leave out the corner pixel of every L shape, so a curve drawn by hand is one pixel thick; **Fill all of a colour**: Fill paints every pixel of the clicked colour, joined or not; **Mirror across** and **Mirror down**: everything drawn is drawn again mirrored about the middle of the canvas; **Dither**: only the pixels of a checkerboard are drawn (with any tool), for gradients and textures; **Shade**: each pixel a tool passes over moves one step along the palette towards the colour drawn with (draw with a light colour to lighten along its ramp, a dark one to darken), once a stroke, as Aseprite's shading ink; see-through pixels and colours not in the palette stay |
 | **Canvas** (middle) | The current frame, magnified to whole pixels over a checkerboard (see-through pixels show it), with a pixel grid from 8 times up. The **left button** draws with the first colour and the **right** with the second; **Alt-click** picks the colour under the cursor with any tool. The **wheel** zooms about the cursor; the **middle button**, or Space and a drag, moves the view; **Ctrl+0** fits the window. The pixel under the cursor is in the status bar |
 | **Colours** (right) | The first and second colours (click either to choose any colour, with its opacity), **Swap** (X); the **palette**: click a colour for the first, right-click for the second, hold the button down to change or remove it; **Add the first colour**, and **From the sprite** (the palette becomes the colours the sprite uses) |
@@ -147,8 +147,7 @@ file is refused in plain language in the status bar, and the old sheet stays.
 ## 7. Next increments
 
 2. **More pixel-art helpers** (`plan/02` B2): dither patterns besides the checkerboard,
-   brushes, tile and wrap mode, and lasso and magic-wand selection (which need selections
-   of any shape, not only rectangles).
+   brushes, tile and wrap mode; adding to and taking from a selection (Shift, Alt).
 3. **Reference layers and layer groups** (B3), palette-swap variants (B4), frame events,
    hitboxes and pivots per frame (B6, B7).
 4. **Aseprite slices** as 9-slices and pivots, and its user data as frame events.

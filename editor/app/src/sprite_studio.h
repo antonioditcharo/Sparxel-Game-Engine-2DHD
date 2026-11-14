@@ -50,6 +50,8 @@ enum class StudioTool : std::uint8_t {
     Fill,
     Select,
     Move,
+    Wand,
+    Lasso,
     Picker,
 };
 

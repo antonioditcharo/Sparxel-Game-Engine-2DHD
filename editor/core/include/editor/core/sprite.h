@@ -174,6 +174,11 @@ enum class Tool : std::uint8_t {
     Fill,   ///< Paints the clicked pixel and those of its colour joined to it.
     Select, ///< Selects the rectangle dragged.
     Move,   ///< Moves the selected pixels, or the whole layer, by the drag.
+    /// Selects the clicked pixel and those of its colour joined to it (with the brush's
+    /// fill_all, every pixel of that colour), as Aseprite's magic wand.
+    Wand,
+    /// Selects the pixels inside the outline dragged, closed back to where it began.
+    Lasso,
 };
 
 /// How drawing tools draw.
@@ -227,8 +232,20 @@ public:
 
     // ----- Selection -----
 
-    /// The selected rectangle, inside the canvas; empty when nothing is selected.
+    /// The selected rectangle, inside the canvas; empty when nothing is selected. With a
+    /// shape (selection_shape()), only some of its pixels are selected: the magic wand's
+    /// and the lasso's selections.
     [[nodiscard]] const Rect& selection() const noexcept { return selection_; }
+    /// Which pixels of the selection's rectangle are selected, row by row (1 selected, 0
+    /// not); empty when all of them are.
+    [[nodiscard]] const std::vector<std::uint8_t>& selection_shape() const noexcept {
+        return shape_;
+    }
+    /// Whether the pixel at x, y is selected (when nothing is, every pixel counts as so).
+    [[nodiscard]] bool selected(int x, int y) const noexcept;
+    /// Selects the pixels of a canvas-sized mask (1 selected, row by row): its smallest
+    /// rectangle and the shape inside it. Nothing selected if none are.
+    void select_pixels(const std::vector<std::uint8_t>& mask);
     void select(const Rect& rect);
     void select_all();
     void deselect();
@@ -324,6 +341,7 @@ private:
         std::size_t layer = 0;
         std::size_t frame = 0;
         Rect selection;
+        std::vector<std::uint8_t> shape; ///< See selection_shape().
     };
     struct Step {
         std::string label;
@@ -360,6 +378,7 @@ private:
     std::size_t layer_ = 0;
     std::size_t frame_ = 0;
     Rect selection_;
+    std::vector<std::uint8_t> shape_; ///< See selection_shape().
     std::optional<Drag> drag_;
     Cel clipboard_;
     std::vector<Step> undo_;
