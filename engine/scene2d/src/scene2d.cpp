@@ -866,9 +866,9 @@ std::string sheet_to_text(const SheetInfo& sheet) {
                     [](const FrameBoxes& b) { return !b.hit.empty() || !b.hurt.empty(); })) {
         serialize::Json boxes = serialize::Json::array();
         for (const FrameBoxes& b : sheet.boxes) {
-            boxes.push_back(serialize::Json::array({b.hit.x, b.hit.y, b.hit.width, b.hit.height,
-                                                    b.hurt.x, b.hurt.y, b.hurt.width,
-                                                    b.hurt.height}));
+            boxes.push_back(
+                serialize::Json::array({b.hit.x, b.hit.y, b.hit.width, b.hit.height, b.hurt.x,
+                                        b.hurt.y, b.hurt.width, b.hurt.height}));
         }
         json["boxes"] = std::move(boxes);
     }
@@ -1276,7 +1276,8 @@ std::vector<HitContact> hit_contacts(const world::World& world, SheetLibrary& sh
             const double y0 = (static_cast<double>(b.y) - (sprite->pivot_y * h)) * sy;
             const double y1 = (static_cast<double>(b.y + b.height) - (sprite->pivot_y * h)) * sy;
             return Box{where->x + (std::min(x0, x1) / units), where->y + (std::min(y0, y1) / units),
-                       where->x + (std::max(x0, x1) / units), where->y + (std::max(y0, y1) / units)};
+                       where->x + (std::max(x0, x1) / units),
+                       where->y + (std::max(y0, y1) / units)};
         };
         if (!frame.hit.empty()) {
             hits.push_back({entity, place(frame.hit)});
