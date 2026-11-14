@@ -228,6 +228,13 @@ saves work as before, since it is still that mover.
 - **The hitbox** is the mover's: make it as tall as the character (the platformer
   template uses 1 tile), since it bumps its head too.
 
+**Ladder** (`ladder`): an area (*Width*, and *Height* upwards from its position) that a
+side-view character in it climbs with up and down at its Jumping's *Climb speed*
+(`climb_speed`, 3 tiles a second), and walks off sideways. On it, up climbs rather than
+jumps, and letting go holds it where it is, not falling; its top is as high as climbing
+goes (step off sideways onto the floor beside it); climbing down onto a floor stands on it.
+Jump leaps off it, as from the ground. Off the ladder, it falls as usual.
+
 **Moving Platform** (`moving_platform`), beside a Solid Body: it travels from where it was
 placed to *Goes across* and *Goes down* tiles from there (`move_x`, `move_y`) at *Speed*
 tiles a second, stops for *Wait* seconds, and comes back, over and over; *Enabled* off

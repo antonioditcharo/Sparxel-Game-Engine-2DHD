@@ -149,6 +149,23 @@ void register_behaviours(reflect::Registry& registry) {
         .flags(reflect::property_flag::read_only)
         .tooltip("Whether it is walking.");
 
+    auto ladder = registry.add_type<Ladder>("ladder")
+                      .display_name("Ladder")
+                      .category("Movement")
+                      .tooltip("An area a side-view character climbs with up and down; jumping "
+                               "leaps off it.");
+    ladder.property<&Ladder::width>("width")
+        .range(0.0, 64.0)
+        .step(0.5)
+        .unit(reflect::Unit::Tiles)
+        .tooltip("How wide it is.");
+    ladder.property<&Ladder::height>("height")
+        .range(0.0, 256.0)
+        .step(0.5)
+        .unit(reflect::Unit::Tiles)
+        .tooltip("How tall, upwards from its position: its top is as high as climbing goes.");
+    ladder.property<&Ladder::enabled>("enabled").tooltip("Off, it cannot be climbed.");
+
     auto platform =
         registry.add_type<MovingPlatform>("moving_platform")
             .display_name("Moving Platform")
@@ -232,6 +249,12 @@ void register_behaviours(reflect::Registry& registry) {
     jumping.property<&Jumping::air_time>("air_time").flags(reflect::property_flag::hidden);
     jumping.property<&Jumping::jump_wait>("jump_wait").flags(reflect::property_flag::hidden);
     jumping.property<&Jumping::jumped>("jumped").flags(reflect::property_flag::hidden);
+    jumping.property<&Jumping::climb_speed>("climb_speed")
+        .range(0.0, 64.0)
+        .step(0.5)
+        .display_name("Climb speed")
+        .tooltip("Up and down a Ladder, in tiles per second.");
+    jumping.property<&Jumping::climbing>("climbing").flags(reflect::property_flag::hidden);
     jumping.property<&Jumping::on_ground>("on_ground")
         .flags(reflect::property_flag::read_only)
         .display_name("On the ground")
@@ -531,7 +554,8 @@ bool register_behaviour_components(world::World& world) {
     const bool sound = world.register_component<SoundSource>();
     const bool jumping = world.register_component<Jumping>();
     const bool enemy = world.register_component<EnemyOnMap>() && world.register_component<Tags>() &&
-                       world.register_component<MovingPlatform>();
+                       world.register_component<MovingPlatform>() &&
+                       world.register_component<Ladder>();
     const bool hud = register_hud_components(world);
     return mover && walker && particles && prefab && encounter && walk && body && trigger &&
            interactable && simulated && sound && jumping && enemy && hud;
@@ -768,6 +792,17 @@ void move_characters(world::World& world, const input::InputState& input, double
         scene2d::Box box;
     };
     std::vector<Obstacle> obstacles;
+    // Ladders, as areas.
+    std::vector<scene2d::Box> ladders;
+    if (const reflect::TypeInfo* ladder_type = world.registry().find_type<Ladder>()) {
+        world.each(*ladder_type, [&](world::Entity entity, reflect::ObjectRef ref) {
+            const Ladder* ladder = ref.as<Ladder>();
+            const scene2d::Transform2D* at = world.get<scene2d::Transform2D>(entity);
+            if (ladder != nullptr && at != nullptr && ladder->enabled) {
+                ladders.push_back(feet_box(at->x, at->y, ladder->width, ladder->height));
+            }
+        });
+    }
     if (const reflect::TypeInfo* body_type = world.registry().find_type<Body>()) {
         world.each(*body_type, [&](world::Entity entity, reflect::ObjectRef ref) {
             const Body* body = ref.as<Body>();
@@ -837,10 +872,53 @@ void move_characters(world::World& world, const input::InputState& input, double
                              (mx > 0.0 ? 1.0 : -1.0) * mover->speed * seconds * scale);
                 }
                 const bool player = mover->enabled && !steered;
-                fall(*jumping,
-                     JumpInput{player && (input.pressed("jump") || input.pressed("move_up")),
-                               player && (input.held("jump") || input.held("move_up"))},
-                     seconds, [&](double wanted) { return sweep_by(scene2d::Axis::Y, wanted); });
+                // A ladder it is in: up and down climb it (up does not jump there).
+                const scene2d::Box feet = hitbox(*mover, transform->x, transform->y);
+                const scene2d::Box* ladder = nullptr;
+                for (const scene2d::Box& area : ladders) {
+                    if (scene2d::overlaps(feet, area)) {
+                        ladder = &area;
+                        break;
+                    }
+                }
+                const double climb = player ? dy : 0.0;
+                if (ladder == nullptr) {
+                    jumping->climbing = false;
+                } else if (climb != 0.0) {
+                    jumping->climbing = true;
+                }
+                if (jumping->climbing && player && input.pressed("jump")) {
+                    // Leaping off: from the ladder as from the ground.
+                    jumping->climbing = false;
+                    jumping->on_ground = true;
+                    jumping->jumped = false;
+                }
+                if (jumping->climbing && ladder != nullptr) {
+                    const double speed = std::isfinite(jumping->climb_speed)
+                                             ? std::max(jumping->climb_speed, 0.0)
+                                             : 0.0;
+                    double wanted = climb * speed * seconds;
+                    // Its top is as high as climbing goes: the feet stay a hair inside it,
+                    // so it is still on the ladder there and does not slip off and back.
+                    if (wanted < 0.0) {
+                        wanted = std::min(0.0, std::max(wanted, ladder->top + 1e-3 - transform->y));
+                    }
+                    const double moved = wanted != 0.0 ? sweep_by(scene2d::Axis::Y, wanted) : 0.0;
+                    jumping->fall_speed = 0.0;
+                    jumping->air_time = 0.0;
+                    jumping->jumped = false;
+                    // Stopped going down by something: standing on it.
+                    jumping->on_ground = wanted > 0.0 && moved < wanted - 1e-9;
+                } else {
+                    const bool on_ladder = ladder != nullptr;
+                    fall(*jumping,
+                         JumpInput{player && (input.pressed("jump") ||
+                                              (!on_ladder && input.pressed("move_up"))),
+                                   player && (input.held("jump") ||
+                                              (!on_ladder && input.held("move_up")))},
+                         seconds,
+                         [&](double wanted) { return sweep_by(scene2d::Axis::Y, wanted); });
+                }
             }
             if (walk != nullptr && sprite != nullptr) {
                 update_walk(*mover, *walk, *sprite, seconds);

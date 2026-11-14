@@ -132,10 +132,20 @@ struct Jumping {
     /// Variable height: letting go of jump while rising keeps it from rising higher than
     /// this (a tap hops, holding leaps jump_height). 0: always the full height.
     double short_jump_height = 1.0;
-    double air_time = 0.0;  ///< Seconds since it last stood on something (hidden).
-    double jump_wait = 0.0; ///< Seconds a buffered press is still kept (hidden).
-    bool on_ground = false; ///< Standing on something, after the last step (read-only).
-    bool jumped = false;    ///< Leapt since it last stood on something (hidden).
+    double air_time = 0.0;    ///< Seconds since it last stood on something (hidden).
+    double jump_wait = 0.0;   ///< Seconds a buffered press is still kept (hidden).
+    bool on_ground = false;   ///< Standing on something, after the last step (read-only).
+    bool jumped = false;      ///< Leapt since it last stood on something (hidden).
+    double climb_speed = 3.0; ///< Up and down a Ladder, in tiles per second.
+    bool climbing = false;    ///< On a Ladder, held there (hidden).
+};
+
+/// "Ladder": an area a side-view character (a Top-down Mover with Jumping) climbs with up
+/// and down, without falling; jumping leaps off it. Its top is as high as climbing goes.
+struct Ladder {
+    double width = 1.0;  ///< In tiles.
+    double height = 3.0; ///< In tiles, upwards from the position.
+    bool enabled = true;
 };
 
 /// What the player does with jump on a step: pressed it now, and whether it is held.

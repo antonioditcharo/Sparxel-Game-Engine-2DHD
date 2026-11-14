@@ -730,3 +730,59 @@ TEST_CASE("Moving platforms: back and forth, carrying what stands on them") {
     game::move_platforms(*f.w, 1.0, ppu);
     CHECK(f.w->get<scene2d::Transform2D>(lift)->x == doctest::Approx(5.0).epsilon(0.001));
 }
+
+TEST_CASE("Ladders: climbed with up and down, never fallen from, leapt off with jump") {
+    Fixture f;
+    game::TopDownMover* mover = f.w->get<game::TopDownMover>(f.hero);
+    mover->hitbox_height = 1.0;
+    game::Jumping* jumping = f.w->add<game::Jumping>(f.hero);
+    // A floor at y = 4, and a ladder 3 tiles tall standing on it at x = 0 (its top y = 1).
+    const world::Entity floor = f.place("floor", -5.0, 4.0);
+    scene2d::Tilemap* tiles = f.w->add<scene2d::Tilemap>(floor);
+    tiles->solid = true;
+    tiles->tiles = "0,0,0,0,0,0,0,0,0,0";
+    const world::Entity ladder = f.place("ladder", 0.0, 4.0);
+    f.w->add<game::Ladder>(ladder);
+    const auto run = [&](int steps, std::initializer_list<input::Key> keys) {
+        for (int i = 0; i < steps; ++i) {
+            f.state.begin_step();
+            for (const input::Key k : {input::Key::Left, input::Key::Right, input::Key::Up,
+                                       input::Key::Down, input::Key::Space}) {
+                bool down = false;
+                for (const input::Key held : keys) {
+                    down = down || held == k;
+                }
+                f.state.set(input::Binding::key(k), down);
+            }
+            game::move_characters(*f.w, f.state, 1.0 / 60.0, 16);
+        }
+    };
+    f.at(f.hero).y = 4.0;
+    run(5, {});
+    REQUIRE(jumping->on_ground);
+    // Up climbs, at 3 tiles a second, and does not jump.
+    run(30, {input::Key::Up});
+    CHECK(jumping->climbing);
+    CHECK(f.at(f.hero).y == doctest::Approx(2.5));
+    // Let go: it stays there, not falling.
+    run(30, {});
+    CHECK(f.at(f.hero).y == doctest::Approx(2.5));
+    // Up to the top, no higher.
+    run(60, {input::Key::Up});
+    CHECK(f.at(f.hero).y == doctest::Approx(1.0).epsilon(0.01));
+    CHECK(jumping->climbing);
+    // Down to the floor, standing on it.
+    run(120, {input::Key::Down});
+    CHECK(f.at(f.hero).y == 4.0);
+    CHECK(jumping->on_ground);
+    // Climbing, then jump: it leaps off and falls back.
+    run(20, {input::Key::Up});
+    run(1, {input::Key::Space});
+    CHECK_FALSE(jumping->climbing);
+    CHECK(jumping->fall_speed < 0.0); // leaping
+    // Walked off sideways, it is off the ladder and falls to the floor.
+    run(40, {input::Key::Right});
+    run(120, {});
+    CHECK_FALSE(jumping->climbing);
+    CHECK(f.at(f.hero).y == 4.0);
+}
