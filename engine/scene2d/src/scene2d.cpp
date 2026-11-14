@@ -209,6 +209,29 @@ void register_types(reflect::Registry& registry) {
         .unit(reflect::Unit::Tiles)
         .tooltip("How high above the ground the light is.");
     light.property<&Light::enabled>("enabled").tooltip("Turn the light off without removing it.");
+
+    auto parallax =
+        registry.add_type<Parallax>("parallax")
+            .display_name("Parallax")
+            .category("Visuals")
+            .tooltip("The object's Sprite scrolls slower than the map as the camera moves, and "
+                     "repeats to fill the view: far hills, clouds, a sky (Classic 2D).");
+    parallax.property<&Parallax::scroll_x>("scroll_x")
+        .display_name("Scroll across")
+        .range(-4.0, 4.0)
+        .step(0.1)
+        .tooltip("0 stays fixed on the screen, 1 moves with the map, 0.5 at half speed.");
+    parallax.property<&Parallax::scroll_y>("scroll_y")
+        .display_name("Scroll down")
+        .range(-4.0, 4.0)
+        .step(0.1)
+        .tooltip("The same, up and down.");
+    parallax.property<&Parallax::repeat_x>("repeat_x")
+        .display_name("Repeat across")
+        .tooltip("Side by side, to fill the view's width.");
+    parallax.property<&Parallax::repeat_y>("repeat_y")
+        .display_name("Repeat down")
+        .tooltip("One above another, to fill the view's height.");
 }
 
 bool register_components(world::World& world) {
@@ -217,7 +240,8 @@ bool register_components(world::World& world) {
     const bool animation = world.register_component<SpriteAnimation>();
     const bool tilemap = world.register_component<Tilemap>();
     const bool light = world.register_component<Light>();
-    return transform && sprite && animation && tilemap && light;
+    const bool parallax = world.register_component<Parallax>();
+    return transform && sprite && animation && tilemap && light && parallax;
 }
 
 // ---------------------------------------------------------------------------------------
@@ -1481,8 +1505,15 @@ DrawStats draw_world(const world::World& world, TextureCache& textures,
                     frame_rect(*texture, sprite->frame_width, sprite->frame_height, sprite->frame);
                 const auto width = static_cast<double>(source.w);
                 const auto height = static_cast<double>(source.h);
-                const double at_x = (transform->x - camera.x) * ppu;
-                const double at_y = (transform->y - camera.y) * ppu;
+                // With Parallax, the camera moves it only as much as it scrolls.
+                const Parallax* parallax = world.get<Parallax>(entity);
+                const auto scrolled = [](double v) { return std::isfinite(v) ? v : 1.0; };
+                const double camera_x =
+                    parallax != nullptr ? camera.x * scrolled(parallax->scroll_x) : camera.x;
+                const double camera_y =
+                    parallax != nullptr ? camera.y * scrolled(parallax->scroll_y) : camera.y;
+                const double at_x = (transform->x - camera_x) * ppu;
+                const double at_y = (transform->y - camera_y) * ppu;
                 const std::array<std::array<double, 2>, 4> local =
                     sprite_corners(*sprite, width, height);
                 // Snap in source pixels, then upscale by a whole number: pixel-perfect. An
@@ -1506,6 +1537,54 @@ DrawStats draw_world(const world::World& world, TextureCache& textures,
                 }
                 item.tint =
                     render::Color{sprite->tint_r, sprite->tint_g, sprite->tint_b, sprite->tint_a};
+                // Repeated to fill the view: copies a whole picture apart, as many as cover it
+                // (an upright picture only; at most 64 a side).
+                const bool across = parallax != nullptr && parallax->repeat_x;
+                const bool down = parallax != nullptr && parallax->repeat_y;
+                if ((across || down) && turn_of(*sprite) == 0.0) {
+                    const double min_x =
+                        std::min({local[0][0], local[1][0], local[2][0], local[3][0]});
+                    const double max_x =
+                        std::max({local[0][0], local[1][0], local[2][0], local[3][0]});
+                    const double min_y =
+                        std::min({local[0][1], local[1][1], local[2][1], local[3][1]});
+                    const double max_y =
+                        std::max({local[0][1], local[1][1], local[2][1], local[3][1]});
+                    const double step_x = std::round(max_x - min_x);
+                    const double step_y = std::round(max_y - min_y);
+                    // Copies before and after the picture, until past the view's edges.
+                    const auto reach = [](bool on, double step, double first, double last,
+                                          double low, double high) {
+                        if (!on || step < 1.0) {
+                            return std::array<std::int64_t, 2>{0, 0};
+                        }
+                        const auto before = static_cast<std::int64_t>(
+                            std::min(64.0, std::max(0.0, std::ceil((first - low) / step))));
+                        const auto after = static_cast<std::int64_t>(
+                            std::min(64.0, std::max(0.0, std::ceil((high - last) / step))));
+                        return std::array<std::int64_t, 2>{-before, after};
+                    };
+                    const auto [x_from, x_to] =
+                        reach(across, step_x, snapped_x, snapped_x + step_x, view_left, view_right);
+                    const auto [y_from, y_to] =
+                        reach(down, step_y, snapped_y, snapped_y + step_y, view_top, view_bottom);
+                    std::size_t copy = 0;
+                    for (std::int64_t row = y_from; row <= y_to; ++row) {
+                        for (std::int64_t column = x_from; column <= x_to; ++column) {
+                            Item repeated = item;
+                            repeated.index = copy++;
+                            const double dx = static_cast<double>(column) * step_x;
+                            const double dy = static_cast<double>(row) * step_y;
+                            for (std::size_t i = 0; i < 4; ++i) {
+                                repeated.corners[i] =
+                                    to_screen(snapped_x + dx + (local[i][0] - from_x),
+                                              snapped_y + dy + (local[i][1] - from_y));
+                            }
+                            items.push_back(repeated);
+                        }
+                    }
+                    return;
+                }
                 items.push_back(item);
             }
         });

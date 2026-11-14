@@ -39,12 +39,21 @@ nothing extra to write ([reflection.md](reflection.md)).
 | `Sprite` ("sprite") | `image` (an asset GUID), `visible`, `recolor` (*Recolour*: a palette swap), `rotation` (degrees), `scale_x` and `scale_y` (*Scale across*, *Scale down*); advanced: `pivot_x`, `pivot_y`, tint red, green, blue, and opacity; `frame_width`, `frame_height` and `frame` for sprite sheets | "Sprite" |
 | `SpriteAnimation` ("sprite_animation") | `tag` (a tag of the sheet, such as *walk*: §3), `first_frame`, `frame_count`, `frames_per_second`, `loop`, `playing`; actions *Play*, *Play the animation {name}* (a tag) and *Stop*; event *finished* | "Animation" |
 | `Tilemap` ("tilemap") | `tileset` (an asset GUID), `tiles`, `visible`, `solid`; advanced: `tile_size`, `shapes` (*Tile shapes*) | "Tilemap" |
+| `Parallax` ("parallax") | `scroll_x`, `scroll_y` (*Scroll across*, *Scroll down*: 0 fixed on the screen, 1 with the map, 0.5 at half speed), `repeat_x`, `repeat_y` | "Parallax" |
 
 - **Units:** one world unit is one tile of `ppu` pixels, the project setting (default 16,
   `plan/04` §2). A sprite's size comes from its image: 1 image pixel is 1 world pixel.
   Creators never type sprite sizes.
 - **The pivot** is the point of the image placed on the position. The default, bottom
   centre, puts a character's feet on its position, which is what depth sorting needs.
+- **Parallax** (Classic 2D): with a Parallax beside its Sprite, the camera moves a picture
+  only as much as it scrolls (`scroll_x` and `scroll_y`): 0 keeps it fixed on the screen,
+  a far sky; 0.5 moves it at half speed, distant hills; 1 with the map; above 1, nearer
+  than the map. *Repeat across* and *Repeat down* draw copies a whole picture apart until
+  the view is covered (up to 64 each way; an upright picture only), so one strip of hills
+  fills any width. Put it on a low *layer* to stay behind the map. The editor's scene view
+  draws it as the game does, for where the editor's camera is; it is picked where it would
+  be without parallax.
 - **Turning and scaling** happen about the pivot: `scale_x` and `scale_y` stretch the
   picture (2 is twice the size; below 0 flips it), then `rotation` turns it clockwise, in
   degrees. `sprite_corners()` gives where the four corners go, and the game, the Diorama

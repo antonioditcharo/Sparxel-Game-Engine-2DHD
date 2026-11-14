@@ -20,7 +20,7 @@
 | A. Project and workflow | 3 | 6 | 3 (+1 later) |
 | B. Pixel art | 2 | 7 | 5 (+1 later) |
 | C. World building | 4 | 7 | 3 |
-| D. Rendering and the look | 3 | 9 | 3 (+1 later) |
+| D. Rendering and the look | 3 | 10 | 2 (+1 later) |
 | E. No-code logic | 3 | 5 | 3 (+1 later) |
 | F. Genre kits | 2 | 1 | 3 |
 | G. Story | 4 | 2 | 1 (+1 later) |
@@ -28,7 +28,7 @@
 | I. Physics | 1 | 3 | 1 |
 | J. Audio | 2 | 4 | 0 (+1 later) |
 | K. UI | 3 | 4 | 0 |
-| **All** | **29** | **51** | **22** (+6 later) |
+| **All** | **29** | **52** | **21** (+6 later) |
 
 The strongest areas match or pass their references: the RPG kit and window skins (RPG
 Maker), auto-tiles and tile variants (RPG Maker, LDtk), no-code Rules with tags, *it*,
@@ -85,7 +85,7 @@ action kits (GameMaker), audio mixing (zones, reverb), and team features.
 | C3 | Prefabs | Unity | **Done**: made from entities, placed, updated in every copy, created by logic |
 | C4 | Auto-tiling rules | LDtk | **Partial**: auto-tiles and variants; no rule editor |
 | C5 | Scatter and variation | LDtk, Tiled | **Done**: a scatter brush with density, random variants |
-| C6 | 2D map mode | Tiled | **Partial**: tile layers by maps; no parallax layers |
+| C6 | 2D map mode | Tiled | **Partial**: tile layers by maps, parallax pictures; no parallax for whole tile layers |
 | C7 | Entities | Godot | **Done**: typed properties from reflection, prefabs, a hierarchy |
 | C8 | Regions and zones | RPG Maker regions | **Partial**: trigger and encounter areas, Sound Sources; no camera or Look zones |
 | C9 | Water, sky, weather | Octopath | **Partial**: rain, snow, fog and animated tiles; no sky presets |
@@ -109,7 +109,7 @@ action kits (GameMaker), audio mixing (zones, reverb), and team features.
 | D8 | Texel density | | **Partial**: one PPU for the project, every sprite pixel-snapped; no checker for art drawn at another density |
 | D9 | Filtering modes | | **Partial**: nearest; crisp-AA and bilinear not yet |
 | D10 | Camera rigs | Unity Cinemachine | **Partial**: follow, dead zone, look-ahead, shake, smoothing, limits; no rails or cutscene cameras |
-| D11 | Parallax and skyboxes | GameMaker | **Not yet** |
+| D11 | Parallax and skyboxes | GameMaker | **Partial**: parallax pictures in Classic 2D, scrolling at any speed and repeating; no pixel skyboxes for the Diorama style |
 | D12 | Pixel particles | GameMaker | **Done**: fire, smoke, rain, snow, dust, magic, sparks |
 | D13 | Material effects | GameMaker shaders | **Partial**: palette swap, tint; no scroll, flash, dissolve or outline |
 | D14 | Quality tiers | Unity | **Not yet** |

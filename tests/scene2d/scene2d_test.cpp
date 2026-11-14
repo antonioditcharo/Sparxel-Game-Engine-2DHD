@@ -1842,3 +1842,46 @@ TEST_CASE("Tile shapes: half tiles block half their square, and some tiles none"
     CHECK(scene2d::solid_at(w, scene2d::Box{1.25, 0.1, 1.75, 0.4}, ppu));
     CHECK_FALSE(scene2d::solid_at(w, scene2d::Box{3.1, 0.1, 3.9, 0.9}, ppu));
 }
+
+TEST_CASE("Parallax: a picture scrolling slower than the map, repeated to fill the view") {
+    render::Device* device = gpu();
+    if (device == nullptr) {
+        return;
+    }
+    const Fixture f;
+    const auto target = device->create_render_target(8, 8);
+    const auto sprites = render::SpriteRenderer::create(*device);
+    REQUIRE(target != nullptr);
+    REQUIRE(sprites != nullptr);
+    scene2d::TextureCache textures(*device, f.db);
+    const auto w = f.make_world();
+    // A 2 x 2 red picture, its top-left on (0, 0): the camera's (0, 0) is pixel (4, 4).
+    const world::Entity sky = Fixture::place(*w, "sky", 0.0, 0.0, f.red_image);
+    scene2d::Sprite* sprite = w->get<scene2d::Sprite>(sky);
+    sprite->pivot_x = 0.0;
+    sprite->pivot_y = 0.0;
+    scene2d::Parallax* parallax = w->add<scene2d::Parallax>(sky);
+    REQUIRE(parallax != nullptr);
+    const auto row = [&](scene2d::Camera2D camera) {
+        scene2d::draw_world(*w, textures, *sprites, *target, camera, f.background);
+        const std::vector<std::uint8_t> pixels = target->read_pixels();
+        std::string out;
+        for (std::uint32_t x = 0; x < 8; ++x) {
+            out += pixel(pixels, 8, x, 4) == f.red ? 'R' : '.';
+        }
+        return out;
+    };
+    // Fixed to the screen and repeated across: the whole row, wherever the camera is.
+    parallax->scroll_x = 0.0;
+    parallax->scroll_y = 0.0;
+    CHECK(row({0.0, 0.0, 2, 1}) == "RRRRRRRR");
+    CHECK(row({10.0, 3.0, 2, 1}) == "RRRRRRRR");
+    // Not repeated, at half speed: the camera 2 units right moves it 1 unit (2 pixels) left.
+    parallax->repeat_x = false;
+    parallax->scroll_x = 0.5;
+    CHECK(row({0.0, 0.0, 2, 1}) == "....RR..");
+    CHECK(row({2.0, 0.0, 2, 1}) == "..RR....");
+    // Moving with the map (1): as a plain sprite, 4 pixels.
+    parallax->scroll_x = 1.0;
+    CHECK(row({2.0, 0.0, 2, 1}) == "RR......");
+}

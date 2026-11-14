@@ -250,6 +250,18 @@ private:
 /// whole numbers have no decimals.
 [[nodiscard]] std::string format_heights(const std::vector<std::vector<double>>& heights);
 
+/// "Parallax": a Sprite that scrolls slower (or faster) than the map as the camera moves, and
+/// repeats to fill the view: far hills, clouds, a sky, in Classic 2D (plan/02 D11).
+struct Parallax {
+    /// How much it moves with the camera across: 0 stays fixed on the screen (the far
+    /// sky), 1 moves with the map, 0.5 at half the speed (distant hills); above 1, nearer
+    /// than the map.
+    double scroll_x = 0.5;
+    double scroll_y = 0.5; ///< The same, up and down.
+    bool repeat_x = true;  ///< Repeats side by side to fill the view's width.
+    bool repeat_y = false; ///< Repeats one above another to fill its height.
+};
+
 /// "Light": a point light, such as a torch, a lamp or a glowing window. It lights the
 /// ground, walls and characters around it, fading smoothly to nothing at its radius. In the
 /// Diorama style it adds to the scene's ambient and sun light; in Classic 2D it brightens
@@ -265,8 +277,8 @@ struct Light {
 };
 
 /// Registers Transform2D ("transform_2d"), Sprite ("sprite"), SpriteAnimation
-/// ("sprite_animation"), Tilemap ("tilemap") and Light ("light") with their editor
-/// metadata.
+/// ("sprite_animation"), Tilemap ("tilemap"), Light ("light") and Parallax ("parallax") with their
+/// editor metadata.
 void register_types(reflect::Registry& registry);
 /// Makes them all usable as components of `world`. register_types() must have run first.
 bool register_components(world::World& world);
