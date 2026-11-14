@@ -126,6 +126,7 @@ Details and the questions that remain open are in
 ### Developer docs
 | Document | Contents |
 |---|---|
+| [Parity](dev/parity.md) | Every planned feature against the engine that does it best: done, partial (and what is missing) or not yet |
 | [Building](dev/building.md) | How to build and test the code |
 | [Coding standards](dev/coding-standards.md) | Language rules, naming, formatting |
 | [Repository layout](dev/repo-layout.md) | What lives where |
