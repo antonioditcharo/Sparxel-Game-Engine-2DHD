@@ -1937,3 +1937,64 @@ TEST_CASE("Frame events: kept in the sheet, said once as their frame comes") {
     }
     CHECK(said_at == std::vector<int>{1, 7});
 }
+
+TEST_CASE("Hit and hurt boxes: one's hit box on another's hurt box, placed as drawn") {
+    // Kept in the sheet and read back.
+    scene2d::SheetInfo info;
+    info.frame_width = 8;
+    info.frame_height = 8;
+    info.durations_ms = {100};
+    info.boxes = {scene2d::FrameBoxes{{6, 2, 4, 2}, {1, 1, 6, 7}}};
+    std::string error;
+    const std::optional<scene2d::SheetInfo> back =
+        scene2d::parse_sheet(scene2d::sheet_to_text(info), error);
+    REQUIRE(back.has_value());
+    if (!back) {
+        return;
+    }
+    CHECK(back->boxes == info.boxes);
+
+    // One 8 x 8 frame: a sword reaching right (hit: x 6 to 10), a body (hurt: x 1 to 7).
+    const TempFolder folder;
+    write_image(folder.path / "fighter.png", 8, 8, std::vector<Color>(64, Color{1, 2, 3, 255}));
+    {
+        std::ofstream sheet(folder.path / "fighter.sheet", std::ios::binary);
+        sheet << scene2d::sheet_to_text(info);
+    }
+    assets::AssetDatabase db(folder.path);
+    db.refresh();
+    scene2d::SheetLibrary sheets(db);
+    reflect::Registry registry;
+    scene2d::register_types(registry);
+    world::World w(registry);
+    REQUIRE(scene2d::register_components(w));
+    const std::string image = db.find("fighter.png")->guid.to_string();
+    // ppu 8: a frame is a unit square, its top-left at the position (pivot 0, 0).
+    const auto fighter = [&](const char* name, double x) {
+        const world::Entity e = w.create(name);
+        w.add<scene2d::Transform2D>(e)->x = x;
+        scene2d::Sprite* s = w.add<scene2d::Sprite>(e);
+        s->image = image;
+        s->pivot_x = 0.0;
+        s->pivot_y = 0.0;
+        return e;
+    };
+    const world::Entity hero = fighter("hero", 0.0);
+    const world::Entity slime = fighter("slime", 1.0); // its body from x 1.125
+    // The hero's sword (to 1.25) reaches the slime's body; the slime's sword (to 2.25)
+    // reaches nobody.
+    std::vector<scene2d::HitContact> contacts = scene2d::hit_contacts(w, sheets, 8);
+    REQUIRE(contacts.size() == 1);
+    CHECK(contacts[0].attacker == hero);
+    CHECK(contacts[0].target == slime);
+    // Flipped (facing left), the slime's sword reaches back into the hero.
+    w.get<scene2d::Sprite>(slime)->scale_x = -1.0;
+    w.get<scene2d::Transform2D>(slime)->x = 1.5; // the picture spans 0.5 to 1.5
+    contacts = scene2d::hit_contacts(w, sheets, 8);
+    CHECK(std::any_of(contacts.begin(), contacts.end(), [&](const scene2d::HitContact& c) {
+        return c.attacker == slime && c.target == hero;
+    }));
+    // Far apart: none.
+    w.get<scene2d::Transform2D>(slime)->x = 5.0;
+    CHECK(scene2d::hit_contacts(w, sheets, 8).empty());
+}

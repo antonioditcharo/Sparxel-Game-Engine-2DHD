@@ -5009,3 +5009,67 @@ TEST_CASE("Screen Layouts: children's elements in a column, a row or a grid") {
     CHECK(pixel(pixels, 64, 50, 11) == render::Color{0, 0, 255, 255});
     CHECK_FALSE(pixel(pixels, 64, 50, 32) == render::Color{0, 255, 0, 255}); // not its own
 }
+
+TEST_CASE("Hit boxes in a running game: Rules hear a hit as it lands, once") {
+    const Project project;
+    {
+        // One 8 x 8 frame: a sword reaching right (hit box) and a body (hurt box).
+        assets::Image frame;
+        frame.width = 8;
+        frame.height = 8;
+        frame.rgba.assign(std::size_t{8} * 8 * 4, 200);
+        const std::vector<std::uint8_t> png = assets::encode_png(frame);
+        std::ofstream(project.folder.path / "assets/art/fighter.png", std::ios::binary)
+            .write(reinterpret_cast<const char*>(png.data()), // NOLINT
+                   static_cast<std::streamsize>(png.size()));
+        scene2d::SheetInfo sheet;
+        sheet.frame_width = 8;
+        sheet.frame_height = 8;
+        sheet.durations_ms = {100};
+        sheet.boxes = {scene2d::FrameBoxes{{6, 2, 4, 2}, {1, 1, 6, 7}}};
+        write_bytes(project.folder.path / "assets/art/fighter.sheet",
+                    scene2d::sheet_to_text(sheet));
+        assets::AssetDatabase db(project.folder.path / "assets");
+        static_cast<void>(db.refresh());
+        const assets::AssetRecord* record = db.find("art/fighter.png");
+        REQUIRE(record != nullptr);
+        reflect::Registry registry;
+        game::register_types(registry);
+        world::World w(registry);
+        REQUIRE(scene2d::register_components(w));
+        REQUIRE(game::register_behaviour_components(w));
+        for (const auto& [name, x] : {std::pair{"knight", 0.0}, std::pair{"slime", 1.0}}) {
+            const world::Entity e = w.create(name);
+            w.add<scene2d::Transform2D>(e)->x = x;
+            scene2d::Sprite* sprite = w.add<scene2d::Sprite>(e);
+            sprite->image = record->guid.to_string();
+            sprite->pivot_x = 0.0;
+            sprite->pivot_y = 0.0;
+        }
+        write_json(project.folder.path / "assets/maps/fight.dscene", serialize::scene_to_json(w));
+        std::vector<serialize::Issue> issues;
+        std::optional<game::ProjectSettings> settings =
+            game::read_project(project.folder.path, issues);
+        REQUIRE(settings.has_value());
+        if (!settings) {
+            return;
+        }
+        settings->start_scene = "maps/fight.dscene";
+        write_json(project.folder.path / game::project_file, game::project_to_json(*settings));
+        logic::LogicAsset rules;
+        rules.name = "fight";
+        rules.rules.push_back(logic::Rule{
+            logic::BlockId{1}, "slime", "hit", {}, {ir::log(2, Project::text("ouch"))}, {}});
+        rules.rules.push_back(logic::Rule{
+            logic::BlockId{3}, "knight", "hits", {}, {ir::log(4, Project::text("got one"))}, {}});
+        write_json(project.folder.path / "assets/logic/fight.drules",
+                   serialize::logic_to_json(rules));
+    }
+    const auto runtime = project.open(no_graphics(nullptr));
+    for (int i = 0; i < 5; ++i) {
+        runtime->step();
+    }
+    const std::vector<std::string>& log = runtime->log();
+    CHECK(std::count(log.begin(), log.end(), "ouch") == 1); // once, though it lasts
+    CHECK(std::count(log.begin(), log.end(), "got one") == 1);
+}

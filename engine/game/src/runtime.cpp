@@ -22,6 +22,7 @@
 #include <iterator>
 #include <limits>
 #include <map>
+#include <set>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -907,6 +908,8 @@ struct Runtime::Impl {
     std::unique_ptr<scene2d::TextureCache> textures;
     /// The sheets of the pictures: tags with their frames' times.
     std::unique_ptr<scene2d::SheetLibrary> sheets;
+    /// The hit-box contacts of the last step (attacker, target), so each is said once.
+    std::set<std::pair<std::uint64_t, std::uint64_t>> hitting;
     std::unique_ptr<render::Texture> font;              ///< The font's atlas.
     ui::PixelFont font_face = ui::PixelFont::builtin(); ///< The project's font, or the built-in.
     BoxFrame box_frame; ///< The boxes' picture (settings.box_frame), if any.
@@ -1815,6 +1818,26 @@ void Runtime::step() {
     for (const auto& [entity, name] : cues) {
         const std::array<reflect::Value, 1> payload{reflect::Value{name}};
         emit(*r.vm, *r.world, entity, "frame_event", payload);
+    }
+    // Hit boxes on hurt boxes: said as each contact begins (not again while it lasts).
+    {
+        std::set<std::pair<std::uint64_t, std::uint64_t>> now;
+        for (const scene2d::HitContact& contact :
+             scene2d::hit_contacts(*r.world, *r.sheets, r.settings.ppu)) {
+            const std::pair<std::uint64_t, std::uint64_t> key{contact.attacker.id,
+                                                              contact.target.id};
+            now.insert(key);
+            if (r.hitting.contains(key)) {
+                continue;
+            }
+            const std::array<reflect::Value, 1> by{
+                reflect::Value{r.world->guid(contact.attacker).to_string()}};
+            emit(*r.vm, *r.world, contact.target, "hit", by);
+            const std::array<reflect::Value, 1> struck{
+                reflect::Value{r.world->guid(contact.target).to_string()}};
+            emit(*r.vm, *r.world, contact.attacker, "hits", struck);
+        }
+        r.hitting = std::move(now);
     }
     update_particles(*r.world, dt);
     ++r.steps;

@@ -129,6 +129,13 @@ void register_types(reflect::Registry& registry) {
     animation.event<>("finished")
         .text("When the animation finishes")
         .tooltip("Happens when an animation that does not loop reaches its last frame.");
+    sprite.event<std::string>("hit", {"who"})
+        .text("When it is hit by [who]")
+        .tooltip("Happens as another's hit box (drawn on its frames in Sprite Studio) first "
+                 "touches this one's hurt box. [who] is the one that hit it.");
+    sprite.event<std::string>("hits", {"who"})
+        .text("When it hits [who]")
+        .tooltip("Happens as this one's hit box first touches another's hurt box.");
     animation.event<std::string>("frame_event", {"name"})
         .text("When the animation reaches a frame marked [name]")
         .tooltip("Happens as a frame given an event in Sprite Studio shows: a footstep, a "
@@ -784,6 +791,26 @@ std::optional<SheetInfo> parse_sheet(std::string_view text, std::string& error) 
         return std::nullopt;
     }
     const auto frames = static_cast<std::int64_t>(sheet.durations_ms.size());
+    if (json.contains("boxes") && json["boxes"].is_array()) {
+        for (const serialize::Json& entry : json["boxes"]) {
+            if (std::cmp_greater_equal(sheet.boxes.size(), frames)) {
+                break;
+            }
+            FrameBoxes b;
+            if (entry.is_array() && entry.size() == 8 &&
+                std::all_of(entry.begin(), entry.end(), [](const serialize::Json& v) {
+                    return v.is_number_integer() && v.get<std::int64_t>() >= 0 &&
+                           v.get<std::int64_t>() <= 4096;
+                })) {
+                const auto at = [&entry](std::size_t i) {
+                    return static_cast<std::uint32_t>(entry[i].get<std::int64_t>());
+                };
+                b.hit = FrameBox{at(0), at(1), at(2), at(3)};
+                b.hurt = FrameBox{at(4), at(5), at(6), at(7)};
+            }
+            sheet.boxes.push_back(b);
+        }
+    }
     if (json.contains("events") && json["events"].is_array()) {
         for (const serialize::Json& event : json["events"]) {
             if (std::cmp_greater_equal(sheet.events.size(), frames)) {
@@ -834,6 +861,17 @@ std::string sheet_to_text(const SheetInfo& sheet) {
             {{"name", tag.name}, {"from", tag.from}, {"to", tag.to}, {"direction", direction}});
     }
     json["tags"] = std::move(tags);
+    // Hit and hurt boxes, only when there are any: [hit x, y, w, h, hurt x, y, w, h].
+    if (std::any_of(sheet.boxes.begin(), sheet.boxes.end(),
+                    [](const FrameBoxes& b) { return !b.hit.empty() || !b.hurt.empty(); })) {
+        serialize::Json boxes = serialize::Json::array();
+        for (const FrameBoxes& b : sheet.boxes) {
+            boxes.push_back(serialize::Json::array({b.hit.x, b.hit.y, b.hit.width, b.hit.height,
+                                                    b.hurt.x, b.hurt.y, b.hurt.width,
+                                                    b.hurt.height}));
+        }
+        json["boxes"] = std::move(boxes);
+    }
     // Frame events, only when there are any (sheets without them stay as they were).
     if (std::any_of(sheet.events.begin(), sheet.events.end(),
                     [](const std::string& e) { return !e.empty(); })) {
@@ -1201,6 +1239,61 @@ double turn_of(const Sprite& sprite) noexcept {
 }
 
 } // namespace
+
+std::vector<HitContact> hit_contacts(const world::World& world, SheetLibrary& sheets,
+                                     std::uint32_t ppu) {
+    std::vector<HitContact> contacts;
+    const reflect::TypeInfo* type = world.registry().find_type<Sprite>();
+    if (type == nullptr) {
+        return contacts;
+    }
+    const double units = std::max<std::uint32_t>(ppu, 1);
+    struct Placed {
+        world::Entity entity;
+        Box box;
+    };
+    std::vector<Placed> hits;
+    std::vector<Placed> hurts;
+    world.each(*type, [&](world::Entity entity, reflect::ObjectRef ref) {
+        const Sprite* sprite = ref.as<Sprite>();
+        const Transform2D* where = world.get<Transform2D>(entity);
+        if (sprite == nullptr || where == nullptr || !sprite->visible) {
+            return;
+        }
+        const SheetInfo* sheet = sheets.find(sprite->image);
+        if (sheet == nullptr || sprite->frame >= sheet->boxes.size()) {
+            return;
+        }
+        const FrameBoxes& frame = sheet->boxes[sprite->frame];
+        const double w = sheet->frame_width;
+        const double h = sheet->frame_height;
+        const double sx = std::isfinite(sprite->scale_x) ? sprite->scale_x : 1.0;
+        const double sy = std::isfinite(sprite->scale_y) ? sprite->scale_y : 1.0;
+        // A box of the frame, placed as the picture is: about its pivot, scaled (flipped).
+        const auto place = [&](const FrameBox& b) {
+            const double x0 = (static_cast<double>(b.x) - (sprite->pivot_x * w)) * sx;
+            const double x1 = (static_cast<double>(b.x + b.width) - (sprite->pivot_x * w)) * sx;
+            const double y0 = (static_cast<double>(b.y) - (sprite->pivot_y * h)) * sy;
+            const double y1 = (static_cast<double>(b.y + b.height) - (sprite->pivot_y * h)) * sy;
+            return Box{where->x + (std::min(x0, x1) / units), where->y + (std::min(y0, y1) / units),
+                       where->x + (std::max(x0, x1) / units), where->y + (std::max(y0, y1) / units)};
+        };
+        if (!frame.hit.empty()) {
+            hits.push_back({entity, place(frame.hit)});
+        }
+        if (!frame.hurt.empty()) {
+            hurts.push_back({entity, place(frame.hurt)});
+        }
+    });
+    for (const Placed& hit : hits) {
+        for (const Placed& hurt : hurts) {
+            if (hit.entity != hurt.entity && overlaps(hit.box, hurt.box)) {
+                contacts.push_back(HitContact{hit.entity, hurt.entity});
+            }
+        }
+    }
+    return contacts;
+}
 
 std::array<std::array<double, 2>, 4> sprite_corners(const Sprite& sprite, double width,
                                                     double height) noexcept {

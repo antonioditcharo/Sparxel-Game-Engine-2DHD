@@ -542,6 +542,12 @@ std::string to_text(const Sprite& sprite) {
         if (!frame.event.empty()) {
             item["event"] = frame.event;
         }
+        for (const auto& [key, box] :
+             {std::pair{"hit", frame.boxes.hit}, std::pair{"hurt", frame.boxes.hurt}}) {
+            if (!box.empty()) {
+                item[key] = Json::array({box.x, box.y, box.width, box.height});
+            }
+        }
         frames.push_back(std::move(item));
     }
     json["frames"] = std::move(frames);
@@ -627,6 +633,21 @@ std::optional<Sprite> from_text(std::string_view text, std::string& error) {
                     engine::reflect::is_valid_id(frame["event"].get<std::string>())) {
                     read.event = frame["event"].get<std::string>();
                 }
+                const auto box_of = [&frame](const char* key) {
+                    engine::scene2d::FrameBox box;
+                    if (frame.contains(key) && frame[key].is_array() && frame[key].size() == 4) {
+                        const Json& v = frame[key];
+                        const auto part = [&v](std::size_t i) {
+                            return v[i].is_number_integer()
+                                       ? static_cast<std::uint32_t>(std::clamp<std::int64_t>(
+                                             v[i].get<std::int64_t>(), 0, 4096))
+                                       : 0U;
+                        };
+                        box = {part(0), part(1), part(2), part(3)};
+                    }
+                    return box;
+                };
+                read.boxes = {box_of("hit"), box_of("hurt")};
                 sprite.frames.push_back(std::move(read));
             }
         }
@@ -714,6 +735,7 @@ engine::scene2d::SheetInfo sheet_info(const Sprite& sprite) {
     for (const Frame& frame : sprite.frames) {
         sheet.durations_ms.push_back(frame.duration_ms);
         sheet.events.push_back(frame.event);
+        sheet.boxes.push_back(frame.boxes);
     }
     for (const Tag& tag : sprite.tags) {
         engine::scene2d::SheetTag t;
@@ -1124,6 +1146,20 @@ void Editor::redraw_drag() {
     if (d.tool == Tool::Wand) {
         return; // chosen when the click began
     }
+    if (d.tool == Tool::HitBox || d.tool == Tool::HurtBox) {
+        const Rect r = rect_between(d.x0, d.y0, d.last_x, d.last_y);
+        const int x0 = std::clamp(r.x, 0, sprite_.width);
+        const int y0 = std::clamp(r.y, 0, sprite_.height);
+        const int x1 = std::clamp(r.x + r.width, 0, sprite_.width);
+        const int y1 = std::clamp(r.y + r.height, 0, sprite_.height);
+        const engine::scene2d::FrameBox box{static_cast<std::uint32_t>(x0),
+                                            static_cast<std::uint32_t>(y0),
+                                            static_cast<std::uint32_t>(std::max(0, x1 - x0)),
+                                            static_cast<std::uint32_t>(std::max(0, y1 - y0))};
+        engine::scene2d::FrameBoxes& boxes = sprite_.frames[frame_].boxes;
+        (d.tool == Tool::HitBox ? boxes.hit : boxes.hurt) = box;
+        return;
+    }
     if (d.tool == Tool::Lasso) {
         // The pixels whose middles are inside the outline (closed back to its start), and
         // those it passes over.
@@ -1339,7 +1375,9 @@ void Editor::redraw_drag() {
     case Tool::Select:
     case Tool::Wand:
     case Tool::Lasso:
-        break; // they choose pixels, not paint them
+    case Tool::HitBox:
+    case Tool::HurtBox:
+        break; // they choose pixels or boxes, not paint
     }
     sprite_.cels[layer_][frame_] = std::make_shared<const Image>(std::move(image));
 }
@@ -1352,6 +1390,13 @@ bool Editor::end() {
     drag_.reset();
     if (d.tool == Tool::Select || d.tool == Tool::Wand || d.tool == Tool::Lasso) {
         return false;
+    }
+    if (d.tool == Tool::HitBox || d.tool == Tool::HurtBox) {
+        if (sprite_.frames[frame_].boxes == d.before.sprite.frames[frame_].boxes) {
+            return false;
+        }
+        record(d.tool == Tool::HitBox ? "Draw a hit box" : "Draw a hurt box", std::move(d.before));
+        return true;
     }
     const Cel& now = sprite_.cels[layer_][frame_];
     const bool unchanged = d.base ? (now->rgba == d.base->rgba) : all_clear(*now);
@@ -1371,7 +1416,9 @@ bool Editor::end() {
                                                   "Select",
                                                   "Move pixels",
                                                   "Select",
-                                                  "Select"};
+                                                  "Select",
+                                                  "Draw a hit box",
+                                                  "Draw a hurt box"};
     record(std::string(labels[static_cast<std::size_t>(d.tool)]), std::move(d.before));
     return true;
 }
@@ -1795,6 +1842,19 @@ bool Editor::set_frame_event(std::size_t frame, std::string_view name, std::stri
     sprite_.frames[frame].event = std::string(name);
     record(name.empty() ? "Remove the event of frame " + std::to_string(frame + 1)
                         : "Mark frame " + std::to_string(frame + 1) + " " + std::string(name),
+           std::move(before));
+    return true;
+}
+
+bool Editor::set_frame_boxes(std::size_t frame, const engine::scene2d::FrameBoxes& boxes) {
+    if (frame >= sprite_.frames.size() || sprite_.frames[frame].boxes == boxes) {
+        return false;
+    }
+    State before = state();
+    sprite_.frames[frame].boxes = boxes;
+    record(boxes.hit.empty() && boxes.hurt.empty()
+               ? "Remove the boxes of frame " + std::to_string(frame + 1)
+               : "Change the boxes of frame " + std::to_string(frame + 1),
            std::move(before));
     return true;
 }

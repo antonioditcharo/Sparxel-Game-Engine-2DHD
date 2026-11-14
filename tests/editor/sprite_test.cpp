@@ -704,3 +704,38 @@ TEST_CASE("Frame events: named on a frame, one undo step, saved with the sheet")
     std::error_code ignored;
     fs::remove_all(folder, ignored);
 }
+
+TEST_CASE("Hit and hurt boxes: dragged on a frame, one undo step each, saved with the sheet") {
+    sprite::Sprite blank = sprite::Sprite::blank(8, 8);
+    blank.frames.resize(2);
+    sprite::Editor editor(std::move(blank));
+    // A hit box dragged from (5, 2) to (8, 4): x 5 to 8 (kept on the canvas), y 2 to 4.
+    CHECK(stroke(editor, Tool::HitBox, red, {{5, 2}, {9, 4}}));
+    CHECK(editor.undo_text() == "Draw a hit box");
+    const engine::scene2d::FrameBox hit = editor.sprite().frames[0].boxes.hit;
+    CHECK(hit.x == 5);
+    CHECK(hit.width == 3);
+    CHECK(hit.y == 2);
+    CHECK(stroke(editor, Tool::HurtBox, red, {{1, 1}, {6, 7}}));
+    CHECK(editor.sprite().frames[0].boxes.hurt.width == 6);
+    CHECK(editor.sprite().frames[1].boxes.hit.empty()); // only this frame's
+    CHECK(sprite::sheet_info(editor.sprite()).boxes.at(0).hit == hit);
+    // Saved and read back.
+    const fs::path folder =
+        fs::temp_directory_path() / ("sparxel-boxes-" + engine::Guid::generate().to_string());
+    fs::create_directories(folder);
+    std::string error;
+    REQUIRE(sprite::save(editor.sprite(), folder / "knight.dsprite", error));
+    const std::optional<sprite::Sprite> loaded = sprite::load(folder / "knight.dsprite", error);
+    REQUIRE(loaded.has_value());
+    if (loaded) {
+        CHECK(loaded->frames[0].boxes == editor.sprite().frames[0].boxes);
+    }
+    // Removed in one step; undone, back.
+    REQUIRE(editor.set_frame_boxes(0, {}));
+    CHECK(editor.sprite().frames[0].boxes.hit.empty());
+    REQUIRE(editor.undo());
+    CHECK(editor.sprite().frames[0].boxes.hit == hit);
+    std::error_code ignored;
+    fs::remove_all(folder, ignored);
+}

@@ -103,7 +103,7 @@ struct ToolInfo {
     const char* key;
 };
 
-constexpr std::array<ToolInfo, 13> tool_infos{{
+constexpr std::array<ToolInfo, 15> tool_infos{{
     {StudioTool::Pencil, QT_TRANSLATE_NOOP("SpriteStudio", "Pencil"),
      QT_TRANSLATE_NOOP("SpriteStudio", "Draw pixels (B)"), "B"},
     {StudioTool::Eraser, QT_TRANSLATE_NOOP("SpriteStudio", "Eraser"),
@@ -132,6 +132,14 @@ constexpr std::array<ToolInfo, 13> tool_infos{{
      "W"},
     {StudioTool::Lasso, QT_TRANSLATE_NOOP("SpriteStudio", "Lasso"),
      QT_TRANSLATE_NOOP("SpriteStudio", "Drag round the pixels to select (Q)"), "Q"},
+    {StudioTool::HitBox, QT_TRANSLATE_NOOP("SpriteStudio", "Hit box"),
+     QT_TRANSLATE_NOOP("SpriteStudio",
+                       "Drag this frame's hit box: where its attack lands, in red (K)"),
+     "K"},
+    {StudioTool::HurtBox, QT_TRANSLATE_NOOP("SpriteStudio", "Hurt box"),
+     QT_TRANSLATE_NOOP("SpriteStudio",
+                       "Drag this frame's hurt box: where it can be struck, in green (J)"),
+     "J"},
     {StudioTool::Picker, QT_TRANSLATE_NOOP("SpriteStudio", "Pick colour"),
      QT_TRANSLATE_NOOP("SpriteStudio",
                        "Click to take a colour from the sprite (I, or Alt-click with any tool)"),
@@ -284,6 +292,24 @@ void SpriteCanvas::paintEvent(QPaintEvent* /*event*/) {
     if (hover_.x() >= 0 && hover_.y() >= 0 && hover_.x() < s.width && hover_.y() < s.height) {
         painter.setPen(QColor(255, 255, 255, 160));
         painter.drawRect(QRectF(point_of(hover_.x(), hover_.y()), QSizeF(zoom_ - 1, zoom_ - 1)));
+    }
+    // The frame's hit box (red) and hurt box (green).
+    {
+        const engine::scene2d::FrameBoxes& boxes = s.frames[editor_->frame()].boxes;
+        for (const auto& [box, colour] : {std::pair{boxes.hurt, QColor(70, 220, 110)},
+                                          std::pair{boxes.hit, QColor(240, 70, 70)}}) {
+            if (box.empty()) {
+                continue;
+            }
+            const QRectF drawn_box(point_of(static_cast<int>(box.x), static_cast<int>(box.y)),
+                                   QSizeF(static_cast<double>(box.width) * zoom_,
+                                          static_cast<double>(box.height) * zoom_));
+            QColor fill = colour;
+            fill.setAlpha(50);
+            painter.fillRect(drawn_box, fill);
+            painter.setPen(QPen(colour, 2));
+            painter.drawRect(drawn_box);
+        }
     }
     // The selection: a dashed line, black over white so it shows on any colour.
     const sprite::Rect& sel = editor_->selection();
@@ -621,6 +647,17 @@ void SpriteStudio::build_menus() {
     });
 
     QMenu* sprite_menu = menuBar()->addMenu(tr("&Sprite"));
+    sprite_menu
+        ->addAction(tr("Remove this frame's &boxes"), this,
+                    [this] {
+                        if (editor_ == nullptr) {
+                            return;
+                        }
+                        apply([this](std::string&) {
+                            return editor_->set_frame_boxes(editor_->frame(), {});
+                        });
+                    })
+        ->setObjectName(QStringLiteral("remove_boxes"));
     // A frame event: a name logic hears when an animation reaches this frame.
     sprite_menu
         ->addAction(tr("&Event on this frame…"), this,

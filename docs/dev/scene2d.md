@@ -36,7 +36,7 @@ nothing extra to write ([reflection.md](reflection.md)).
 | Component | Properties | Shown as |
 |---|---|---|
 | `Transform2D` ("transform_2d") | `x`, `y` in **tiles** (world units), `layer` (advanced) | "Position" |
-| `Sprite` ("sprite") | `image` (an asset GUID), `visible`, `recolor` (*Recolour*: a palette swap), `rotation` (degrees), `scale_x` and `scale_y` (*Scale across*, *Scale down*); advanced: `pivot_x`, `pivot_y`, tint red, green, blue, and opacity; `frame_width`, `frame_height` and `frame` for sprite sheets | "Sprite" |
+| `Sprite` ("sprite") | `image` (an asset GUID), `visible`, `recolor` (*Recolour*: a palette swap), `rotation` (degrees), `scale_x` and `scale_y` (*Scale across*, *Scale down*); advanced: `pivot_x`, `pivot_y`, tint red, green, blue, and opacity; `frame_width`, `frame_height` and `frame` for sprite sheets; events *hit* and *hits* (each with [who]: hit and hurt boxes, §3) | "Sprite" |
 | `SpriteAnimation` ("sprite_animation") | `tag` (a tag of the sheet, such as *walk*: §3), `first_frame`, `frame_count`, `frames_per_second`, `loop`, `playing`; actions *Play*, *Play the animation {name}* (a tag) and *Stop*; events *finished* and *frame_event* (its [name]) | "Animation" |
 | `Tilemap` ("tilemap") | `tileset` (an asset GUID), `tiles`, `visible`, `solid`; advanced: `tile_size`, `shapes` (*Tile shapes*) | "Tilemap" |
 | `Parallax` ("parallax") | `scroll_x`, `scroll_y` (*Scroll across*, *Scroll down*: 0 fixed on the screen, 1 with the map, 0.5 at half speed), `repeat_x`, `repeat_y` | "Parallax" |
@@ -103,6 +103,16 @@ nothing extra to write ([reflection.md](reflection.md)).
   entity and the name once, and the runtime sends *"When the animation reaches a frame
   marked [name]"* to Rules: a footstep's sound on the frame a foot lands, a sword's hit
   on the frame it connects, a puff of dust. A one-frame loop says it once.
+- **Hit and hurt boxes** (`plan/02` B7). A frame may have a hit box (where its attack
+  lands) and a hurt box (where it can be struck), drawn in Sprite Studio and kept in the
+  sheet (`boxes`: per frame, hit x, y, width, height then hurt, in the frame's pixels;
+  written only when some frame has one). `hit_contacts()` places each object's boxes for
+  the frame it shows as its picture is placed (pivot and scale, so a character flipped to
+  face left strikes left; turning is not followed) and finds every hit box over another
+  object's hurt box. The runtime sends, as each contact begins and not again while it
+  lasts, *"When it is hit by [who]"* to the one struck and *"When it hits [who]"* to the
+  one striking (both Sprite events, [who] the other's GUID): with *is tagged* and *who*,
+  enough for real-time combat without code.
   `SheetLibrary` reads each picture's `.sheet` on first use (found by the picture's path:
   `sheet_path()`), as `TextureCache` reads textures, and `apply()` forgets them after
   asset changes; the game's runtime keeps one and passes it to `animate()`.

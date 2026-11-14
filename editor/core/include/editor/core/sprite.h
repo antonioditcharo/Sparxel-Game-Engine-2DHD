@@ -87,6 +87,9 @@ struct Frame {
     /// A frame event (plan/02 B6): a name said to logic when an animation reaches this
     /// frame ("footstep", "hit"); empty for none. Lowercase letters, digits and _.
     std::string event;
+    /// Its hit and hurt boxes (plan/02 B7), in its pixels: where its attack lands, where
+    /// it can be struck. Empty for none.
+    engine::scene2d::FrameBoxes boxes;
 };
 
 /// Which way a tag's frames play.
@@ -182,6 +185,8 @@ enum class Tool : std::uint8_t {
     Wand,
     /// Selects the pixels inside the outline dragged, closed back to where it began.
     Lasso,
+    HitBox,  ///< Drags the frame's hit box: where its attack lands.
+    HurtBox, ///< Drags the frame's hurt box: where it can be struck.
 };
 
 /// How drawing tools draw.
@@ -300,6 +305,9 @@ public:
     /// Names frame `frame`'s event ("footstep"; empty for none), one undo step. False, with
     /// `error`, for a name that is not lowercase letters, digits and _, or no change.
     bool set_frame_event(std::size_t frame, std::string_view name, std::string& error);
+    /// Sets frame `frame`'s hit and hurt boxes (kept inside the canvas), one undo step.
+    /// False if nothing changes.
+    bool set_frame_boxes(std::size_t frame, const engine::scene2d::FrameBoxes& boxes);
     /// 1 to 65,535 milliseconds. Merges while typed. With `all`, every frame's.
     bool set_frame_duration(std::size_t frame, int duration_ms, std::string& error,
                             bool all = false);

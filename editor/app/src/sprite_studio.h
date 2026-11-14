@@ -52,6 +52,8 @@ enum class StudioTool : std::uint8_t {
     Move,
     Wand,
     Lasso,
+    HitBox,
+    HurtBox,
     Picker,
 };
 

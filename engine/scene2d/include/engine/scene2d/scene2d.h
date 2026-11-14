@@ -112,6 +112,26 @@ struct SheetTag {
     TagDirection direction = TagDirection::Forward;
 };
 
+/// A rectangle of a frame, in its pixels from its top-left: a hit or hurt box. Empty (0
+/// wide or high) for none.
+struct FrameBox {
+    std::uint32_t x = 0;
+    std::uint32_t y = 0;
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+
+    [[nodiscard]] bool empty() const noexcept { return width == 0 || height == 0; }
+    friend bool operator==(const FrameBox&, const FrameBox&) = default;
+};
+
+/// A frame's hit and hurt boxes (plan/02 B7): where its attack lands, and where it can be
+/// struck.
+struct FrameBoxes {
+    FrameBox hit;
+    FrameBox hurt;
+    friend bool operator==(const FrameBoxes&, const FrameBoxes&) = default;
+};
+
 /// What a sprite sheet holds, as Sprite Studio saves it beside the PNG ("art/hero.png" has
 /// "art/hero.sheet"): the size of a frame, how long each frame shows, and its tags.
 struct SheetInfo {
@@ -123,6 +143,8 @@ struct SheetInfo {
     /// animation reaches it ("footstep", "hit"), empty for none. Fewer than the frames
     /// means the rest have none.
     std::vector<std::string> events;
+    /// Each frame's hit and hurt boxes; fewer than the frames means the rest have none.
+    std::vector<FrameBoxes> boxes;
 
     [[nodiscard]] const SheetTag* find(std::string_view name) const noexcept;
     /// The frames a tag shows, in the order it shows them, each with how long it shows
@@ -296,6 +318,20 @@ bool register_components(world::World& world);
 std::vector<world::Entity>
 animate(world::World& world, double seconds, SheetLibrary* sheets = nullptr,
         std::vector<std::pair<world::Entity, std::string>>* frame_events = nullptr);
+
+/// One object's hit box overlapping another's hurt box: `attacker` strikes `target`.
+struct HitContact {
+    world::Entity attacker;
+    world::Entity target;
+};
+
+struct Box;
+/// The contacts in `world` now: every object with a Transform2D, a Sprite and (from its
+/// sheet) a hit box on the frame it shows, against every other's hurt box on its frame,
+/// boxes placed as the picture is (its pivot and scale, flipped with it; turning is not
+/// followed). `ppu` sizes pixels.
+[[nodiscard]] std::vector<HitContact> hit_contacts(const world::World& world, SheetLibrary& sheets,
+                                                   std::uint32_t ppu);
 
 /// An axis-aligned box in world units, such as a character's feet. Edges are half-open:
 /// a box whose right edge is exactly on a tile's left edge does not overlap it.
