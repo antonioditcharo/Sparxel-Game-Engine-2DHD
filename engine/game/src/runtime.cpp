@@ -1806,9 +1806,15 @@ void Runtime::step() {
         r.vm->emit("dialogue", "conversation_ended", payload);
     }
 
-    // 5. Animation; animations that reached their end tell Rules they finished.
-    for (const world::Entity entity : scene2d::animate(*r.world, dt, r.sheets.get())) {
+    // 5. Animation; animations that reached their end tell Rules they finished, and those
+    // that reached a frame with an event tell its name.
+    std::vector<std::pair<world::Entity, std::string>> cues;
+    for (const world::Entity entity : scene2d::animate(*r.world, dt, r.sheets.get(), &cues)) {
         emit(*r.vm, *r.world, entity, "finished");
+    }
+    for (const auto& [entity, name] : cues) {
+        const std::array<reflect::Value, 1> payload{reflect::Value{name}};
+        emit(*r.vm, *r.world, entity, "frame_event", payload);
     }
     update_particles(*r.world, dt);
     ++r.steps;

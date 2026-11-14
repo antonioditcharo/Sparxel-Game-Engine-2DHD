@@ -37,7 +37,7 @@ nothing extra to write ([reflection.md](reflection.md)).
 |---|---|---|
 | `Transform2D` ("transform_2d") | `x`, `y` in **tiles** (world units), `layer` (advanced) | "Position" |
 | `Sprite` ("sprite") | `image` (an asset GUID), `visible`, `recolor` (*Recolour*: a palette swap), `rotation` (degrees), `scale_x` and `scale_y` (*Scale across*, *Scale down*); advanced: `pivot_x`, `pivot_y`, tint red, green, blue, and opacity; `frame_width`, `frame_height` and `frame` for sprite sheets | "Sprite" |
-| `SpriteAnimation` ("sprite_animation") | `tag` (a tag of the sheet, such as *walk*: §3), `first_frame`, `frame_count`, `frames_per_second`, `loop`, `playing`; actions *Play*, *Play the animation {name}* (a tag) and *Stop*; event *finished* | "Animation" |
+| `SpriteAnimation` ("sprite_animation") | `tag` (a tag of the sheet, such as *walk*: §3), `first_frame`, `frame_count`, `frames_per_second`, `loop`, `playing`; actions *Play*, *Play the animation {name}* (a tag) and *Stop*; events *finished* and *frame_event* (its [name]) | "Animation" |
 | `Tilemap` ("tilemap") | `tileset` (an asset GUID), `tiles`, `visible`, `solid`; advanced: `tile_size`, `shapes` (*Tile shapes*) | "Tilemap" |
 | `Parallax` ("parallax") | `scroll_x`, `scroll_y` (*Scroll across*, *Scroll down*: 0 fixed on the screen, 1 with the map, 0.5 at half speed), `repeat_x`, `repeat_y` | "Parallax" |
 
@@ -97,6 +97,12 @@ nothing extra to write ([reflection.md](reflection.md)).
   the last frame it shows and says it finished, as above. A tag the sheet does not have,
   or a picture without a `.sheet`, plays the frames by number as before. *Play the
   animation {name}* switches tag from logic, starting from its beginning.
+- **Frame events** (`plan/02` B6). A frame of a sheet may carry an event's name
+  (`events` in the `.sheet`, one per frame, written only when some frame has one), set in
+  Sprite Studio. As a tag's animation comes to such a frame, `animate()` reports the
+  entity and the name once, and the runtime sends *"When the animation reaches a frame
+  marked [name]"* to Rules: a footstep's sound on the frame a foot lands, a sword's hit
+  on the frame it connects, a puff of dust. A one-frame loop says it once.
   `SheetLibrary` reads each picture's `.sheet` on first use (found by the picture's path:
   `sheet_path()`), as `TextureCache` reads textures, and `apply()` forgets them after
   asset changes; the game's runtime keeps one and passes it to `animate()`.

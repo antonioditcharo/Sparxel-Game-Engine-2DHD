@@ -129,6 +129,10 @@ void register_types(reflect::Registry& registry) {
     animation.event<>("finished")
         .text("When the animation finishes")
         .tooltip("Happens when an animation that does not loop reaches its last frame.");
+    animation.event<std::string>("frame_event", {"name"})
+        .text("When the animation reaches a frame marked [name]")
+        .tooltip("Happens as a frame given an event in Sprite Studio shows: a footstep, a "
+                 "hit, a sound's cue. [name] is the event's name.");
 
     auto tilemap =
         registry.add_type<Tilemap>("tilemap").display_name("Tilemap").category("Visuals").tooltip(
@@ -780,6 +784,14 @@ std::optional<SheetInfo> parse_sheet(std::string_view text, std::string& error) 
         return std::nullopt;
     }
     const auto frames = static_cast<std::int64_t>(sheet.durations_ms.size());
+    if (json.contains("events") && json["events"].is_array()) {
+        for (const serialize::Json& event : json["events"]) {
+            if (std::cmp_greater_equal(sheet.events.size(), frames)) {
+                break;
+            }
+            sheet.events.push_back(event.is_string() ? event.get<std::string>() : std::string());
+        }
+    }
     if (json.contains("tags") && json["tags"].is_array()) {
         for (const serialize::Json& tag : json["tags"]) {
             if (!tag.is_object()) {
@@ -822,6 +834,11 @@ std::string sheet_to_text(const SheetInfo& sheet) {
             {{"name", tag.name}, {"from", tag.from}, {"to", tag.to}, {"direction", direction}});
     }
     json["tags"] = std::move(tags);
+    // Frame events, only when there are any (sheets without them stay as they were).
+    if (std::any_of(sheet.events.begin(), sheet.events.end(),
+                    [](const std::string& e) { return !e.empty(); })) {
+        json["events"] = sheet.events;
+    }
     return serialize::to_text(json);
 }
 
@@ -864,7 +881,9 @@ void SheetLibrary::apply(const assets::AssetChanges& changes) {
     }
 }
 
-std::vector<world::Entity> animate(world::World& world, double seconds, SheetLibrary* sheets) {
+std::vector<world::Entity>
+animate(world::World& world, double seconds, SheetLibrary* sheets,
+        std::vector<std::pair<world::Entity, std::string>>* frame_events) {
     std::vector<world::Entity> finished;
     if (!std::isfinite(seconds) || seconds < 0.0) {
         seconds = 0.0;
@@ -923,7 +942,13 @@ std::vector<world::Entity> animate(world::World& world, double seconds, SheetLib
             }
             sprite->frame_width = sheet->frame_width;
             sprite->frame_height = sheet->frame_height;
+            const std::uint32_t was = sprite->frame;
             sprite->frame = frames[shown].first;
+            // Reaching a frame with an event: it is said once, as the frame comes.
+            if (frame_events != nullptr && sprite->frame != was &&
+                sprite->frame < sheet->events.size() && !sheet->events[sprite->frame].empty()) {
+                frame_events->emplace_back(entity, sheet->events[sprite->frame]);
+            }
             return;
         }
         const double fps = std::isfinite(animation->frames_per_second)

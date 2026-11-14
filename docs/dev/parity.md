@@ -18,7 +18,7 @@
 | Area | Done | Partial | Not yet |
 |---|---|---|---|
 | A. Project and workflow | 3 | 6 | 3 (+1 later) |
-| B. Pixel art | 3 | 6 | 5 (+1 later) |
+| B. Pixel art | 4 | 6 | 4 (+1 later) |
 | C. World building | 4 | 7 | 3 |
 | D. Rendering and the look | 3 | 10 | 2 (+1 later) |
 | E. No-code logic | 3 | 5 | 3 (+1 later) |
@@ -28,14 +28,14 @@
 | I. Physics | 1 | 3 | 1 |
 | J. Audio | 2 | 4 | 0 (+1 later) |
 | K. UI | 3 | 4 | 0 |
-| **All** | **30** | **51** | **21** (+6 later) |
+| **All** | **31** | **51** | **20** (+6 later) |
 
 The strongest areas match or pass their references: the RPG kit and window skins (RPG
 Maker), auto-tiles and tile variants (RPG Maker, LDtk), no-code Rules with tags, *it*,
 *For each* and *who* (GDevelop, Construct), the editor's everyday workflow (search
 everything, snapshots, copy and paste, playing in the editor: Godot), and the HD-2D look
 (lights, tilt-shift, bloom, day and night). The widest gaps are in pixel-art authoring
-(frame events, hitboxes, layer groups, normal maps: Aseprite), 2D platformer and
+(hitboxes, layer groups, normal maps: Aseprite), 2D platformer and
 action kits (GameMaker), audio mixing (zones, reverb), and team features.
 
 ## A. Project and workflow
@@ -65,7 +65,7 @@ action kits (GameMaker), audio mixing (zones, reverb), and team features.
 | B3 | Layers | Aseprite | **Partial**: add, name, order, opacity, hide, merge, duplicate; no groups, blend modes or reference layers |
 | B4 | Palettes | Aseprite, GameMaker | **Partial**: the sprite's palette, the project's palette, palette swaps per sprite with a hue-shift picker; no palette library or ramps editor |
 | B5 | Animation timeline | Aseprite | **Done**: frames with their own times, tags with forward, backward and ping-pong, onion skin, playback |
-| B6 | Frame events | Spine | **Not yet** |
+| B6 | Frame events | Spine | **Done**: named on frames in Sprite Studio, kept in the sheet, sent to Rules as the frame comes |
 | B7 | Hitboxes and pivots per frame | GameMaker | **Not yet** (one pivot per sprite) |
 | B8 | Directional sets | RPG Maker character sheets | **Partial**: 4-direction walk rows (Walk Animation); no 8 directions or mirroring |
 | B9 | Lighting maps | Sprite Illuminator | **Not yet** |

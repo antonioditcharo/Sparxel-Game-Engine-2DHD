@@ -1,5 +1,6 @@
 #include "editor/core/sprite.h"
 
+#include "engine/foundation/reflect.h"
 #include "engine/serialize/json.h"
 
 #include <algorithm>
@@ -537,7 +538,11 @@ std::string to_text(const Sprite& sprite) {
     json["layers"] = std::move(layers);
     Json frames = Json::array();
     for (const Frame& frame : sprite.frames) {
-        frames.push_back({{"duration_ms", frame.duration_ms}});
+        Json item{{"duration_ms", frame.duration_ms}};
+        if (!frame.event.empty()) {
+            item["event"] = frame.event;
+        }
+        frames.push_back(std::move(item));
     }
     json["frames"] = std::move(frames);
     Json tags = Json::array();
@@ -616,8 +621,13 @@ std::optional<Sprite> from_text(std::string_view text, std::string& error) {
     if (json.contains("frames") && json["frames"].is_array()) {
         for (const Json& frame : json["frames"]) {
             if (frame.is_object()) {
-                sprite.frames.push_back({static_cast<std::uint32_t>(
-                    std::clamp(int_of(frame, "duration_ms", 100), 1, 65535))});
+                Frame read{static_cast<std::uint32_t>(
+                    std::clamp(int_of(frame, "duration_ms", 100), 1, 65535))};
+                if (frame.contains("event") && frame["event"].is_string() &&
+                    engine::reflect::is_valid_id(frame["event"].get<std::string>())) {
+                    read.event = frame["event"].get<std::string>();
+                }
+                sprite.frames.push_back(std::move(read));
             }
         }
     }
@@ -703,6 +713,7 @@ engine::scene2d::SheetInfo sheet_info(const Sprite& sprite) {
     sheet.frame_height = static_cast<std::uint32_t>(sprite.height);
     for (const Frame& frame : sprite.frames) {
         sheet.durations_ms.push_back(frame.duration_ms);
+        sheet.events.push_back(frame.event);
     }
     for (const Tag& tag : sprite.tags) {
         engine::scene2d::SheetTag t;
@@ -1766,6 +1777,25 @@ bool Editor::move_frame(bool earlier, std::string& error) {
     }
     frame_ = other;
     record("Move frame", std::move(before));
+    return true;
+}
+
+bool Editor::set_frame_event(std::size_t frame, std::string_view name, std::string& error) {
+    if (frame >= sprite_.frames.size()) {
+        return false;
+    }
+    if (!name.empty() && !engine::reflect::is_valid_id(name)) {
+        error = "A frame event's name is lowercase letters, digits and _, such as footstep.";
+        return false;
+    }
+    if (sprite_.frames[frame].event == name) {
+        return false;
+    }
+    State before = state();
+    sprite_.frames[frame].event = std::string(name);
+    record(name.empty() ? "Remove the event of frame " + std::to_string(frame + 1)
+                        : "Mark frame " + std::to_string(frame + 1) + " " + std::string(name),
+           std::move(before));
     return true;
 }
 

@@ -672,3 +672,35 @@ TEST_CASE("Magic wand and lasso: selections of any shape, which every tool keeps
     CHECK(editor.selected(1, 1));
     CHECK(editor.sprite().pixel(0, 0, 1, 1) == red);
 }
+
+TEST_CASE("Frame events: named on a frame, one undo step, saved with the sheet") {
+    sprite::Sprite blank = sprite::Sprite::blank(4, 4);
+    blank.frames.resize(3);
+    sprite::Editor editor(std::move(blank));
+    std::string error;
+    REQUIRE(editor.set_frame_event(1, "footstep", error));
+    CHECK(editor.undo_text() == "Mark frame 2 footstep");
+    CHECK_FALSE(editor.set_frame_event(1, "footstep", error)); // no change
+    CHECK_FALSE(editor.set_frame_event(0, "Foot Step", error));
+    CHECK(error.find("lowercase") != std::string::npos);
+    CHECK(sprite::sheet_info(editor.sprite()).events ==
+          std::vector<std::string>{"", "footstep", ""});
+    // Saved in the sprite and its sheet, and read back.
+    const fs::path folder =
+        fs::temp_directory_path() / ("sparxel-events-" + engine::Guid::generate().to_string());
+    fs::create_directories(folder);
+    REQUIRE(sprite::save(editor.sprite(), folder / "hero.dsprite", error));
+    const std::optional<sprite::Sprite> loaded = sprite::load(folder / "hero.dsprite", error);
+    REQUIRE(loaded.has_value());
+    if (loaded) {
+        CHECK(loaded->frames[1].event == "footstep");
+    }
+    std::ifstream sheet(folder / "hero.sheet", std::ios::binary);
+    const std::string text{std::istreambuf_iterator<char>(sheet), std::istreambuf_iterator<char>()};
+    CHECK(text.find("footstep") != std::string::npos);
+    sheet.close();
+    REQUIRE(editor.undo());
+    CHECK(editor.sprite().frames[1].event.empty());
+    std::error_code ignored;
+    fs::remove_all(folder, ignored);
+}

@@ -1885,3 +1885,55 @@ TEST_CASE("Parallax: a picture scrolling slower than the map, repeated to fill t
     parallax->scroll_x = 1.0;
     CHECK(row({2.0, 0.0, 2, 1}) == "RR......");
 }
+
+TEST_CASE("Frame events: kept in the sheet, said once as their frame comes") {
+    // Written and read back; a sheet without any keeps none.
+    scene2d::SheetInfo info;
+    info.frame_width = 1;
+    info.frame_height = 1;
+    info.durations_ms = {100, 100, 100};
+    info.events = {"", "step", ""};
+    std::string error;
+    const std::optional<scene2d::SheetInfo> back =
+        scene2d::parse_sheet(scene2d::sheet_to_text(info), error);
+    REQUIRE(back.has_value());
+    if (!back) {
+        return;
+    }
+    CHECK(back->events == info.events);
+    info.events = {"", "", ""};
+    CHECK(scene2d::sheet_to_text(info).find("events") == std::string::npos);
+
+    const TempFolder folder;
+    write_image(folder.path / "hero.png", 3, 1, std::vector<Color>(3, Color{255, 0, 0, 255}));
+    {
+        std::ofstream sheet(folder.path / "hero.sheet", std::ios::binary);
+        sheet << R"({"format": "sparxel.sheet", "version": 1, "frame_width": 1, "frame_height": 1,
+                    "durations_ms": [100, 100, 100], "events": ["", "step", ""],
+                    "tags": [{"name": "walk", "from": 0, "to": 2}]})";
+    }
+    assets::AssetDatabase db(folder.path);
+    db.refresh();
+    scene2d::SheetLibrary sheets(db);
+    reflect::Registry registry;
+    scene2d::register_types(registry);
+    world::World w(registry);
+    REQUIRE(scene2d::register_components(w));
+    const world::Entity hero = w.create("hero");
+    const assets::AssetRecord* picture = db.find("hero.png");
+    REQUIRE(picture != nullptr);
+    w.add<scene2d::Sprite>(hero)->image = picture->guid.to_string();
+    w.add<scene2d::SpriteAnimation>(hero)->play_tag("walk");
+    // 50 ms steps over two rounds of 300 ms: "step" once as frame 1 comes, each round.
+    std::vector<int> said_at;
+    for (int step = 0; step < 12; ++step) {
+        std::vector<std::pair<world::Entity, std::string>> cues;
+        static_cast<void>(scene2d::animate(w, 0.05, &sheets, &cues));
+        for (const auto& [entity, name] : cues) {
+            CHECK(entity == hero);
+            CHECK(name == "step");
+            said_at.push_back(step);
+        }
+    }
+    CHECK(said_at == std::vector<int>{1, 7});
+}

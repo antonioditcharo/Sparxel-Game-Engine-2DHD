@@ -621,6 +621,30 @@ void SpriteStudio::build_menus() {
     });
 
     QMenu* sprite_menu = menuBar()->addMenu(tr("&Sprite"));
+    // A frame event: a name logic hears when an animation reaches this frame.
+    sprite_menu
+        ->addAction(tr("&Event on this frame…"), this,
+                    [this] {
+                        if (editor_ == nullptr) {
+                            return;
+                        }
+                        const std::size_t frame = editor_->frame();
+                        bool named = false;
+                        const QString name = QInputDialog::getText(
+                            this, tr("Frame event"),
+                            tr("Frame %1's event, said to logic when an animation reaches it "
+                               "(footstep, hit); empty for none:")
+                                .arg(frame + 1),
+                            QLineEdit::Normal, text_of(editor_->sprite().frames[frame].event),
+                            &named);
+                        if (named) {
+                            const std::string chosen = name.trimmed().toStdString();
+                            apply([this, frame, chosen](std::string& e) {
+                                return editor_->set_frame_event(frame, chosen, e);
+                            });
+                        }
+                    })
+        ->setObjectName(QStringLiteral("frame_event"));
     sprite_menu->addAction(tr("Canvas &size…"), this, [this] {
         if (editor_ == nullptr) {
             return;
@@ -1364,6 +1388,11 @@ void SpriteStudio::refresh_timeline() {
     for (int f = 0; f < columns; ++f) {
         // A frame's tags are named over it.
         QString label = QString::number(f + 1);
+        // A frame event: its name under the number, with a diamond.
+        if (const std::string& event = s.frames[static_cast<std::size_t>(f)].event;
+            !event.empty()) {
+            label += QStringLiteral("\n◆ ") + text_of(event);
+        }
         for (const sprite::Tag& tag : s.tags) {
             if (static_cast<std::size_t>(f) == tag.from) {
                 label = text_of(tag.name) + QLatin1Char('\n') + label;

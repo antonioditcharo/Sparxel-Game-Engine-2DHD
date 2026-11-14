@@ -84,6 +84,9 @@ struct Layer {
 struct Frame {
     /// How long the frame shows when playing, in milliseconds (1 to 65,535).
     std::uint32_t duration_ms = 100;
+    /// A frame event (plan/02 B6): a name said to logic when an animation reaches this
+    /// frame ("footstep", "hit"); empty for none. Lowercase letters, digits and _.
+    std::string event;
 };
 
 /// Which way a tag's frames play.
@@ -294,6 +297,9 @@ public:
     bool remove_frame(std::string& error);
     /// Moves the current frame one place earlier or later.
     bool move_frame(bool earlier, std::string& error);
+    /// Names frame `frame`'s event ("footstep"; empty for none), one undo step. False, with
+    /// `error`, for a name that is not lowercase letters, digits and _, or no change.
+    bool set_frame_event(std::size_t frame, std::string_view name, std::string& error);
     /// 1 to 65,535 milliseconds. Merges while typed. With `all`, every frame's.
     bool set_frame_duration(std::size_t frame, int duration_ms, std::string& error,
                             bool all = false);

@@ -119,6 +119,10 @@ struct SheetInfo {
     std::uint32_t frame_height = 0;
     std::vector<std::uint32_t> durations_ms; ///< One per frame, 1 to 65,535.
     std::vector<SheetTag> tags;
+    /// Frame events (plan/02 B6): a name for each frame that cues something when an
+    /// animation reaches it ("footstep", "hit"), empty for none. Fewer than the frames
+    /// means the rest have none.
+    std::vector<std::string> events;
 
     [[nodiscard]] const SheetTag* find(std::string_view name) const noexcept;
     /// The frames a tag shows, in the order it shows them, each with how long it shows
@@ -286,9 +290,12 @@ bool register_components(world::World& world);
 /// Advances every playing SpriteAnimation by `seconds` and sets its Sprite's frame, and
 /// moves animated tilemaps on (they loop, and never finish). Call it once per fixed step.
 /// Returns the entities whose animation reached its end this time (animations that do not
-/// loop), so their "finished" event can be sent.
-std::vector<world::Entity> animate(world::World& world, double seconds,
-                                   SheetLibrary* sheets = nullptr);
+/// loop), so their "finished" event can be sent. With `frame_events`, each animation that
+/// reached a frame with a frame event (its sheet's `events`) adds itself and the event's
+/// name, so its "frame_event" can be sent.
+std::vector<world::Entity>
+animate(world::World& world, double seconds, SheetLibrary* sheets = nullptr,
+        std::vector<std::pair<world::Entity, std::string>>* frame_events = nullptr);
 
 /// An axis-aligned box in world units, such as a character's feet. Edges are half-open:
 /// a box whose right edge is exactly on a tile's left edge does not overlap it.
