@@ -237,6 +237,11 @@ public:
     bool clear(std::string& error);
     /// Mirrors the selected pixels (or the whole cel) left to right, or top to bottom.
     bool flip(bool horizontal, std::string& error);
+    /// Draws a one-pixel outline in `color` round what is drawn on the layer (in the
+    /// selection, or the whole cel): every see-through pixel beside a drawn one, beside it
+    /// up, down, left or right, or with `corners` diagonally too (Aseprite's Outline). False
+    /// if nothing would change.
+    bool outline(Color color, bool corners, std::string& error);
     /// Keeps a copy of the selected pixels (or the whole cel) to paste.
     void copy();
     bool cut(std::string& error);

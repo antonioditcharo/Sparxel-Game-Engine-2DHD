@@ -61,7 +61,7 @@ action kits (GameMaker), audio mixing (zones, reverb), and team features.
 | ID | Feature | Best today | Sparxel |
 |---|---|---|---|
 | B1 | Drawing tools | Aseprite | **Partial**: pencil, eraser, line, rectangles and ellipses, fill, rectangle selection with cut, copy, paste and flips, colour picker; no lasso or magic wand |
-| B2 | Pixel-art helpers | Aseprite | **Partial**: dither and shade brushes along the palette; no symmetry, tile and wrap mode, or outline generator |
+| B2 | Pixel-art helpers | Aseprite | **Partial**: pixel-perfect strokes, mirroring across and down, dither and shade brushes along the palette, an outline generator; no tile and wrap mode |
 | B3 | Layers | Aseprite | **Partial**: add, name, order, opacity, hide, merge, duplicate; no groups, blend modes or reference layers |
 | B4 | Palettes | Aseprite, GameMaker | **Partial**: the sprite's palette, the project's palette, palette swaps per sprite with a hue-shift picker; no palette library or ramps editor |
 | B5 | Animation timeline | Aseprite | **Done**: frames with their own times, tags with forward, backward and ping-pong, onion skin, playback |

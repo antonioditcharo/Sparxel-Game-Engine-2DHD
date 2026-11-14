@@ -561,6 +561,16 @@ void SpriteStudio::build_menus() {
         ->setShortcut(QKeySequence(QStringLiteral("Shift+V")));
     edit->addAction(tr("Swap the colours"), this, [this] { swap_colors(); })
         ->setShortcut(QKeySequence(QStringLiteral("X")));
+    // An outline in the first colour round what is drawn: sides only, or with corners.
+    edit->addAction(
+            tr("&Outline"), this,
+            [this] {
+                apply([this](std::string& e) { return editor_->outline(primary(), false, e); });
+            })
+        ->setObjectName(QStringLiteral("outline"));
+    edit->addAction(tr("Outline with &corners"), this, [this] {
+        apply([this](std::string& e) { return editor_->outline(primary(), true, e); });
+    });
 
     QMenu* sprite_menu = menuBar()->addMenu(tr("&Sprite"));
     sprite_menu->addAction(tr("Canvas &size…"), this, [this] {

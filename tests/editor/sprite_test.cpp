@@ -597,3 +597,27 @@ TEST_CASE("Dither draws a checkerboard; Shade moves pixels one palette step towa
     CHECK(shading.sprite().pixel(0, 0, 1, 0) == dark);
     CHECK_FALSE(stroke(shading, Tool::Pencil, dark, {{1, 0}}, shade));
 }
+
+TEST_CASE("Outline: a pixel round what is drawn, with or without corners, in one step") {
+    sprite::Editor editor(sprite::Sprite::blank(8, 8));
+    std::string error;
+    CHECK_FALSE(editor.outline(red, false, error)); // nothing drawn to go round
+    // One pixel in the middle: 4 beside it, or 8 with the corners.
+    CHECK(stroke(editor, Tool::Pencil, red, {{3, 3}}));
+    const sprite::Color black{0, 0, 0, 255};
+    REQUIRE(editor.outline(black, false, error));
+    CHECK(editor.undo_text() == "Outline");
+    CHECK(drawn(editor) == 5);
+    CHECK(editor.sprite().pixel(0, 0, 3, 2) == black);
+    CHECK(editor.sprite().pixel(0, 0, 2, 2) == clear);
+    CHECK(editor.sprite().pixel(0, 0, 3, 3) == red); // drawn pixels stay
+    REQUIRE(editor.undo());
+    REQUIRE(editor.outline(black, true, error));
+    CHECK(drawn(editor) == 9);
+    // Only inside the selection.
+    REQUIRE(editor.undo());
+    editor.select(sprite::Rect{3, 0, 5, 8});
+    REQUIRE(editor.outline(black, false, error));
+    CHECK(drawn(editor) == 4); // the left side is outside it
+    CHECK(editor.sprite().pixel(0, 0, 2, 3) == clear);
+}

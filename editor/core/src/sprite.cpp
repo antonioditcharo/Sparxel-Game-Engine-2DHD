@@ -1275,6 +1275,44 @@ bool Editor::flip(bool horizontal, std::string& error) {
     return true;
 }
 
+bool Editor::outline(Color color, bool corners, std::string& error) {
+    if (!editable(error)) {
+        return false;
+    }
+    if (!sprite_.cels[layer_][frame_]) {
+        return false; // nothing drawn to go round
+    }
+    const Rect area = selection_.empty() ? Rect{0, 0, sprite_.width, sprite_.height} : selection_;
+    State before = state();
+    Image& image = cel_for_writing();
+    const Image original = image;
+    const auto drawn = [&original, &area](int x, int y) {
+        return x >= area.x && y >= area.y && x < area.x + area.width && y < area.y + area.height &&
+               get(original, x, y).a > 0;
+    };
+    for (int y = area.y; y < area.y + area.height; ++y) {
+        for (int x = area.x; x < area.x + area.width; ++x) {
+            if (get(original, x, y).a > 0) {
+                continue;
+            }
+            bool beside = drawn(x - 1, y) || drawn(x + 1, y) || drawn(x, y - 1) || drawn(x, y + 1);
+            if (corners) {
+                beside = beside || drawn(x - 1, y - 1) || drawn(x + 1, y - 1) ||
+                         drawn(x - 1, y + 1) || drawn(x + 1, y + 1);
+            }
+            if (beside) {
+                put(image, x, y, color);
+            }
+        }
+    }
+    if (image.rgba == original.rgba) {
+        restore(before);
+        return false;
+    }
+    record("Outline", std::move(before));
+    return true;
+}
+
 void Editor::copy() {
     const Rect area = selection_.empty() ? Rect{0, 0, sprite_.width, sprite_.height} : selection_;
     Image out = blank_image(area.width, area.height);

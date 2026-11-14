@@ -43,7 +43,7 @@ opening it again brings that window forward.
 | **Layers** (right) | The layers, the top first as they are drawn, each with **Shown** and **Locked** tick boxes and its name (double-click to rename); the current layer's **Opacity**; **New**, **Duplicate**, **Delete**, **Up**, **Down** and **Merge down**. Hidden and locked layers refuse drawing, saying why |
 | **Timeline** (bottom) | A grid of the layers (down) by the frames (across): ● where something is drawn, ○ where nothing is; clicking a cell chooses that layer and frame. **◀** and **▶** (`,` and `.`) step through the frames; **Play** (Enter) plays them at their own times, looping in the tag of the current frame (forward, backward or ping-pong), or through all of them; **New frame** (Alt+N), **Duplicate** (Alt+D), **Delete**, **Earlier** and **Later**; **Onion skin** shows the frames either side faintly behind; **Shows for** sets the frame's time in milliseconds, or every frame's |
 | **Tags** (bottom right) | Named runs of frames, the sprite's animations (*walk*, *idle*): **Tag frames…** names a run and how it plays; double-click one to change it. A tag's name is written over its first frame in the timeline. Frames added inside a tag make it longer, and deleting a tag's only frame deletes it |
-| **Menus** | **File:** Save (Ctrl+S), Close. **Edit:** Undo and Redo (saying what they change: *Undo Draw with the pencil*), Cut, Copy, Paste (onto the layer at the selection's corner, then selected, to move), Clear (Delete), Select all (Ctrl+A), Deselect (Ctrl+D), Flip horizontally (Shift+H) and vertically (Shift+V), Swap the colours. **Sprite:** Canvas size… (keeping the pixels at the top left or in the middle), Frames across in the sheet…. **View:** zoom, fit, the pixel grid, onion skin, and the panels |
+| **Menus** | **File:** Save (Ctrl+S), Close. **Edit:** Undo and Redo (saying what they change: *Undo Draw with the pencil*), Cut, Copy, Paste (onto the layer at the selection's corner, then selected, to move), Clear (Delete), Select all (Ctrl+A), Deselect (Ctrl+D), Flip horizontally (Shift+H) and vertically (Shift+V), Swap the colours, **Outline** and **Outline with corners** (a one-pixel edge in the first colour round everything drawn on the layer, inside the selection if there is one: the see-through pixels beside drawn ones, up, down, left and right, or diagonally too; one undo step, as Aseprite's Outline). **Sprite:** Canvas size… (keeping the pixels at the top left or in the middle), Frames across in the sheet…. **View:** zoom, fit, the pixel grid, onion skin, and the panels |
 
 **Selections** keep drawing inside them, as in other pixel editors: with a rectangle
 selected, every tool draws only there. **Move** drags the selected pixels (or, with nothing
@@ -147,7 +147,8 @@ file is refused in plain language in the status bar, and the old sheet stays.
 ## 7. Next increments
 
 2. **More pixel-art helpers** (`plan/02` B2): dither patterns besides the checkerboard,
-   brushes, tile and wrap mode, an outline generator, and lasso and magic-wand selection.
+   brushes, tile and wrap mode, and lasso and magic-wand selection (which need selections
+   of any shape, not only rectangles).
 3. **Reference layers and layer groups** (B3), palette-swap variants (B4), frame events,
    hitboxes and pivots per frame (B6, B7).
 4. **Aseprite slices** as 9-slices and pivots, and its user data as frame events.
