@@ -81,6 +81,8 @@ InputMap InputMap::rpg_preset() {
     // For games seen from the side (Jumping); Up jumps too.
     both("jump", {Key::Space}, {Button::South});
     both("cancel", {Key::X, Key::Backspace}, {Button::East});
+    // For action games: a sword, a shot.
+    both("attack", {Key::C, Key::J}, {Button::West});
     both("menu", {Key::Escape}, {Button::Start});
     return map;
 }

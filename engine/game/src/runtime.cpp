@@ -1828,16 +1828,15 @@ void Runtime::step() {
     // Hit boxes on hurt boxes: said as each contact begins (not again while it lasts).
     {
         std::set<std::pair<std::uint64_t, std::uint64_t>> now;
-        std::vector<scene2d::HitContact> started;
-        for (const scene2d::HitContact& contact :
-             scene2d::hit_contacts(*r.world, *r.sheets, r.settings.ppu)) {
+        const std::vector<scene2d::HitContact> contacts =
+            scene2d::hit_contacts(*r.world, *r.sheets, r.settings.ppu);
+        for (const scene2d::HitContact& contact : contacts) {
             const std::pair<std::uint64_t, std::uint64_t> key{contact.attacker.id,
                                                               contact.target.id};
             now.insert(key);
             if (r.hitting.contains(key)) {
                 continue;
             }
-            started.push_back(contact);
             const std::array<reflect::Value, 1> by{
                 reflect::Value{r.world->guid(contact.attacker).to_string()}};
             emit(*r.vm, *r.world, contact.target, "hit", by);
@@ -1846,8 +1845,9 @@ void Runtime::step() {
             emit(*r.vm, *r.world, contact.attacker, "hits", struck);
         }
         r.hitting = std::move(now);
-        // What they do to Health: "hurt", then "defeated".
-        for (const Hurt& hurt : apply_hits(*r.world, started)) {
+        // What they do to Health, every step they last (the safe time after a hurt keeps
+        // one from hurting twice): "hurt", then "defeated".
+        for (const Hurt& hurt : apply_hits(*r.world, contacts)) {
             const std::string by = r.world->guid(hurt.attacker).to_string();
             const std::array<reflect::Value, 2> payload{reflect::Value{hurt.amount},
                                                         reflect::Value{by}};
@@ -3006,6 +3006,15 @@ std::string Runtime::hud_value(std::string_view name) const {
     if (kind == "timer") {
         return std::to_string(
             static_cast<int>(std::ceil(r.save_object.time_left(std::string(of)))));
+    }
+    if (kind == "health" || kind == "max_health") {
+        // An object's Health, by name.
+        const world::Entity who = resolve(*r.world, of);
+        const Health* health = who.is_valid() ? r.world->get<Health>(who) : nullptr;
+        if (health == nullptr) {
+            return "?";
+        }
+        return number(kind == "health" ? health->health : health->max_health);
     }
     if (kind == "hp" || kind == "max_hp" || kind == "mp" || kind == "max_mp" || kind == "level") {
         const std::string member(of);

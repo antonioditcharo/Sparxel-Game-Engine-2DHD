@@ -4,7 +4,9 @@
 #include "engine/assets/autotile.h"
 #include "engine/audio/audio.h"
 #include "engine/foundation/guid.h"
+#include "engine/foundation/text.h"
 #include "engine/game/behaviours.h"
+#include "engine/game/combat.h"
 #include "engine/game/hud.h"
 #include "engine/game/localization.h"
 #include "engine/game/logic_world.h"
@@ -1337,6 +1339,101 @@ TEST_CASE("A new Diorama project draws in 3D, and not as the flat one does") {
     }
     CAPTURE(green);
     CHECK(green > 6000); // of 12,000
+}
+
+TEST_CASE("A new action game: the sword beats a slime that chases, and the hero wakes again") {
+    const fs::path folder =
+        fs::temp_directory_path() / ("sparxel-new-" + Guid::generate().to_string());
+    std::string error;
+    REQUIRE(editor::create_project(folder, "Meadow", error, editor::ProjectTemplate::Action));
+    {
+        std::vector<serialize::Issue> issues;
+        const auto d = editor::Document::open(folder, issues);
+        REQUIRE(d != nullptr);
+        CHECK(issues.empty());
+        // The ground, the walls, the hero, three slimes, the health bar and the gel.
+        CHECK(d->entities().size() == 8);
+        const world::Entity hero = d->world().find_named("hero").at(0);
+        CHECK(d->world().get<game::Health>(hero)->hurt_by == "enemy");
+        for (const char* name : {"slime_1", "slime_2", "slime_3"}) {
+            CAPTURE(name);
+            REQUIRE(d->world().find_named(name).size() == 1);
+            const world::Entity slime = d->world().find_named(name).at(0);
+            CHECK(d->world().get<game::Walker>(slime)->on_sight == game::Sighted::Chase);
+            CHECK(game::tags_of(d->world(), slime) == std::vector<std::string>{"enemy"});
+        }
+        CHECK(d->check_logic("logic/meadow.drules").empty());
+        for (const editor::Finding& finding : editor::examine(*d)) {
+            CAPTURE(finding.message);
+            CHECK(finding.severity != editor::Finding::Severity::Problem);
+        }
+        if (test_support::gpu() != nullptr) {
+            // Looking at the hero's feet, (10, 6): pixel (160, 90).
+            const auto preview = editor::Preview::create(error);
+            REQUIRE(preview != nullptr);
+            const engine::assets::Image frame =
+                preview->render(*d, 10.0, 6.0, error).value_or(engine::assets::Image{});
+            REQUIRE(frame.width == 320);
+            const auto at = [&frame](std::uint32_t x, std::uint32_t y) {
+                const std::size_t i = (std::size_t{y} * frame.width + x) * 4;
+                return std::array<int, 3>{frame.rgba.at(i), frame.rgba.at(i + 1),
+                                          frame.rgba.at(i + 2)};
+            };
+            CHECK(at(160, 84) == std::array<int, 3>{52, 96, 180});   // the hero's tunic
+            CHECK(at(248, 52) == std::array<int, 3>{70, 180, 80});   // slime_2, at (15.5, 4)
+            CHECK(at(112, 60) == std::array<int, 3>{120, 122, 132}); // a rock, column 7
+            CHECK(at(61, 140) == std::array<int, 3>{72, 148, 76});   // grass
+        }
+    }
+    // Played: a slime set beside the hero chases into it, and C slashes twice a second.
+    engine::input::Recording replay;
+    const auto attack = engine::input::Binding::key(engine::input::Key::C);
+    for (std::uint64_t at = 30; at < 300; at += 30) {
+        replay.record(at, attack, true);
+        replay.record(at + 1, attack, false);
+    }
+    game::RuntimeOptions options;
+    options.graphics = false;
+    options.replay = &replay;
+    options.audio = game::AudioMode::Headless;
+    options.save_folder = folder / "saves";
+    std::vector<serialize::Issue> issues;
+    const std::unique_ptr<game::Runtime> runtime = game::Runtime::open(folder, options, issues);
+    CHECK(issues.empty());
+    REQUIRE(runtime != nullptr);
+    const world::World& w = runtime->world();
+    const world::Entity hero = w.find_named("hero").at(0);
+    const world::Entity slime = w.find_named("slime_1").at(0);
+    *w.get<scene2d::Transform2D>(slime) = scene2d::Transform2D{11.5, 6.0};
+    double lowest = 5.0;
+    bool slashed = false;
+    for (int i = 0; i < 300 && !w.get<game::Health>(slime)->defeated; ++i) {
+        runtime->step();
+        lowest = std::min(lowest, w.get<game::Health>(hero)->health);
+        slashed = slashed || w.get<scene2d::Sprite>(hero)->frame > 0;
+    }
+    CHECK(slashed);
+    CHECK(w.get<game::Health>(slime)->defeated);
+    CHECK_FALSE(w.get<scene2d::Sprite>(slime)->visible);
+    CHECK(runtime->inventory().count_of("slime_gel") == 1);
+    CAPTURE(lowest);
+    CHECK(lowest < 5.0); // the slime reached it first
+    CHECK_FALSE(w.get<game::Health>(hero)->defeated);
+    CHECK(runtime->hud_value("health:hero") ==
+          engine::text::format_number(w.get<game::Health>(hero)->health));
+    CHECK(runtime->hud_value("max_health:hero") == "5");
+    // The hero at its last: a second slime beats it, and it wakes at the start, whole.
+    w.get<game::Health>(hero)->health = 1.0;
+    w.get<game::Health>(hero)->safe = 0.0;
+    const world::Entity second = w.find_named("slime_2").at(0);
+    *w.get<scene2d::Transform2D>(second) = *w.get<scene2d::Transform2D>(hero);
+    runtime->step();
+    runtime->step();
+    CHECK_FALSE(w.get<game::Health>(hero)->defeated);
+    CHECK(w.get<game::Health>(hero)->health == 5.0);
+    CHECK(w.get<scene2d::Transform2D>(hero)->x == 10.0);
+    CHECK(w.get<scene2d::Transform2D>(hero)->y == 6.0);
+    fs::remove_all(folder);
 }
 
 TEST_CASE("A new platformer: seen from the side, the hero jumps onto a ledge") {

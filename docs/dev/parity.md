@@ -22,13 +22,13 @@
 | C. World building | 4 | 7 | 3 |
 | D. Rendering and the look | 3 | 10 | 2 (+1 later) |
 | E. No-code logic | 3 | 5 | 3 (+1 later) |
-| F. Genre kits | 3 | 1 | 2 |
+| F. Genre kits | 4 | 0 | 2 |
 | G. Story | 4 | 2 | 1 (+1 later) |
 | H. Characters | 3 | 2 | 0 |
 | I. Physics | 1 | 3 | 1 |
 | J. Audio | 2 | 4 | 0 (+1 later) |
 | K. UI | 3 | 4 | 0 |
-| **All** | **33** | **51** | **18** (+6 later) |
+| **All** | **34** | **50** | **18** (+6 later) |
 
 The strongest areas match or pass their references: the RPG kit and window skins (RPG
 Maker), auto-tiles and tile variants (RPG Maker, LDtk), no-code Rules with tags, *it*,
@@ -44,7 +44,7 @@ action kits (GameMaker), audio mixing (zones, reverb), and team features.
 |---|---|---|---|
 | A1 | Project hub | Godot's project manager | **Partial**: a start page with recent projects and the sample; no thumbnails of projects |
 | A2 | Project wizard | GDevelop's | **Partial**: name and template (Classic 2D, Diorama, Platformer, Visual novel, RPG); resolution, PPU and palette are set after, in Project |
-| A3 | Templates | RPG Maker's sample games | **Partial**: playable RPG, platformer, visual novel and top-down templates; none yet for tactics or action |
+| A3 | Templates | RPG Maker's sample games | **Partial**: playable RPG, action, platformer, visual novel and top-down templates; none yet for tactics |
 | A4 | Asset browser | Unity's Project window | **Partial**: thumbnails, search, find usages, safe rename (with companions and references); no tags, favourites or move between folders |
 | A5 | Undo and redo everywhere | Godot | **Partial**: one history for scenes, logic and settings, Sprite Studio and the Story editor each their own; no visual history list |
 | A6 | Autosave and crash recovery | Unity | **Done**: unsaved work kept every minute and offered back after a crash |
@@ -140,7 +140,7 @@ action kits (GameMaker), audio mixing (zones, reverb), and team features.
 | F1 | Common: dialogue, inventory, shops, quests, saves, minimap, menus, options, credits, achievements | RPG Maker | **Done** |
 | F2 | RPG | RPG Maker | **Done**: party, levels and growth, skills, items, equipment, status effects, turn-based battles, encounters, enemies on the map |
 | F3 | Tactics | SRPG Studio | **Not yet** |
-| F4 | Action-adventure | GameMaker | **Partial**: health that hit boxes take, a blink of safety, knockback, defeat; enemies that chase on sight; no template yet |
+| F4 | Action-adventure | GameMaker | **Done**: health that hit boxes take, a blink of safety, knockback, defeat; enemies that chase on sight; an Attack action; a template with a sword, slimes and a health bar |
 | F5 | Platformer | GameMaker | **Done**: jumping with coyote time, an early press and variable height, moving platforms that carry the player, ladders, solid half tiles and slopes, a template |
 | F6 | Adventure | Adventure Game Studio | **Not yet** (interactables and inventory cover part) |
 

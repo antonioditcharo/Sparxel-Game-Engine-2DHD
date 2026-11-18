@@ -163,7 +163,8 @@ void register_hud(reflect::Registry& registry) {
                              "score. Values in braces are filled as the game plays.");
     text.property<&ScreenText::text>("text").tooltip(
         "The words, with values in braces: {gold} (or any item carried), {hp:hero}, "
-        "{max_hp:hero}, {mp:hero}, {level:hero}, {var:score} (a logic variable), {time} (the "
+        "{max_hp:hero}, {mp:hero}, {level:hero}, {health:hero} (its Health), {var:score} (a "
+        "logic variable), {time} (the "
         "time of day), {timer:race} (seconds left).");
     text.property<&ScreenText::anchor>("anchor").display_name("Place").tooltip(
         "The corner, side or middle of the screen it is fixed to.");
@@ -183,7 +184,8 @@ void register_hud(reflect::Registry& registry) {
                    .tooltip("A bar fixed to the screen, filled as far as a value is towards "
                             "its most: the hero's HP, a boss's, a timer.");
     bar.property<&ScreenBar::value>("value").tooltip(
-        "What fills it, as Screen Text's values: {hp:hero}, {var:boss_hp}, {timer:race}.");
+        "What fills it, as Screen Text's values: {hp:hero}, {health:hero}, {var:boss_hp}, "
+        "{timer:race}.");
     bar.property<&ScreenBar::most>("most").tooltip(
         "The value of a full bar: {max_hp:hero}, or a number such as 100.");
     bar.property<&ScreenBar::anchor>("anchor").display_name("Place").tooltip(

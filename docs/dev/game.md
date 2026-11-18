@@ -418,8 +418,8 @@ so a replay always runs Rules in the same order.
 
 **Health** (`health`, combat.h) is what hit boxes take away: the boxes drawn per frame in
 Sprite Studio ([sprite-studio.md](sprite-studio.md)), a sword's hit box on a slime's hurt box
-(`scene2d::hit_contacts()`). Each contact that begins in a step (not again while it lasts)
-goes to `apply_hits()`:
+(`scene2d::hit_contacts()`). Every contact, in every step it lasts, goes to `apply_hits()`
+(so a slime sitting on the hero hurts it again once it is no longer safe):
 
 | Property | What it does |
 |---|---|
@@ -434,7 +434,7 @@ Rules hear **"hurt"** (*When it is hurt by {who}*, with `amount`) and then, at 0
 **"defeated"** (*When it is defeated by {who}*), after the hit's own "hit" and "hits".
 Logic can *Hurt it by {amount}* (`take_health`, no knockback), *Heal it by {amount}* (up to
 `max_health`) and *Revive it* (full health, shown again), and set `health` like any
-property; a HUD bar shows it. Amounts that are not numbers, or not above 0, change nothing.
+property; a HUD bar shows it with `{health:hero}` out of `{max_health:hero}`. Amounts that are not numbers, or not above 0, change nothing.
 `update_health()` runs each step after the hits: the safe time, the blink and the
 knockback; everything it keeps (safe time, knockback, defeat) is saved with games.
 

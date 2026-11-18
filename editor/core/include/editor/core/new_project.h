@@ -14,8 +14,16 @@ namespace editor {
 
 /// What a new project starts as: the same small game, drawn flat or as an HD-2D diorama
 /// (the walls standing up, lit by the sun, with shadows and the tilt-shift look); a
-/// visual novel, a story told in pictures and words; or a platformer, seen from the side.
-enum class ProjectTemplate : std::uint8_t { TopDown2D, Diorama, VisualNovel, Platformer, Rpg };
+/// visual novel, a story told in pictures and words; a platformer, seen from the side; an
+/// RPG; or an action game, fought in the world with a sword.
+enum class ProjectTemplate : std::uint8_t {
+    TopDown2D,
+    Diorama,
+    VisualNovel,
+    Platformer,
+    Rpg,
+    Action,
+};
 
 /// Makes a new project named `name` in `folder`, which must not exist yet or be empty, and
 /// returns true; or returns false, with `error` in plain language, and overwrites nothing.
@@ -36,6 +44,13 @@ enum class ProjectTemplate : std::uint8_t { TopDown2D, Diorama, VisualNovel, Pla
 /// character, Mira, in assets/art; the start scene with both; and assets/logic/story.drules,
 /// in which Mira greets the player when the game starts, asks a question with two answers,
 /// and replies to the one picked.
+///
+/// Action: a meadow walled with stone, with rocks to go round; a hero with a sword
+/// (assets/art/fighter.png, its sheet's "slash" a ring of hit boxes all round), Health 5,
+/// hurt by enemies; three slimes that wander and chase the hero on sight, Health 2, hurt
+/// by the player; a health bar; and assets/logic/meadow.drules: Attack (C) slashes, a
+/// slime beaten leaves gel, all three beaten says the meadow is safe, and the hero beaten
+/// wakes where it started (game.md, Health and combat).
 bool create_project(const std::filesystem::path& folder, std::string_view name, std::string& error,
                     ProjectTemplate kind = ProjectTemplate::TopDown2D);
 

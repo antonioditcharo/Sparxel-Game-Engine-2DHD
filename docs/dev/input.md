@@ -22,6 +22,7 @@ and the same game works with keyboard and gamepad without any extra logic.
 | `interact` | Z, Enter, Space | South (A / Cross) |
 | `jump` (games seen from the side: [game.md](game.md), Jumping; Up jumps too) | Space | South (A / Cross) |
 | `cancel` | X, Backspace | East (B / Circle) |
+| `attack` (action games: a sword, a shot) | C, J | West (X / Square) |
 | `menu` | Escape | Start |
 
 Keys are named by position on a US layout, so WASD stays under the same fingers on other

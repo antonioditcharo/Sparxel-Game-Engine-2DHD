@@ -16,10 +16,12 @@ using input::Key;
 
 TEST_CASE("The RPG preset binds keys and buttons to actions") {
     const input::InputMap map = input::InputMap::rpg_preset();
-    CHECK(map.actions() == std::vector<std::string>{"cancel", "interact", "jump", "menu",
+    CHECK(map.actions() == std::vector<std::string>{"attack", "cancel", "interact", "jump", "menu",
                                                     "move_down", "move_left", "move_right",
                                                     "move_up"});
     CHECK(map.actions_for(Binding::key(Key::Z)) == std::vector<std::string>{"interact"});
+    CHECK(map.actions_for(Binding::key(Key::C)) == std::vector<std::string>{"attack"});
+    CHECK(map.actions_for(Binding::button(Button::West)) == std::vector<std::string>{"attack"});
     // One button can do two things: Space and South talk, and jump in games seen from the side.
     CHECK(map.actions_for(Binding::key(Key::Space)) ==
           std::vector<std::string>{"interact", "jump"});

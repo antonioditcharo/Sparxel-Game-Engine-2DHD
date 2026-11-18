@@ -1084,7 +1084,8 @@ void MainWindow::build_actions() {
                                 tr("Diorama: HD-2D, in 3D with light and shadows"),
                                 tr("Visual novel: a story in pictures and words"),
                                 tr("Platformer: seen from the side, walking and jumping"),
-                                tr("RPG: a village with people, a shop and a battle")};
+                                tr("RPG: a village with people, a shop and a battle"),
+                                tr("Action: a sword, and slimes that chase you")};
         const QString kind = QInputDialog::getItem(this, tr("New project"), tr("Start from:"),
                                                    kinds, 0, false, &named);
         if (!named) {
@@ -1095,9 +1096,9 @@ void MainWindow::build_actions() {
         if (!folder.isEmpty()) {
             const auto chosen =
                 static_cast<std::size_t>(std::max<qsizetype>(kinds.indexOf(kind), 0));
-            constexpr std::array<ProjectTemplate, 5> templates{
-                ProjectTemplate::TopDown2D, ProjectTemplate::Diorama, ProjectTemplate::VisualNovel,
-                ProjectTemplate::Platformer, ProjectTemplate::Rpg};
+            constexpr std::array<ProjectTemplate, 6> templates{
+                ProjectTemplate::TopDown2D,  ProjectTemplate::Diorama, ProjectTemplate::VisualNovel,
+                ProjectTemplate::Platformer, ProjectTemplate::Rpg,     ProjectTemplate::Action};
             new_project(path_of(folder), name, templates.at(chosen));
         }
     });

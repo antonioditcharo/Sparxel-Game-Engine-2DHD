@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <fstream>
 #include <string>
@@ -656,6 +657,228 @@ bool write_rpg_files(const fs::path& assets_folder) {
            write_png(assets_folder / "art" / "panel.png", panel_frame());
 }
 
+/// The action game's hero, three 32 x 32 frames: standing, then a sword swept round it (a
+/// ring three-quarters drawn, then whole and paler). The hero stands at the bottom middle.
+assets::Image fighter() {
+    constexpr std::uint32_t side = 32;
+    assets::Image image;
+    image.width = side * 3;
+    image.height = side;
+    image.rgba.assign(std::size_t{image.width} * image.height * 4, 0);
+    const assets::Image figure = hero();
+    for (std::uint32_t f = 0; f < 3; ++f) {
+        // The sword's sweep round the hero's middle, flattened as the ground is seen.
+        for (std::uint32_t y = 0; y < side && f > 0; ++y) {
+            for (std::uint32_t x = 0; x < side; ++x) {
+                const double dx = (static_cast<double>(x) + 0.5 - 16.0) / 14.0;
+                const double dy = (static_cast<double>(y) + 0.5 - 24.0) / 8.0;
+                const double r = std::sqrt((dx * dx) + (dy * dy));
+                // Three quarters, from the top round by the right, in the first frame.
+                const bool drawn = f == 2 || !(dx < 0.0 && dy < 0.0);
+                if (drawn && r >= 0.86 && r <= 1.14) {
+                    put(image, (f * side) + x, y, f == 1 ? Rgb{236, 240, 252} : Rgb{170, 206, 255});
+                }
+            }
+        }
+        for (std::uint32_t y = 0; y < tile; ++y) {
+            for (std::uint32_t x = 0; x < tile; ++x) {
+                const std::size_t from = ((std::size_t{y} * tile) + x) * 4;
+                if (figure.rgba[from + 3] != 0) {
+                    put(image, (f * side) + 8 + x, 16 + y,
+                        Rgb{figure.rgba[from], figure.rgba[from + 1], figure.rgba[from + 2]});
+                }
+            }
+        }
+    }
+    return image;
+}
+
+/// The fighter's sheet: standing ("idle") and the slash ("slash"), whose frames strike all
+/// round; the hero's body can be struck in every frame.
+std::string fighter_sheet() {
+    scene2d::SheetInfo sheet;
+    sheet.frame_width = 32;
+    sheet.frame_height = 32;
+    sheet.durations_ms = {200, 90, 130};
+    sheet.tags = {scene2d::SheetTag{"idle", 0, 0, scene2d::TagDirection::Forward},
+                  scene2d::SheetTag{"slash", 1, 2, scene2d::TagDirection::Forward}};
+    const scene2d::FrameBox body{12, 17, 8, 15};
+    const scene2d::FrameBox round{1, 14, 30, 18};
+    sheet.boxes = {scene2d::FrameBoxes{{}, body}, scene2d::FrameBoxes{round, body},
+                   scene2d::FrameBoxes{round, body}};
+    return scene2d::sheet_to_text(sheet);
+}
+
+/// A slime's sheet: one frame, whose body both strikes and can be struck.
+std::string slime_sheet() {
+    scene2d::SheetInfo sheet;
+    sheet.frame_width = tile;
+    sheet.frame_height = tile;
+    sheet.durations_ms = {100};
+    const scene2d::FrameBox body{2, 7, 12, 9};
+    sheet.boxes = {scene2d::FrameBoxes{body, body}};
+    return scene2d::sheet_to_text(sheet);
+}
+
+/// The meadow's walls: stone round the edge, and two rocks to chase round.
+std::string meadow_walls() {
+    scene2d::TileGrid grid;
+    grid.width = map_width;
+    grid.height = map_height;
+    grid.cells.assign(std::size_t{map_width} * map_height, -1);
+    for (std::uint32_t y = 0; y < map_height; ++y) {
+        for (std::uint32_t x = 0; x < map_width; ++x) {
+            const bool edge = x == 0 || y == 0 || x + 1 == map_width || y + 1 == map_height;
+            const bool rock = (x == 7 && y >= 2 && y <= 5) || (x == 13 && y >= 6 && y <= 9);
+            if (edge || rock) {
+                grid.cells[(std::size_t{y} * map_width) + x] = 2;
+            }
+        }
+    }
+    return scene2d::format_tiles(grid);
+}
+
+/// Where the hero starts, and where it wakes when beaten.
+constexpr std::array<double, 2> fighter_start{10.0, 6.0};
+/// Where the slimes start.
+constexpr std::array<std::array<double, 2>, 3> slime_places{
+    {{4.5, 10.0}, {15.5, 4.0}, {16.5, 10.0}}};
+
+/// The action game's logic.
+engine::serialize::Json meadow_rules() {
+    namespace logic = engine::logic;
+    namespace ir = engine::logic::ir;
+    using engine::reflect::Value;
+    const auto text = [](const char* words) { return ir::literal(Value{std::string(words)}); };
+    logic::LogicAsset rules;
+    rules.name = "meadow";
+    std::uint64_t block = 1;
+    // Attack slashes; the slash over, it stands again (without playing, so it stays).
+    {
+        logic::Rule rule;
+        rule.id = logic::BlockId{block++};
+        rule.object = "input";
+        rule.event = "pressed";
+        rule.conditions.push_back(
+            ir::compare(logic::CompareOp::Equal, ir::event_value("action"), text("attack")));
+        rule.actions.push_back(ir::do_action(block++, "hero", "play_tag", {text("slash")}));
+        rules.rules.push_back(std::move(rule));
+    }
+    rules.rules.push_back(logic::Rule{logic::BlockId{block++},
+                                      "hero",
+                                      "finished",
+                                      {},
+                                      {ir::set(block++, "hero", "tag", text("idle"))},
+                                      {}});
+    // A slime beaten leaves gel; all three, and the meadow is safe.
+    {
+        logic::Rule rule;
+        rule.id = logic::BlockId{block++};
+        rule.object = "#enemy";
+        rule.event = "defeated";
+        rule.actions.push_back(
+            ir::do_action(block++, "inventory", "give",
+                          {text("slime_gel"), ir::literal(Value{std::int64_t{1}})}));
+        const std::uint64_t test = block++;
+        rule.actions.push_back(ir::if_then(
+            test,
+            ir::call("inventory", "has_at_least",
+                     {text("slime_gel"),
+                      ir::literal(Value{static_cast<std::int64_t>(slime_places.size())})}),
+            {ir::do_action(block++, "dialogue", "say", {text("The meadow is safe again!")})}, {}));
+        rules.rules.push_back(std::move(rule));
+    }
+    // The hero beaten wakes where it started.
+    rules.rules.push_back(
+        logic::Rule{logic::BlockId{block++},
+                    "hero",
+                    "defeated",
+                    {},
+                    {ir::set(block++, "hero", "x", ir::literal(Value{fighter_start[0]})),
+                     ir::set(block++, "hero", "y", ir::literal(Value{fighter_start[1]})),
+                     ir::do_action(block++, "hero", "revive", {}),
+                     ir::do_action(block++, "dialogue", "say",
+                                   {text("You fainted... and wake where you started.")})},
+                    {}});
+    return serialize::logic_to_json(rules);
+}
+
+/// create_project() for an action game, into its folders, made already, with its tiles.
+bool create_action(const fs::path& folder, std::string_view name, std::string& error,
+                   const std::string& tileset_id) {
+    const fs::path assets_folder = folder / "assets";
+    std::error_code failed;
+    fs::create_directories(assets_folder / "logic", failed);
+    if (failed || !write_png(assets_folder / "art" / "fighter.png", fighter()) ||
+        !write_text(assets_folder / "art" / "fighter.sheet", fighter_sheet()) ||
+        !write_png(assets_folder / "art" / "slime.png", slime()) ||
+        !write_text(assets_folder / "art" / "slime.sheet", slime_sheet()) ||
+        !write_text(assets_folder / "logic" / "meadow.drules",
+                    serialize::to_text(meadow_rules()))) {
+        error = "The project's folder could not be written to.";
+        return false;
+    }
+    assets::AssetDatabase database(assets_folder);
+    database.refresh();
+    const assets::AssetRecord* fighter_png = database.find("art/fighter.png");
+    const assets::AssetRecord* slime_png = database.find("art/slime.png");
+    if (fighter_png == nullptr || slime_png == nullptr) {
+        error = "The project's pictures could not be read back.";
+        return false;
+    }
+    serialize::Json entities = serialize::Json::array();
+    entities.push_back(
+        entity("ground", {{"tilemap", {{"tiles", tiles(0, false, -1, 0)}, {"tileset", tileset_id}}},
+                          {"transform_2d", {{"layer", -2}, {"x", 0.0}, {"y", 0.0}}}}));
+    entities.push_back(
+        entity("walls",
+               {{"tilemap", {{"tiles", meadow_walls()}, {"tileset", tileset_id}, {"solid", true}}},
+                {"transform_2d", {{"layer", -1}, {"x", 0.0}, {"y", 0.0}}}}));
+    entities.push_back(entity(
+        "hero", {{"sprite", {{"image", fighter_png->guid.to_string()}}},
+                 {"sprite_animation", {{"tag", "idle"}, {"loop", false}, {"playing", false}}},
+                 {"top_down_mover", {{"speed", 4.0}}},
+                 {"tags", {{"tags", "player"}}},
+                 {"health",
+                  {{"health", 5.0}, {"max_health", 5.0}, {"hurt_by", "enemy"}, {"knockback", 1.0}}},
+                 {"transform_2d", {{"x", fighter_start[0]}, {"y", fighter_start[1]}}}}));
+    for (std::size_t i = 0; i < slime_places.size(); ++i) {
+        entities.push_back(entity(
+            "slime_" + std::to_string(i + 1),
+            {{"sprite", {{"image", slime_png->guid.to_string()}}},
+             {"top_down_mover", {{"speed", 2.0}}},
+             {"walker",
+              {{"mode", "wander"}, {"wander_radius", 2.0}, {"on_sight", "chase"}, {"sight", 4.0}}},
+             {"tags", {{"tags", "enemy"}}},
+             {"health",
+              {{"health", 2.0}, {"max_health", 2.0}, {"hurt_by", "player"}, {"knockback", 1.5}}},
+             {"transform_2d", {{"x", slime_places.at(i)[0]}, {"y", slime_places.at(i)[1]}}}}));
+    }
+    entities.push_back(entity("health_bar", {{"screen_bar",
+                                              {{"value", "{health:hero}"},
+                                               {"most", "{max_health:hero}"},
+                                               {"x", 4.0},
+                                               {"y", 4.0},
+                                               {"width", 50.0},
+                                               {"height", 5.0}}}}));
+    entities.push_back(
+        entity("gel", {{"screen_text", {{"text", "Gel {slime_gel}"}, {"anchor", "top_right"}}}}));
+    const serialize::Json scene{
+        {"format", "sparxel.scene"}, {"version", 1}, {"entities", std::move(entities)}};
+    engine::game::ProjectSettings settings;
+    settings.name = std::string(name);
+    settings.start_scene = "maps/start.dscene";
+    settings.pause_menu = true;
+    if (!write_text(assets_folder / "maps" / "start.dscene", serialize::to_text(scene)) ||
+        !write_text(folder / "project.sparxel.json",
+                    serialize::to_text(engine::game::project_to_json(settings)))) {
+        error = "The project's files could not be written.";
+        return false;
+    }
+    database.refresh(); // the scene's and the logic's ".meta"
+    return true;
+}
+
 } // namespace
 
 bool create_project(const fs::path& folder, std::string_view name, std::string& error,
@@ -699,6 +922,9 @@ bool create_project(const fs::path& folder, std::string_view name, std::string& 
     const std::string hero_id = hero_png->guid.to_string();
     if (kind == ProjectTemplate::Platformer) {
         return create_platformer(folder, name, error, tileset_id, hero_id);
+    }
+    if (kind == ProjectTemplate::Action) {
+        return create_action(folder, name, error, tileset_id);
     }
     const bool rpg = kind == ProjectTemplate::Rpg;
     if (rpg && !write_rpg_files(folder / "assets")) {
