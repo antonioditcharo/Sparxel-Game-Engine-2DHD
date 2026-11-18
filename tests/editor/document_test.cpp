@@ -1342,6 +1342,84 @@ TEST_CASE("A new Diorama project draws in 3D, and not as the flat one does") {
     CHECK(green > 6000); // of 12,000
 }
 
+TEST_CASE("A new adventure: the mouse picks up the key and opens the door") {
+    const fs::path folder =
+        fs::temp_directory_path() / ("sparxel-new-" + Guid::generate().to_string());
+    std::string error;
+    REQUIRE(
+        editor::create_project(folder, "Locked Room", error, editor::ProjectTemplate::Adventure));
+    {
+        std::vector<serialize::Issue> issues;
+        const auto d = editor::Document::open(folder, issues);
+        REQUIRE(d != nullptr);
+        CHECK(issues.empty());
+        // The floor, the walls, the hero, the door, the key, the painting and the label.
+        CHECK(d->entities().size() == 7);
+        const world::Entity hero = d->world().find_named("hero").at(0);
+        CHECK(d->world().get<game::PointAndClick>(hero) != nullptr);
+        CHECK(d->check_logic("logic/room.drules").empty());
+        for (const editor::Finding& finding : editor::examine(*d)) {
+            CAPTURE(finding.message);
+            CHECK(finding.severity != editor::Finding::Severity::Problem);
+        }
+    }
+    // The whole room shows, 320 x 180 at 16 pixels a tile, looking at (10, 5.5): the key's
+    // area is under pixel (72, 138), the door's under (168, 10), the painting's (248, 10).
+    engine::input::Recording replay;
+    const auto click = [&](std::uint64_t at, double x, double y) {
+        replay.record_pointer(at, engine::input::Pointer{x, y});
+        replay.record(at, engine::input::Binding::mouse(engine::input::MouseButton::Left), true);
+        replay.record(at + 1, engine::input::Binding::mouse(engine::input::MouseButton::Left),
+                      false);
+    };
+    click(2, 160.0, 90.0);   // the door first: locked
+    click(200, 160.0, 90.0); // the message closed
+    click(210, 72.0, 138.0); // the key
+    click(400, 160.0, 90.0); // the message closed
+    click(410, 168.0, 10.0); // the door, with the key
+    game::RuntimeOptions options;
+    options.graphics = false;
+    options.replay = &replay;
+    options.audio = game::AudioMode::Headless;
+    options.save_folder = folder / "saves";
+    std::vector<serialize::Issue> issues;
+    const std::unique_ptr<game::Runtime> runtime = game::Runtime::open(folder, options, issues);
+    CHECK(issues.empty());
+    REQUIRE(runtime != nullptr);
+    const auto said = [&]() -> std::string {
+        const std::string* now = runtime->dialogue().current();
+        return now != nullptr ? *now : std::string();
+    };
+    // Pointing names things: the door, then nothing over the floor.
+    std::vector<std::string> pointed;
+    for (std::uint64_t i = 0; i < 4; ++i) {
+        runtime->step();
+    }
+    pointed.push_back(runtime->hud_value("pointing")); // the floor, below the door
+    for (std::uint64_t i = 4; i < 200; ++i) {
+        runtime->step();
+    }
+    CHECK(said().empty()); // the floor is not the door: nothing said
+    for (std::uint64_t i = 200; i < 214; ++i) {
+        runtime->step();
+    }
+    pointed.push_back(runtime->hud_value("pointing"));
+    CHECK(pointed == std::vector<std::string>{"", "old key"});
+    for (std::uint64_t i = 214; i < 400; ++i) {
+        runtime->step();
+    }
+    CHECK(said() == "You pick up the old key.");
+    CHECK(runtime->inventory().count_of("key") == 1);
+    for (std::uint64_t i = 400; i < 700; ++i) {
+        runtime->step();
+    }
+    CHECK(said() == "The key turns. The door creaks open: you are free!");
+    const world::World& w = runtime->world();
+    const auto* hero = w.get<scene2d::Transform2D>(w.find_named("hero").at(0));
+    CHECK(std::hypot(hero->x - 10.5, hero->y - 1.0) <= 1.5); // on a tile beside the door
+    fs::remove_all(folder);
+}
+
 TEST_CASE("A new action game: the sword beats a slime that chases, and the hero wakes again") {
     const fs::path folder =
         fs::temp_directory_path() / ("sparxel-new-" + Guid::generate().to_string());

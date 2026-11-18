@@ -16,9 +16,12 @@ using input::Key;
 
 TEST_CASE("The RPG preset binds keys and buttons to actions") {
     const input::InputMap map = input::InputMap::rpg_preset();
-    CHECK(map.actions() == std::vector<std::string>{"attack", "cancel", "interact", "jump", "menu",
-                                                    "move_down", "move_left", "move_right",
+    CHECK(map.actions() == std::vector<std::string>{"attack", "cancel", "click", "interact", "jump",
+                                                    "menu", "move_down", "move_left", "move_right",
                                                     "move_up"});
+    CHECK(map.actions_for(Binding::mouse(input::MouseButton::Left)) ==
+          std::vector<std::string>{"click"});
+    CHECK(input::binding_name(Binding::mouse(input::MouseButton::Right)) == "Right click");
     CHECK(map.actions_for(Binding::key(Key::Z)) == std::vector<std::string>{"interact"});
     CHECK(map.actions_for(Binding::key(Key::C)) == std::vector<std::string>{"attack"});
     CHECK(map.actions_for(Binding::button(Button::West)) == std::vector<std::string>{"attack"});
@@ -190,4 +193,19 @@ TEST_CASE("Button prompts name the control of the device used last") {
     state.begin_step();
     state.set(Binding::key(Key::Left), true);
     CHECK(state.prompt("cancel") == "X");
+}
+
+TEST_CASE("The pointer: clicks are controls, moves are kept and replayed") {
+    input::InputState state(input::InputMap::rpg_preset());
+    CHECK_FALSE(state.pointer().has_value());
+    input::Recording recording;
+    recording.record_pointer(3, input::Pointer{10.5, 20.0});
+    recording.record(3, Binding::mouse(input::MouseButton::Left), true);
+    state.begin_step();
+    recording.replay(3, state);
+    REQUIRE(state.pointer().has_value());
+    CHECK(state.pointer().value_or(input::Pointer{}) == input::Pointer{10.5, 20.0});
+    CHECK(state.pressed("click"));
+    // A click is not a keyboard or pad press: prompts keep showing keys.
+    CHECK(state.last_device() == Binding::Device::Keyboard);
 }

@@ -57,9 +57,16 @@ protected:
     void keyPressEvent(QKeyEvent* event) override;
     void keyReleaseEvent(QKeyEvent* event) override;
     void focusOutEvent(QFocusEvent* event) override;
+    void mousePressEvent(QMouseEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
 
 private:
     void press(int qt_key, bool down);
+    /// The game's pixel under the widget point `at`, as the frame is drawn; nothing off it.
+    [[nodiscard]] std::optional<engine::input::Pointer> game_point(QPointF at) const;
+    /// A mouse event for the game: where the pointer is, and a button going down or up.
+    void mouse(const QMouseEvent* event, std::optional<bool> down);
 
     std::unique_ptr<engine::game::Runtime> runtime_;
     engine::input::Recording keys_; ///< What is pressed here, by step, for the runtime.

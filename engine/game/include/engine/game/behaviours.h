@@ -315,6 +315,37 @@ struct Interactable {
     bool enabled = true;
 };
 
+/// "Point and Click": the player's character walks where the pointer clicks (the "click"
+/// action: the left mouse button), round walls, as in adventure games; clicking an
+/// Interactable walks it near and then interacts with it, as Interact would ("interacted",
+/// with it as who). The move keys still walk it, and end a walk.
+struct PointAndClick {
+    bool enabled = true;
+    double reach = 1.25; ///< How near, in tiles, it walks to what it clicks before using it.
+    // Not saved: a walk is clicked again after loading.
+    std::vector<std::array<double, 2>> path; ///< Points still to reach, nearest first.
+    Guid going_to;                           ///< The Interactable it walks to; invalid for none.
+    /// How near is near enough to it this time: `reach`, or the tile beside it walked to.
+    double near_enough = 0.0;
+    double step_dx = 0.0; ///< Where it walks in this step, for move_characters().
+    double step_dy = 0.0;
+    double step_scale = 1.0; ///< Of a full step: less on reaching a point.
+};
+
+/// The enabled Interactable whose area holds the map point (x, y), the lowest GUID if
+/// several do; invalid if none: what the pointer is over.
+[[nodiscard]] world::Entity interactable_at(const world::World& world, double x, double y);
+
+/// A click at map point (x, y): every enabled Point and Click mover finds its way there, or
+/// to the Interactable there. Returns whether any started walking.
+bool click_to_walk(world::World& world, double x, double y, std::uint32_t ppu);
+
+/// One step of Point and Click walking, before move_characters(): where each walks, and the
+/// (mover, Interactable) pairs that came near enough to theirs this step, turned to face it,
+/// for "interacted". Held move keys end walks.
+std::vector<std::pair<world::Entity, world::Entity>>
+steer_point_and_click(world::World& world, double seconds, const input::InputState& input);
+
 /// "Sound Source": a sound on repeat where the entity is (a waterfall, a fire, a crowd),
 /// heard from the player: full volume beside it, fading to silence `range` tiles away,
 /// and from the side it is on.

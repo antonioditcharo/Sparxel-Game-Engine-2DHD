@@ -6,6 +6,7 @@
 
 #include <doctest/doctest.h>
 
+#include <array>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -362,4 +363,16 @@ TEST_CASE("A window presents a target") {
         CHECK(window->present(*large, render::Color{0, 0, 0, 255})); // cropped
     }
     CHECK(device->create_window("No size", 0, 10) == nullptr);
+}
+
+TEST_CASE("Window points land on the image's pixels, wherever fit_integer() puts it") {
+    // A 320 x 180 image in a 1280 x 800 window: four times, 40 pixels down.
+    const render::Placement place = render::fit_integer(320, 180, 1280, 800);
+    REQUIRE(place.scale == 4);
+    CHECK(render::image_point(place, 0.0, 40.0, 320, 180) == std::array<double, 2>{0.0, 0.0});
+    CHECK(render::image_point(place, 642.0, 402.0, 320, 180) == std::array<double, 2>{160.5, 90.5});
+    CHECK_FALSE(render::image_point(place, 10.0, 20.0, 320, 180).has_value()); // the border
+    CHECK_FALSE(render::image_point(place, 1280.0, 400.0, 320, 180).has_value());
+    CHECK_FALSE(
+        render::image_point(place, std::numeric_limits<double>::quiet_NaN(), 0.0, 320, 180));
 }

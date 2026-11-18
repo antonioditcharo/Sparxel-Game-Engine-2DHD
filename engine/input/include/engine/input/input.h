@@ -10,7 +10,9 @@
 #include "engine/foundation/reflect.h"
 
 #include <cstdint>
+#include <functional>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <string_view>
@@ -104,9 +106,20 @@ enum class Button : std::uint8_t {
     RightStick,
 };
 
+/// Mouse buttons.
+enum class MouseButton : std::uint8_t { Left, Right, Middle };
+
+/// Where the pointer (the mouse) is, in the game's own pixels: (0, 0) is the top-left of
+/// the picture the game draws, whatever the window's size.
+struct Pointer {
+    double x = 0.0;
+    double y = 0.0;
+    friend bool operator==(const Pointer&, const Pointer&) = default;
+};
+
 /// One physical control.
 struct Binding {
-    enum class Device : std::uint8_t { Keyboard, Gamepad };
+    enum class Device : std::uint8_t { Keyboard, Gamepad, Mouse };
     Device device = Device::Keyboard;
     std::uint16_t code = 0; ///< A Key or a Button.
 
@@ -115,6 +128,9 @@ struct Binding {
     }
     [[nodiscard]] static constexpr Binding button(Button b) noexcept {
         return Binding{Device::Gamepad, static_cast<std::uint16_t>(b)};
+    }
+    [[nodiscard]] static constexpr Binding mouse(MouseButton b) noexcept {
+        return Binding{Device::Mouse, static_cast<std::uint16_t>(b)};
     }
     friend constexpr auto operator<=>(Binding, Binding) = default;
 };
@@ -179,6 +195,9 @@ public:
     [[nodiscard]] const std::vector<Binding>& pressed_bindings() const noexcept {
         return newly_down_;
     }
+    /// Where the pointer is, in the game's pixels; nothing until it has been over the game.
+    [[nodiscard]] const std::optional<Pointer>& pointer() const noexcept { return pointer_; }
+    void set_pointer(Pointer at) noexcept { pointer_ = at; }
 
 private:
     [[nodiscard]] bool held_by_controls(std::string_view action) const;
@@ -187,6 +206,7 @@ private:
     std::set<Binding> down_;
     std::vector<Binding> newly_down_;
     Binding::Device last_device_ = Binding::Device::Keyboard;
+    std::optional<Pointer> pointer_;
     std::set<std::string, std::less<>> pressed_;
     std::set<std::string, std::less<>> released_;
 };
@@ -206,12 +226,16 @@ public:
     };
 
     void record(std::uint64_t step, Binding binding, bool down);
-    /// Feeds the changes recorded for `step` into `state`. Call it after begin_step().
+    /// The pointer moved to `at` in step `step`.
+    void record_pointer(std::uint64_t step, Pointer at);
+    /// Feeds the changes recorded for `step` into `state`: the pointer first, then the
+    /// controls. Call it after begin_step().
     void replay(std::uint64_t step, InputState& state) const;
     [[nodiscard]] const std::vector<Change>& changes() const noexcept { return changes_; }
 
 private:
     std::vector<Change> changes_; ///< In the order recorded; steps never go backwards.
+    std::vector<std::pair<std::uint64_t, Pointer>> pointer_moves_;
 };
 
 /// The input as no-code logic sees it: conditions "Action [x] is held" and "Action [x] was
@@ -233,10 +257,17 @@ private:
 /// "pressed" (carrying the action) for Rules such as "When Interact is pressed".
 void register_types(reflect::Registry& registry);
 
+/// Turns a point of the window (as SDL gives it) into the game's pixels; nothing outside the
+/// game's picture.
+using WindowToGame = std::function<std::optional<Pointer>(double x, double y)>;
+
 /// Reads the operating system's input events through SDL and feeds them into `state`.
 /// Returns false when the user asked to quit (closing the window). Starts SDL's gamepad
-/// subsystem the first time, and opens gamepads as they are connected. When `recording` is
-/// given, every change is also recorded for `step`.
-bool pump_events(InputState& state, Recording* recording = nullptr, std::uint64_t step = 0);
+/// subsystem the first time, and opens gamepads as they are connected. The mouse's
+/// buttons are controls like keys; its moves set the pointer, through `to_game` (without
+/// it, the pointer is not followed). When `recording` is given, every change is also
+/// recorded for `step`.
+bool pump_events(InputState& state, Recording* recording = nullptr, std::uint64_t step = 0,
+                 const WindowToGame& to_game = {});
 
 } // namespace engine::input

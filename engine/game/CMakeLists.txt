@@ -20,6 +20,7 @@ add_library(engine_game STATIC
     src/menus.cpp
     src/shop.cpp
     src/particles.cpp
+    src/point_click.cpp
     src/quests.cpp
     src/runtime.cpp
     src/save.cpp

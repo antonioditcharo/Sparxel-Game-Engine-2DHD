@@ -1,6 +1,7 @@
 #include "game_view.h"
 
 #include <QKeyEvent>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QTimer>
 #include <algorithm>
@@ -51,6 +52,7 @@ std::optional<input::Key> engine_key(int qt_key) {
 GameView::GameView(QWidget* parent) : QWidget(parent), timer_(new QTimer(this)) {
     setObjectName(QStringLiteral("game_view"));
     setFocusPolicy(Qt::StrongFocus);
+    setMouseTracking(true); // the pointer, for games played with the mouse
     setAutoFillBackground(false);
     timer_->setInterval(16);
     connect(timer_, &QTimer::timeout, this, [this] {
@@ -164,6 +166,60 @@ void GameView::keyReleaseEvent(QKeyEvent* event) {
     if (!event->isAutoRepeat()) {
         press(event->key(), false);
     }
+    event->accept();
+}
+
+std::optional<input::Pointer> GameView::game_point(QPointF at) const {
+    if (frame_.isNull()) {
+        return std::nullopt;
+    }
+    // As paintEvent() draws it: a whole-number scale, centred.
+    const int scale = std::max(1, std::min(width() / frame_.width(), height() / frame_.height()));
+    // Whole pixels, as paintEvent() places it.
+    const int left = (width() - (frame_.width() * scale)) / 2;
+    const int top = (height() - (frame_.height() * scale)) / 2;
+    const double x = (at.x() - left) / scale;
+    const double y = (at.y() - top) / scale;
+    if (x < 0.0 || y < 0.0 || x >= frame_.width() || y >= frame_.height()) {
+        return std::nullopt;
+    }
+    return input::Pointer{x, y};
+}
+
+void GameView::mouse(const QMouseEvent* event, std::optional<bool> down) {
+    if (runtime_ == nullptr) {
+        return;
+    }
+    const std::uint64_t step = runtime_->step_count();
+    if (const std::optional<input::Pointer> at = game_point(event->position())) {
+        keys_.record_pointer(step, *at);
+    }
+    if (!down) {
+        return;
+    }
+    const std::optional<input::MouseButton> button =
+        event->button() == Qt::LeftButton     ? std::optional(input::MouseButton::Left)
+        : event->button() == Qt::RightButton  ? std::optional(input::MouseButton::Right)
+        : event->button() == Qt::MiddleButton ? std::optional(input::MouseButton::Middle)
+                                              : std::nullopt;
+    if (button) {
+        keys_.record(step, input::Binding::mouse(*button), *down);
+    }
+}
+
+void GameView::mousePressEvent(QMouseEvent* event) {
+    setFocus();
+    mouse(event, true);
+    event->accept();
+}
+
+void GameView::mouseReleaseEvent(QMouseEvent* event) {
+    mouse(event, false);
+    event->accept();
+}
+
+void GameView::mouseMoveEvent(QMouseEvent* event) {
+    mouse(event, std::nullopt);
     event->accept();
 }
 

@@ -5068,6 +5068,65 @@ TEST_CASE("A script that does not compile is reported with its line, and the gam
     CHECK(std::count(runtime->log().begin(), runtime->log().end(), "start") == 1); // the Rules
 }
 
+TEST_CASE("Clicking a chest in a running game walks the hero to it and opens it") {
+    const Project project;
+    {
+        reflect::Registry registry;
+        game::register_types(registry);
+        world::World w(registry);
+        REQUIRE(scene2d::register_components(w));
+        REQUIRE(game::register_behaviour_components(w));
+        const world::Entity hero = w.create("hero");
+        w.add<scene2d::Transform2D>(hero);
+        w.add<game::TopDownMover>(hero);
+        w.add<game::PointAndClick>(hero);
+        const world::Entity chest = w.create("old_chest");
+        scene2d::Transform2D* at = w.add<scene2d::Transform2D>(chest);
+        at->x = 1.5;
+        at->y = 1.0;
+        w.add<game::Interactable>(chest);
+        write_json(project.folder.path / "assets/maps/room.dscene", serialize::scene_to_json(w));
+        std::vector<serialize::Issue> issues;
+        std::optional<game::ProjectSettings> settings =
+            game::read_project(project.folder.path, issues);
+        REQUIRE(settings.has_value());
+        if (!settings) {
+            return;
+        }
+        settings->start_scene = "maps/room.dscene";
+        write_json(project.folder.path / game::project_file, game::project_to_json(*settings));
+        logic::LogicAsset rules;
+        rules.name = "room";
+        rules.rules.push_back(logic::Rule{logic::BlockId{1},
+                                          "old_chest",
+                                          "interacted",
+                                          {},
+                                          {ir::log(2, ir::event_value("who"))},
+                                          {}});
+        write_json(project.folder.path / "assets/logic/room.drules",
+                   serialize::logic_to_json(rules));
+    }
+    // The game is 32 x 32 at 8 pixels a tile, looking at the hero at (0, 0): the chest's
+    // area, (1..2, 0..1), is under pixel (28, 20).
+    input::Recording replay;
+    replay.record_pointer(2, input::Pointer{28.0, 20.0});
+    replay.record(2, input::Binding::mouse(input::MouseButton::Left), true);
+    replay.record(3, input::Binding::mouse(input::MouseButton::Left), false);
+    const auto runtime = project.open(no_graphics(&replay));
+    runtime->step();
+    runtime->step();
+    runtime->step();
+    CHECK(runtime->hud_value("pointing") == "old chest");
+    for (int i = 0; i < 90; ++i) {
+        runtime->step();
+    }
+    const std::vector<std::string>& log = runtime->log();
+    CHECK(std::count(log.begin(), log.end(), "hero") == 1);
+    const world::World& w = runtime->world();
+    const scene2d::Transform2D* hero = w.get<scene2d::Transform2D>(w.find_named("hero").at(0));
+    CHECK(std::hypot(hero->x - 1.5, hero->y - 1.0) <= 1.25 + 1e-6);
+}
+
 TEST_CASE("Links: a lever's events open a gate and say so; broken links are reported") {
     const Project project;
     {

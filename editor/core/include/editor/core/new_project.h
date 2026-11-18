@@ -23,6 +23,7 @@ enum class ProjectTemplate : std::uint8_t {
     Platformer,
     Rpg,
     Action,
+    Adventure,
 };
 
 /// Makes a new project named `name` in `folder`, which must not exist yet or be empty, and
@@ -51,6 +52,12 @@ enum class ProjectTemplate : std::uint8_t {
 /// by the player; a health bar; and assets/logic/meadow.drules: Attack (C) slashes, a
 /// slime beaten leaves gel, all three beaten says the meadow is safe, and the hero beaten
 /// wakes where it started (game.md, Health and combat).
+///
+/// Adventure: a point-and-click room (Point and Click, game.md): a locked door in the top
+/// wall, an old key on the floor and a painting; the hero walks where the mouse clicks and
+/// uses what it clicks; the name of what the mouse is over shows at the top; and
+/// assets/logic/room.drules, in which the key is picked up, the painting looked at, and
+/// the door opens only with the key.
 bool create_project(const std::filesystem::path& folder, std::string_view name, std::string& error,
                     ProjectTemplate kind = ProjectTemplate::TopDown2D);
 

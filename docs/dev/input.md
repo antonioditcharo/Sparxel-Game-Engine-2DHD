@@ -24,11 +24,23 @@ and the same game works with keyboard and gamepad without any extra logic.
 | `cancel` | X, Backspace | East (B / Circle) |
 | `attack` (action games: a sword, a shot) | C, J | West (X / Square) |
 | `menu` | Escape | Start |
+| `click` (pointing and clicking: Point and Click, [game.md](game.md); a click also turns a message's pages) | Left mouse button | |
 
 Keys are named by position on a US layout, so WASD stays under the same fingers on other
 layouts. `binding_name()` names a control as players read it (*Z*, *Enter*, *Up*, *Pad A*),
 and `InputState::pressed_bindings()` lists the controls that went down this step, for
 "press a key" while the player rebinds one on the game's Options page ([menus.md](menus.md)). Gamepad buttons are named by position (South, East, ...), not by label.
+
+**The mouse.** Its buttons are controls like keys (`Binding::mouse(MouseButton::Left)`,
+named *Left click*, *Right click*, *Middle click*), so they bind to actions and are
+rebound, recorded and replayed alike; a click never changes which device prompts name
+(they keep showing keys or pad buttons). Its position is the **pointer**
+(`InputState::pointer()`), in the game's own pixels whatever the window's size:
+`pump_events()` turns window points into them through the window's placement of the
+picture (`render::Window::to_image()`, `render::image_point()`: points on the letterbox
+round it are nothing), and recordings keep its moves (`Recording::record_pointer()`),
+replayed before the controls of the same step. Play in the editor sends the mouse the
+same way, through its own whole-number scale.
 
 ## 2. State per step
 

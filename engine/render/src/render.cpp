@@ -390,6 +390,38 @@ Window::~Window() {
     SDL_DestroyWindow(native_->window);
 }
 
+std::optional<std::array<double, 2>> image_point(const Placement& place, double x, double y,
+                                                 std::uint32_t image_width,
+                                                 std::uint32_t image_height) noexcept {
+    if (place.scale == 0 || !std::isfinite(x) || !std::isfinite(y)) {
+        return std::nullopt;
+    }
+    const double scale = static_cast<double>(place.scale);
+    const double ix = (x - static_cast<double>(place.x)) / scale;
+    const double iy = (y - static_cast<double>(place.y)) / scale;
+    if (ix < 0.0 || iy < 0.0 || ix >= static_cast<double>(image_width) ||
+        iy >= static_cast<double>(image_height)) {
+        return std::nullopt;
+    }
+    return std::array<double, 2>{ix, iy};
+}
+
+std::optional<std::array<double, 2>> Window::to_image(double x, double y, std::uint32_t image_width,
+                                                      std::uint32_t image_height) const {
+    // SDL gives the mouse in window points; the image is placed in pixels.
+    int points_w = 0;
+    int points_h = 0;
+    SDL_GetWindowSize(native_->window, &points_w, &points_h);
+    const std::uint32_t pixels_w = width();
+    const std::uint32_t pixels_h = height();
+    const double density_x =
+        points_w > 0 ? static_cast<double>(pixels_w) / static_cast<double>(points_w) : 1.0;
+    const double density_y =
+        points_h > 0 ? static_cast<double>(pixels_h) / static_cast<double>(points_h) : 1.0;
+    const Placement place = fit_integer(image_width, image_height, pixels_w, pixels_h);
+    return image_point(place, x * density_x, y * density_y, image_width, image_height);
+}
+
 std::uint32_t Window::width() const {
     int w = 0;
     int h = 0;

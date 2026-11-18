@@ -330,6 +330,18 @@ void register_behaviours(reflect::Registry& registry) {
         .display_name("Blocks only")
         .tooltip("Tags of the characters it stops, such as player; empty stops everyone.");
 
+    auto click = registry.add_type<PointAndClick>("point_and_click")
+                     .display_name("Point and Click")
+                     .category("Movement")
+                     .tooltip("The player walks where the mouse clicks, round walls, and to what "
+                              "it clicks to use it, as in adventure games.");
+    click.property<&PointAndClick::enabled>("enabled").tooltip("Off, clicks do nothing.");
+    click.property<&PointAndClick::reach>("reach")
+        .range(0.0, 16.0)
+        .step(0.25)
+        .unit(reflect::Unit::Tiles)
+        .tooltip("How near it walks to what it clicks before using it.");
+
     registry.add_type<Links>("links")
         .display_name("Links")
         .category("Events")
@@ -605,7 +617,8 @@ bool register_behaviour_components(world::World& world) {
                        world.register_component<MovingPlatform>() &&
                        world.register_component<Ladder>();
     const bool hud = register_hud_components(world);
-    const bool combat = register_combat_components(world) && world.register_component<Links>();
+    const bool combat = register_combat_components(world) && world.register_component<Links>() &&
+                        world.register_component<PointAndClick>();
     return mover && walker && particles && prefab && encounter && walk && body && trigger &&
            interactable && simulated && sound && jumping && enemy && hud && combat;
 }
@@ -906,6 +919,13 @@ void move_characters(world::World& world, const input::InputState& input, double
             mx = walker->step_dx;
             my = walker->step_dy;
             scale = std::clamp(walker->step_scale, 0.0, 1.0);
+        } else if (const PointAndClick* click = world.get<PointAndClick>(entity);
+                   click != nullptr && click->enabled && dx == 0.0 && dy == 0.0 &&
+                   (click->step_dx != 0.0 || click->step_dy != 0.0)) {
+            // Walking where the pointer clicked.
+            mx = click->step_dx;
+            my = click->step_dy;
+            scale = std::clamp(click->step_scale, 0.0, 1.0);
         }
         // Knocked back or defeated (Health): it does not walk or jump meanwhile.
         const Health* health = world.get<Health>(entity);

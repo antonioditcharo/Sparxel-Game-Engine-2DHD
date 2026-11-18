@@ -1355,6 +1355,85 @@ std::unique_ptr<Runtime> Runtime::open(const fs::path& root, const RuntimeOption
     return runtime;
 }
 
+namespace {
+
+/// What the game's camera shows: the flat camera, the Diorama's orbit about the same point,
+/// and the picture's width over its height, as frames are drawn.
+struct GameView {
+    scene2d::Camera2D flat;
+    scene2d::DioramaCamera orbit;
+    double aspect = 1.0;
+};
+
+GameView game_view(const Runtime::Impl& r) {
+    GameView out;
+    scene2d::Camera2D& camera = out.flat;
+    camera.ppu = r.settings.ppu;
+    // Reduced flashing: no shaking.
+    CameraObject steady = r.camera;
+    if (r.menu.options().reduced_flashing) {
+        steady.shake_left = 0.0;
+    }
+    const std::array<double, 2> view_at = camera_view(steady, *r.world, r.steps);
+    camera.x = view_at[0];
+    camera.y = view_at[1];
+    out.aspect = static_cast<double>(r.settings.width) /
+                 static_cast<double>(std::max<std::uint32_t>(r.settings.height, 1));
+    const double aspect = out.aspect;
+    scene2d::DioramaCamera& orbit = out.orbit;
+    orbit.pitch = r.settings.camera_pitch;
+    orbit.distance = r.settings.camera_distance;
+    orbit.fov = r.settings.camera_fov;
+    orbit.ppu = r.settings.ppu;
+    // Keep the view inside the map, so the void beyond its edges never shows.
+    if (r.settings.camera_clamp) {
+        if (const std::optional<scene2d::Box> bounds = scene2d::map_bounds(*r.world, camera.ppu)) {
+            scene2d::Box view;
+            if (r.settings.style == RenderStyle::Diorama) {
+                view = scene2d::diorama_view_extent(orbit, aspect);
+                // Deeper than the map: keep the near edge on it and let the far side, which
+                // reads as distance, show the background, rather than centring.
+                if (view.bottom - view.top > bounds->bottom - bounds->top) {
+                    view.top = -std::numeric_limits<double>::infinity();
+                }
+            } else {
+                const double ppu = static_cast<double>(std::max<std::uint32_t>(camera.ppu, 1));
+                const double half_width = static_cast<double>(r.settings.width) / ppu / 2.0;
+                const double half_height = static_cast<double>(r.settings.height) / ppu / 2.0;
+                view = scene2d::Box{-half_width, -half_height, half_width, half_height};
+            }
+            const std::array<double, 2> at = scene2d::clamp_view(camera.x, camera.y, view, *bounds);
+            camera.x = at[0];
+            camera.y = at[1];
+        }
+    }
+    orbit.x = camera.x;
+    orbit.y = camera.y;
+    return out;
+}
+
+/// The map point under the pointer, as the game's picture shows it; nothing without a
+/// pointer over the game, or above the Diorama's horizon.
+std::optional<std::array<double, 2>> pointer_point(const Runtime::Impl& r) {
+    const std::optional<input::Pointer>& pointer = r.state.pointer();
+    if (!pointer || r.world == nullptr) {
+        return std::nullopt;
+    }
+    const GameView view = game_view(r);
+    const double w = std::max(1.0, static_cast<double>(r.settings.width));
+    const double h = std::max(1.0, static_cast<double>(r.settings.height));
+    if (r.settings.style == RenderStyle::Diorama) {
+        return scene2d::ground_hit(scene2d::diorama_ray(view.orbit, static_cast<float>(view.aspect),
+                                                        (pointer->x / w * 2.0) - 1.0,
+                                                        1.0 - (pointer->y / h * 2.0)));
+    }
+    const double ppu = static_cast<double>(std::max<std::uint32_t>(r.settings.ppu, 1));
+    return std::array<double, 2>{view.flat.x + ((pointer->x - (w / 2.0)) / ppu),
+                                 view.flat.y + ((pointer->y - (h / 2.0)) / ppu)};
+}
+
+} // namespace
+
 void Runtime::step() {
     Impl& r = *impl_;
     const Timing timing(r.step_ms);
@@ -1363,7 +1442,15 @@ void Runtime::step() {
     if (r.replay != nullptr) {
         r.replay->replay(r.steps, r.state);
     } else if (r.window != nullptr) {
-        r.keep_running = input::pump_events(r.state) && r.keep_running;
+        // The mouse, in the game's pixels, wherever the picture sits in the window.
+        const input::WindowToGame to_game = [&r](double x,
+                                                 double y) -> std::optional<input::Pointer> {
+            const std::optional<std::array<double, 2>> at =
+                r.window->to_image(x, y, r.settings.width, r.settings.height);
+            return at ? std::optional<input::Pointer>(input::Pointer{(*at)[0], (*at)[1]})
+                      : std::nullopt;
+        };
+        r.keep_running = input::pump_events(r.state, nullptr, 0, to_game) && r.keep_running;
     }
 
     r.menu.advance(r.clock.step_seconds());
@@ -1529,6 +1616,16 @@ void Runtime::step() {
 
     // 2. Movement, with walls, bodies and walk animations; then trigger areas.
     const double dt = r.clock.step_seconds();
+    // Point and Click: a click walks the player there, or to what was clicked.
+    std::vector<std::pair<world::Entity, world::Entity>> clicked_to;
+    if (&moves == &r.state) {
+        if (r.state.pressed("click")) {
+            if (const std::optional<std::array<double, 2>> at = pointer_point(r)) {
+                click_to_walk(*r.world, (*at)[0], (*at)[1], r.settings.ppu);
+            }
+        }
+        clicked_to = steer_point_and_click(*r.world, dt, r.state);
+    }
     std::vector<std::pair<world::Entity, bool>> sightings;
     const std::vector<world::Entity> arrived = steer_walkers(
         *r.world, dt, r.settings.ppu, talking || r.fading != Impl::Fade::None, &sightings);
@@ -1539,6 +1636,12 @@ void Runtime::step() {
     }
     for (const auto& [entity, seen] : sightings) {
         emit(*r.vm, *r.world, entity, seen ? "spotted" : "lost_sight");
+    }
+    for (const auto& [mover, thing] : clicked_to) {
+        const std::vector<std::string> who = names_of(*r.world, mover);
+        const std::array<reflect::Value, 1> by{
+            reflect::Value{who.empty() ? std::string() : who.back()}};
+        emit(*r.vm, *r.world, thing, "interacted", by);
     }
     update_camera(r.camera, *r.world, dt);
     // Encounters: the distance the player walked counts inside Encounter Areas.
@@ -1603,8 +1706,11 @@ void Runtime::step() {
 
     // 3. Events: each pressed action runs the Rules listening for it. Interact also
     //    reaches what each mover faces, in mover GUID order.
-    for (const std::string& action :
+    for (const std::string& pressed :
          rebound ? std::vector<std::string>{} : r.state.pressed_actions()) {
+        // A click turns a message's pages, and picks its answers, as Interact does.
+        const std::string action =
+            r.dialogue.is_open() && pressed == "click" ? std::string("interact") : pressed;
         // The debug menu, while testing, takes every press.
         if (r.debug_menu.is_open()) {
             r.debug_menu.press(action);
@@ -2082,45 +2188,10 @@ bool Runtime::draw() {
     }
     // The camera rig: the player (the first Top-down Mover not walking by itself), or what
     // logic told it to follow or look at, shaken; else the origin.
-    scene2d::Camera2D camera;
-    camera.ppu = r.settings.ppu;
-    // Reduced flashing: no shaking.
-    CameraObject steady = r.camera;
-    if (r.menu.options().reduced_flashing) {
-        steady.shake_left = 0.0;
-    }
-    const std::array<double, 2> view_at = camera_view(steady, *r.world, r.steps);
-    camera.x = view_at[0];
-    camera.y = view_at[1];
-    const double aspect = static_cast<double>(r.target->width()) /
-                          static_cast<double>(std::max<std::uint32_t>(r.target->height(), 1));
-    scene2d::DioramaCamera orbit;
-    orbit.pitch = r.settings.camera_pitch;
-    orbit.distance = r.settings.camera_distance;
-    orbit.fov = r.settings.camera_fov;
-    orbit.ppu = r.settings.ppu;
-    // Keep the view inside the map, so the void beyond its edges never shows.
-    if (r.settings.camera_clamp) {
-        if (const std::optional<scene2d::Box> bounds = scene2d::map_bounds(*r.world, camera.ppu)) {
-            scene2d::Box view;
-            if (r.settings.style == RenderStyle::Diorama) {
-                view = scene2d::diorama_view_extent(orbit, aspect);
-                // Deeper than the map: keep the near edge on it and let the far side, which
-                // reads as distance, show the background, rather than centring.
-                if (view.bottom - view.top > bounds->bottom - bounds->top) {
-                    view.top = -std::numeric_limits<double>::infinity();
-                }
-            } else {
-                const double ppu = static_cast<double>(std::max<std::uint32_t>(camera.ppu, 1));
-                const double half_width = static_cast<double>(r.target->width()) / ppu / 2.0;
-                const double half_height = static_cast<double>(r.target->height()) / ppu / 2.0;
-                view = scene2d::Box{-half_width, -half_height, half_width, half_height};
-            }
-            const std::array<double, 2> at = scene2d::clamp_view(camera.x, camera.y, view, *bounds);
-            camera.x = at[0];
-            camera.y = at[1];
-        }
-    }
+    const GameView seen = game_view(r);
+    scene2d::Camera2D camera = seen.flat;
+    scene2d::DioramaCamera orbit = seen.orbit;
+    const double aspect = seen.aspect;
     // A look that comes to need processing while playing (night falls): its pass, now.
     if (r.post == nullptr &&
         !effective_look(r.settings, r.lighting, r.menu.options().graphics).neutral()) {
@@ -3105,6 +3176,15 @@ std::string Runtime::hud_value(std::string_view name) const {
     if (kind == "timer") {
         return std::to_string(
             static_cast<int>(std::ceil(r.save_object.time_left(std::string(of)))));
+    }
+    if (kind == "pointing") {
+        // The name of what the pointer is over, in words: "old_door" reads "old door".
+        const std::optional<std::array<double, 2>> at = pointer_point(r);
+        const world::Entity thing =
+            at ? interactable_at(*r.world, (*at)[0], (*at)[1]) : world::Entity{};
+        std::string words = thing.is_valid() ? std::string(r.world->name(thing)) : std::string();
+        std::replace(words.begin(), words.end(), '_', ' ');
+        return words;
     }
     if (kind == "health" || kind == "max_health") {
         // An object's Health, by name.

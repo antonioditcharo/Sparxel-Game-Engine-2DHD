@@ -1128,3 +1128,49 @@ TEST_CASE("Links read as event, object, what it does, and a value") {
         CHECK(error.starts_with("Line 2: a link reads"));
     }
 }
+
+TEST_CASE("Point and Click: the player walks where clicked, round walls, and to what it uses") {
+    Fixture f;
+    build_room(f);
+    f.at(f.hero) = scene2d::Transform2D{2.5, 3.75};
+    f.w->add<game::PointAndClick>(f.hero);
+    const auto walk = [&](int steps) {
+        std::vector<std::pair<world::Entity, world::Entity>> reached;
+        for (int i = 0; i < steps; ++i) {
+            f.state.begin_step();
+            for (const auto& pair : game::steer_point_and_click(*f.w, 1.0 / 60.0, f.state)) {
+                reached.push_back(pair);
+            }
+            game::move_characters(*f.w, f.state, 1.0 / 60.0, 16);
+        }
+        return reached;
+    };
+    // Across the middle wall: the way goes round its foot.
+    REQUIRE(game::click_to_walk(*f.w, 8.5, 3.75, 16));
+    walk(6 * 60);
+    CHECK(std::abs(f.at(f.hero).x - 8.5) < 0.05);
+    CHECK(std::abs(f.at(f.hero).y - 3.75) < 0.05);
+    // A chest: walked up to, within reach, turned to, and used once.
+    const world::Entity chest = f.place("chest", 8.5, 6.5);
+    f.w->add<game::Interactable>(chest);
+    CHECK(game::interactable_at(*f.w, 8.6, 6.0) == chest);
+    CHECK_FALSE(game::interactable_at(*f.w, 3.0, 3.0).is_valid());
+    REQUIRE(game::click_to_walk(*f.w, 8.6, 6.0, 16));
+    const auto reached = walk(3 * 60);
+    REQUIRE(reached.size() == 1);
+    CHECK(reached[0].first == f.hero);
+    CHECK(reached[0].second == chest);
+    CHECK(std::hypot(f.at(f.hero).x - 8.5, f.at(f.hero).y - 6.5) <= 1.25 + 1e-6);
+    CHECK(f.w->get<game::TopDownMover>(f.hero)->facing == game::Facing::Down);
+    // The keys end a walk.
+    REQUIRE(game::click_to_walk(*f.w, 2.5, 3.75, 16));
+    walk(10);
+    f.state.begin_step();
+    f.state.set(input::Binding::key(input::Key::Up), true);
+    CHECK(game::steer_point_and_click(*f.w, 1.0 / 60.0, f.state).empty());
+    CHECK(f.w->get<game::PointAndClick>(f.hero)->path.empty());
+    f.state.set(input::Binding::key(input::Key::Up), false);
+    // Off, clicks do nothing.
+    f.w->get<game::PointAndClick>(f.hero)->enabled = false;
+    CHECK_FALSE(game::click_to_walk(*f.w, 2.5, 3.75, 16));
+}

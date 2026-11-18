@@ -657,6 +657,191 @@ bool write_rpg_files(const fs::path& assets_folder) {
            write_png(assets_folder / "art" / "panel.png", panel_frame());
 }
 
+/// A wooden door in a stone frame, a tile wide and tall, its handle on the right.
+assets::Image door() {
+    assets::Image image;
+    image.width = tile;
+    image.height = tile;
+    image.rgba.assign(std::size_t{tile} * tile * 4, 0);
+    for (std::uint32_t y = 0; y < tile; ++y) {
+        for (std::uint32_t x = 0; x < tile; ++x) {
+            const bool frame = x < 2 || x > 13 || y < 2;
+            const bool plank = x % 4 == 1;
+            put(image, x, y,
+                frame   ? Rgb{120, 122, 132}
+                : plank ? Rgb{110, 70, 40}
+                        : Rgb{140, 92, 52});
+        }
+    }
+    put(image, 11, 9, Rgb{230, 200, 90});
+    return image;
+}
+
+/// An old iron key lying on the floor.
+assets::Image old_key() {
+    assets::Image image;
+    image.width = tile;
+    image.height = tile;
+    image.rgba.assign(std::size_t{tile} * tile * 4, 0);
+    constexpr Rgb iron{150, 140, 120};
+    for (std::uint32_t x = 3; x <= 12; ++x) {
+        put(image, x, 12, iron); // the shank
+    }
+    for (const auto& [x, y] : std::array<std::array<std::uint32_t, 2>, 8>{
+             {{2, 10}, {3, 10}, {1, 11}, {4, 11}, {1, 13}, {4, 13}, {2, 14}, {3, 14}}}) {
+        put(image, x, y, iron); // the bow
+    }
+    put(image, 11, 13, iron); // the bit
+    put(image, 12, 13, iron);
+    put(image, 12, 14, iron);
+    return image;
+}
+
+/// A painting in a gold frame, hung on the wall.
+assets::Image painting() {
+    assets::Image image;
+    image.width = tile;
+    image.height = tile;
+    image.rgba.assign(std::size_t{tile} * tile * 4, 0);
+    for (std::uint32_t y = 2; y < 14; ++y) {
+        for (std::uint32_t x = 2; x < 14; ++x) {
+            const bool frame = x < 4 || x > 11 || y < 4 || y > 11;
+            const bool face = (x - 8) * (x - 8) + (y - 7) * (y - 7) <= 6;
+            put(image, x, y,
+                frame  ? Rgb{200, 160, 60}
+                : face ? Rgb{220, 180, 150}
+                       : Rgb{60, 70, 110});
+        }
+    }
+    return image;
+}
+
+/// The adventure's room, 20 by 11 tiles so all of it shows: `fill` everywhere, or only the
+/// walls round it.
+std::string room_tiles(std::int32_t fill, bool walls_only) {
+    constexpr std::uint32_t rows = 11;
+    scene2d::TileGrid grid;
+    grid.width = map_width;
+    grid.height = rows;
+    grid.cells.assign(std::size_t{map_width} * rows, walls_only ? -1 : fill);
+    for (std::uint32_t y = 0; y < rows; ++y) {
+        for (std::uint32_t x = 0; x < map_width; ++x) {
+            if (walls_only && (x == 0 || y == 0 || x + 1 == map_width || y + 1 == rows)) {
+                grid.cells[(std::size_t{y} * map_width) + x] = fill;
+            }
+        }
+    }
+    return scene2d::format_tiles(grid);
+}
+
+/// The adventure's logic: the key picked up, the painting looked at, the door opened with
+/// the key only.
+engine::serialize::Json room_rules() {
+    namespace logic = engine::logic;
+    namespace ir = engine::logic::ir;
+    using engine::reflect::Value;
+    const auto text = [](const char* words) { return ir::literal(Value{std::string(words)}); };
+    logic::LogicAsset rules;
+    rules.name = "room";
+    std::uint64_t block = 1;
+    rules.rules.push_back(
+        logic::Rule{logic::BlockId{block++},
+                    "old_key",
+                    "interacted",
+                    {},
+                    {ir::do_action(block++, "inventory", "give",
+                                   {text("key"), ir::literal(Value{std::int64_t{1}})}),
+                     ir::set(block++, "old_key", "visible", ir::literal(Value{false})),
+                     ir::set(block++, "old_key", "enabled", ir::literal(Value{false})),
+                     ir::do_action(block++, "dialogue", "say", {text("You pick up the old key.")})},
+                    {}});
+    rules.rules.push_back(
+        logic::Rule{logic::BlockId{block++},
+                    "painting",
+                    "interacted",
+                    {},
+                    {ir::do_action(block++, "dialogue", "say",
+                                   {text("A stern face. Its eyes seem to look at the floor.")})},
+                    {}});
+    {
+        logic::Rule rule;
+        rule.id = logic::BlockId{block++};
+        rule.object = "door";
+        rule.event = "interacted";
+        const std::uint64_t test = block++;
+        rule.actions.push_back(ir::if_then(
+            test,
+            ir::call("inventory", "has_at_least",
+                     {text("key"), ir::literal(Value{std::int64_t{1}})}),
+            {ir::do_action(block++, "dialogue", "say",
+                           {text("The key turns. The door creaks open: you are free!")})},
+            {ir::do_action(block++, "dialogue", "say",
+                           {text("It is locked. There must be a key somewhere.")})}));
+        rules.rules.push_back(std::move(rule));
+    }
+    return serialize::logic_to_json(rules);
+}
+
+/// create_project() for an adventure, into its folders, made already, with its tiles.
+bool create_adventure(const fs::path& folder, std::string_view name, std::string& error,
+                      const std::string& tileset_id, const std::string& hero_id) {
+    const fs::path assets_folder = folder / "assets";
+    std::error_code failed;
+    fs::create_directories(assets_folder / "logic", failed);
+    if (failed || !write_png(assets_folder / "art" / "door.png", door()) ||
+        !write_png(assets_folder / "art" / "old_key.png", old_key()) ||
+        !write_png(assets_folder / "art" / "painting.png", painting()) ||
+        !write_text(assets_folder / "logic" / "room.drules", serialize::to_text(room_rules()))) {
+        error = "The project's folder could not be written to.";
+        return false;
+    }
+    assets::AssetDatabase database(assets_folder);
+    database.refresh();
+    const auto picture = [&database](const char* path) {
+        const assets::AssetRecord* record = database.find(path);
+        return record != nullptr ? record->guid.to_string() : std::string();
+    };
+    serialize::Json entities = serialize::Json::array();
+    entities.push_back(
+        entity("floor", {{"tilemap", {{"tiles", room_tiles(1, false)}, {"tileset", tileset_id}}},
+                         {"transform_2d", {{"layer", -2}, {"x", 0.0}, {"y", 0.0}}}}));
+    entities.push_back(entity(
+        "walls",
+        {{"tilemap", {{"tiles", room_tiles(2, true)}, {"tileset", tileset_id}, {"solid", true}}},
+         {"transform_2d", {{"layer", -1}, {"x", 0.0}, {"y", 0.0}}}}));
+    entities.push_back(entity("hero", {{"sprite", {{"image", hero_id}}},
+                                       {"top_down_mover", {{"speed", 3.0}}},
+                                       {"point_and_click", serialize::Json::object()},
+                                       {"transform_2d", {{"x", 10.0}, {"y", 7.0}}}}));
+    // In the top wall, to be walked up to; on the floor; on the wall.
+    entities.push_back(entity("door", {{"sprite", {{"image", picture("art/door.png")}}},
+                                       {"interactable", serialize::Json::object()},
+                                       {"transform_2d", {{"x", 10.5}, {"y", 1.0}}}}));
+    entities.push_back(entity("old_key", {{"sprite", {{"image", picture("art/old_key.png")}}},
+                                          {"interactable", serialize::Json::object()},
+                                          {"transform_2d", {{"x", 4.5}, {"y", 9.0}}}}));
+    entities.push_back(entity("painting", {{"sprite", {{"image", picture("art/painting.png")}}},
+                                           {"interactable", serialize::Json::object()},
+                                           {"transform_2d", {{"x", 15.5}, {"y", 1.0}}}}));
+    // What the mouse is over, at the top.
+    entities.push_back(entity(
+        "pointing", {{"screen_text", {{"text", "{pointing}"}, {"anchor", "top"}, {"y", 3.0}}}}));
+    const serialize::Json scene{
+        {"format", "sparxel.scene"}, {"version", 1}, {"entities", std::move(entities)}};
+    engine::game::ProjectSettings settings;
+    settings.name = std::string(name);
+    settings.start_scene = "maps/start.dscene";
+    settings.pause_menu = true;
+    if (!write_text(assets_folder / "maps" / "start.dscene", serialize::to_text(scene)) ||
+        !write_text(folder / "project.sparxel.json",
+                    serialize::to_text(engine::game::project_to_json(settings)))) {
+        error = "The project's files could not be written.";
+        return false;
+    }
+    database.refresh();
+    return true;
+}
+
 /// The action game's hero, three 32 x 32 frames: standing, then a sword swept round it (a
 /// ring three-quarters drawn, then whole and paler). The hero stands at the bottom middle.
 assets::Image fighter() {
@@ -925,6 +1110,9 @@ bool create_project(const fs::path& folder, std::string_view name, std::string& 
     }
     if (kind == ProjectTemplate::Action) {
         return create_action(folder, name, error, tileset_id);
+    }
+    if (kind == ProjectTemplate::Adventure) {
+        return create_adventure(folder, name, error, tileset_id, hero_id);
     }
     const bool rpg = kind == ProjectTemplate::Rpg;
     if (rpg && !write_rpg_files(folder / "assets")) {

@@ -414,6 +414,22 @@ across. The map's edges still stop the view (*Stay inside the map*), after all o
 Events are sent in a fixed order (exits before entries, then by trigger and mover GUID),
 so a replay always runs Rules in the same order.
 
+### Point and Click
+
+**Point and Click** (`point_and_click`, `plan/02` F6, as Adventure Game Studio plays) on
+the player's Top-down Mover: a **click** (the left mouse button) on the map walks it there,
+round walls and Solid Bodies (`find_path()`); a click on an **Interactable** walks it near
+and then uses it, as Interact would: it turns to it, and the Interactable says
+**"interacted"** with it as `who`. *Reach* (`reach`, 1.25 tiles) is how near is near
+enough; something set in a wall or on a table is walked up to from the nearest tile beside
+it that can be reached (below it first), and arriving there is near enough. The move keys
+still walk it, and end a walk; a click while a message is open turns its pages instead.
+The map point under the pointer is found from the camera as the frame is drawn, in either
+style (in the Diorama style, where the pointer's ray meets the ground). **What the pointer
+is over** shows with the HUD value `{pointing}`: the Interactable's name in words
+(*old_key* reads *old key*), empty over nothing, for an adventure's *Look at …* line.
+(`click_to_walk()`, `steer_point_and_click()`, `interactable_at()`.)
+
 ### Health and combat
 
 **Health** (`health`, combat.h) is what hit boxes take away: the boxes drawn per frame in
@@ -764,6 +780,7 @@ named by path (`maps/cave.dscene`) or GUID.
 | Falling and jumping | `fall()` on its own: pressed against the floor it is on the ground; a jump rises between 2.8 and 3 tiles and lands in 44 to 48 steps (0.77 s); held, it does not jump again in the air; a ceiling a tile up stops the rise and it falls back; it falls no faster than 20 tiles a second; gravity that is not a number moves nothing. In a world: a hero with Jumping falls onto a solid floor and stands on it; Down does nothing; Right walks 2 tiles in half a second facing right; Space and Up jump it off the floor and it lands again; it lands on a Solid Body's top and falls back to the floor walking off it; disabled, it neither walks nor jumps but still falls |
 | Slopes | A hero walking right up a slope onto the ground a tile up, standing on it, and back down onto the floor, on the ground at every step |
 | Health and combat | A rock that is not an enemy hurts nothing; a slime tagged enemy takes 2, makes the hero safe (a second hit does nothing) and pushes it exactly a tile away in 0.15 s, the keys not moving it meanwhile, then walking again; it blinks, and its alpha is as it was after; the flash starts at the hurt and is gone 0.12 s later; the next hit defeats it: half dissolved after 0.2 s, hidden and whole after 0.4, no knockback, not walking, and a defeated hero hurts nothing; revived, it is shown at full health; spikes with no Health take 1; healing stops at the most; NaN and negative hurts change nothing; tag lists. Knockback stops exactly at a wall. In a running game, one hit on a slime with 1 health: "hit" and "hits" once, "hurt" before "defeated", and the slime hidden |
+| Point and Click | Clicked across the middle wall, the hero walks round its foot to the point; a chest found under a point and nothing elsewhere; clicked, the chest is walked up to within reach, turned to (facing down) and used once; the move keys end a walk; turned off, clicks do nothing. In a running game, a recorded pointer over the chest names it *old chest*, and a click walks the hero within reach and its Rule hears the hero |
 | Scripts | A script's *game_start* function logs and sets the hero's speed to 7 as the game starts, and its *elder.interacted* function logs who talked; a script that does not compile is one issue, at its file and line, and the Rules still run |
 | Links | Read: three links with a comment, spaces and a blank line, one with no value; an empty text; five lines that are not links, each said with its line. In a running game: a lever's two links, when it is interacted with, turn the gate's body off and show *The gate opens.*; another scene's plate whose third line cannot be read, and a bell with no *entered* event, each told by name and nothing else told; a plate's link to an action the gate does not have and one with *maybe* for a yes or no, told exactly, while its good link turns the gate back on when left |
 | Reduced flashing | A hurt with flashes off changes neither the flash nor the alpha for a second, and hurts all the same |

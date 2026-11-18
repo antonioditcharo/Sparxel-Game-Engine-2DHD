@@ -84,6 +84,8 @@ InputMap InputMap::rpg_preset() {
     // For action games: a sword, a shot.
     both("attack", {Key::C, Key::J}, {Button::West});
     both("menu", {Key::Escape}, {Button::Start});
+    // Pointing and clicking (adventure games, menus): the left mouse button.
+    map.bind("click", Binding::mouse(MouseButton::Left));
     return map;
 }
 
@@ -111,7 +113,9 @@ bool InputState::held_by_controls(std::string_view action) const {
 void InputState::set(Binding binding, bool down) {
     if (down && !down_.contains(binding)) {
         newly_down_.push_back(binding);
-        last_device_ = binding.device;
+        if (binding.device != Binding::Device::Mouse) {
+            last_device_ = binding.device; // prompts show keys or pad buttons, not clicks
+        }
     }
     if (down == down_.contains(binding)) {
         return; // a repeat
@@ -175,7 +179,16 @@ void Recording::record(std::uint64_t step, Binding binding, bool down) {
     changes_.push_back(Change{step, binding, down});
 }
 
+void Recording::record_pointer(std::uint64_t step, Pointer at) {
+    pointer_moves_.emplace_back(step, at);
+}
+
 void Recording::replay(std::uint64_t step, InputState& state) const {
+    for (const auto& [when, at] : pointer_moves_) {
+        if (when == step) {
+            state.set_pointer(at);
+        }
+    }
     const auto first =
         std::lower_bound(changes_.begin(), changes_.end(), step,
                          [](const Change& change, std::uint64_t s) { return change.step < s; });
@@ -219,6 +232,11 @@ void register_types(reflect::Registry& registry) {
 }
 
 std::string binding_name(Binding binding) {
+    if (binding.device == Binding::Device::Mouse) {
+        static constexpr std::array<std::string_view, 3> buttons{"Left click", "Right click",
+                                                                 "Middle click"};
+        return binding.code < buttons.size() ? std::string(buttons.at(binding.code)) : "Mouse ?";
+    }
     if (binding.device == Binding::Device::Gamepad) {
         static constexpr std::array<std::string_view, 14> buttons{
             "Pad A",  "Pad B",  "Pad X",    "Pad Y",    "Pad Back",  "Pad Start", "Pad LB",

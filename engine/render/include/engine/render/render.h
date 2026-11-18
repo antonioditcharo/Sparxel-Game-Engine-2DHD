@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -125,6 +126,12 @@ struct Placement {
                                     std::uint32_t window_width,
                                     std::uint32_t window_height) noexcept;
 
+/// The point of an image placed by `place` under the window pixel (x, y), in the image's
+/// pixels; nothing outside the image of `image_width` x `image_height`.
+[[nodiscard]] std::optional<std::array<double, 2>> image_point(const Placement& place, double x,
+                                                               double y, std::uint32_t image_width,
+                                                               std::uint32_t image_height) noexcept;
+
 /// A window the game is shown in.
 class Window {
 public:
@@ -142,6 +149,11 @@ public:
     /// false, with the device's last_error() set, if presenting failed. A minimised window
     /// shows nothing and returns true.
     bool present(const RenderTarget& image, Color letterbox);
+    /// The point of an image of `image_width` x `image_height` presented here (as present()
+    /// places it) under the window point (x, y), as SDL gives the mouse, in the image's
+    /// pixels; nothing outside the image.
+    [[nodiscard]] std::optional<std::array<double, 2>>
+    to_image(double x, double y, std::uint32_t image_width, std::uint32_t image_height) const;
 
     struct Native;
 

@@ -75,7 +75,8 @@ namespace {
 
 } // namespace
 
-bool pump_events(InputState& state, Recording* recording, std::uint64_t step) {
+bool pump_events(InputState& state, Recording* recording, std::uint64_t step,
+                 const WindowToGame& to_game) {
     static const bool gamepads = SDL_InitSubSystem(SDL_INIT_GAMEPAD);
     (void)gamepads; // Without gamepad support, keyboards still work.
     const auto apply = [&](Binding binding, bool down) {
@@ -100,6 +101,36 @@ bool pump_events(InputState& state, Recording* recording, std::uint64_t step) {
                 }
             }
             break;
+        case SDL_EVENT_MOUSE_MOTION:
+            if (to_game) {
+                if (const std::optional<Pointer> at = to_game(event.motion.x, event.motion.y)) {
+                    state.set_pointer(*at);
+                    if (recording != nullptr) {
+                        recording->record_pointer(step, *at);
+                    }
+                }
+            }
+            break;
+        case SDL_EVENT_MOUSE_BUTTON_DOWN:
+        case SDL_EVENT_MOUSE_BUTTON_UP: {
+            if (to_game) {
+                if (const std::optional<Pointer> at = to_game(event.button.x, event.button.y)) {
+                    state.set_pointer(*at);
+                    if (recording != nullptr) {
+                        recording->record_pointer(step, *at);
+                    }
+                }
+            }
+            const std::optional<MouseButton> button =
+                event.button.button == SDL_BUTTON_LEFT     ? std::optional(MouseButton::Left)
+                : event.button.button == SDL_BUTTON_RIGHT  ? std::optional(MouseButton::Right)
+                : event.button.button == SDL_BUTTON_MIDDLE ? std::optional(MouseButton::Middle)
+                                                           : std::nullopt;
+            if (button) {
+                apply(Binding::mouse(*button), event.type == SDL_EVENT_MOUSE_BUTTON_DOWN);
+            }
+            break;
+        }
         case SDL_EVENT_GAMEPAD_ADDED:
             SDL_OpenGamepad(event.gdevice.which);
             break;
