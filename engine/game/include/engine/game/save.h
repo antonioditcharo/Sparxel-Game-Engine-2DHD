@@ -9,6 +9,7 @@
 
 #include "engine/foundation/reflect.h"
 
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -165,6 +166,21 @@ public:
     }
     using TagCheck = std::function<bool(std::string_view object, std::string_view tag)>;
     void set_tag_check(TagCheck check) { tag_check_ = std::move(check); }
+    /// Whether `object` can see `other` (names or GUIDs): nothing solid on the straight
+    /// line between their middles, half a tile above each one's feet. False if either is
+    /// missing. The runtime answers it, as a raycast.
+    [[nodiscard]] bool can_see(const std::string& object, const std::string& other) const;
+    /// How many tiles apart two objects' positions are; -1 if either is missing.
+    [[nodiscard]] double distance(const std::string& object, const std::string& other) const;
+    /// Where an object is, by name or GUID; nothing if there is no such object.
+    using PlaceOf = std::function<std::optional<std::array<double, 2>>(std::string_view object)>;
+    /// Whether nothing solid lies on the line from one point to another.
+    using ClearLine =
+        std::function<bool(const std::array<double, 2>& from, const std::array<double, 2>& to)>;
+    void set_world_queries(PlaceOf place_of, ClearLine clear_line) {
+        place_of_ = std::move(place_of);
+        clear_line_ = std::move(clear_line);
+    }
     void set_last_created(std::string name) { last_created_ = std::move(name); }
     /// The save folder; empty if there is none.
     [[nodiscard]] std::filesystem::path folder() const;
@@ -186,6 +202,8 @@ private:
     std::string scene_path_;
     std::string scene_guid_;
     TagCheck tag_check_;
+    PlaceOf place_of_;
+    ClearLine clear_line_;
 };
 
 /// Registers SaveObject as "game".

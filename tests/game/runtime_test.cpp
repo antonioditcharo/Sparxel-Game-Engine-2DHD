@@ -27,6 +27,7 @@
 #include <ostream>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -5009,6 +5010,73 @@ TEST_CASE("Screen Layouts: children's elements in a column, a row or a grid") {
     CHECK(pixel(pixels, 64, 50, 4) == render::Color{0, 255, 0, 255});
     CHECK(pixel(pixels, 64, 50, 11) == render::Color{0, 0, 255, 255});
     CHECK_FALSE(pixel(pixels, 64, 50, 32) == render::Color{0, 255, 0, 255}); // not its own
+}
+
+TEST_CASE("Rules ask whether one object can see another past walls, and how far apart") {
+    const Project project;
+    {
+        reflect::Registry registry;
+        game::register_types(registry);
+        world::World w(registry);
+        REQUIRE(scene2d::register_components(w));
+        REQUIRE(game::register_behaviour_components(w));
+        // A wall down column 3, from the top to row 4; open below it.
+        const world::Entity walls = w.create("walls");
+        w.add<scene2d::Transform2D>(walls);
+        scene2d::Tilemap* map = w.add<scene2d::Tilemap>(walls);
+        map->solid = true;
+        map->tiles = ",,,0,,,,\n,,,0,,,,\n,,,0,,,,\n,,,0,,,,\n,,,0,,,,\n,,,,,,,\n,,,,,,,";
+        for (const auto& [name, x, y] :
+             {std::tuple{"guard", 1.0, 3.0}, std::tuple{"hero", 6.0, 3.0},
+              std::tuple{"thief", 1.0, 6.0}}) {
+            const world::Entity e = w.create(name);
+            scene2d::Transform2D* at = w.add<scene2d::Transform2D>(e);
+            at->x = x;
+            at->y = y;
+        }
+        write_json(project.folder.path / "assets/maps/watch.dscene", serialize::scene_to_json(w));
+        std::vector<serialize::Issue> issues;
+        std::optional<game::ProjectSettings> settings =
+            game::read_project(project.folder.path, issues);
+        REQUIRE(settings.has_value());
+        if (!settings) {
+            return;
+        }
+        settings->start_scene = "maps/watch.dscene";
+        write_json(project.folder.path / game::project_file, game::project_to_json(*settings));
+        const auto sees = [](const char* a, const char* b) {
+            return ir::call("game", "can_see", {Project::text(a), Project::text(b)});
+        };
+        logic::LogicAsset rules;
+        rules.name = "watch";
+        rules.rules.push_back(logic::Rule{
+            logic::BlockId{1},
+            "",
+            "game_start",
+            {},
+            {ir::if_then(2, sees("guard", "hero"), {ir::log(3, Project::text("sees the hero"))},
+                         {ir::log(4, Project::text("not the hero"))}),
+             ir::if_then(5, sees("guard", "thief"), {ir::log(6, Project::text("sees the thief"))},
+                         {}),
+             ir::if_then(7, sees("guard", "nobody"), {ir::log(8, Project::text("a ghost"))}, {}),
+             ir::log(9,
+                     ir::call("game", "distance", {Project::text("guard"), Project::text("hero")})),
+             ir::log(10, ir::call("game", "distance",
+                                  {Project::text("guard"), Project::text("nobody")}))},
+            {}});
+        write_json(project.folder.path / "assets/logic/watch.drules",
+                   serialize::logic_to_json(rules));
+    }
+    const auto runtime = project.open(no_graphics(nullptr));
+    runtime->step();
+    const std::vector<std::string>& log = runtime->log();
+    CAPTURE(log.size());
+    CHECK(std::count(log.begin(), log.end(), "not the hero") == 1);
+    CHECK(std::count(log.begin(), log.end(), "sees the hero") == 0);
+    CHECK(std::count(log.begin(), log.end(), "sees the thief") == 1);
+    CHECK(std::count(log.begin(), log.end(), "a ghost") == 0);
+    CHECK(std::count(log.begin(), log.end(), "5") == 1);
+    CHECK(std::count(log.begin(), log.end(), "-1") == 1);
 }
 
 TEST_CASE("Hit boxes in a running game: Rules hear a hit as it lands, once, and it hurts") {

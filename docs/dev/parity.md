@@ -25,10 +25,10 @@
 | F. Genre kits | 4 | 0 | 2 |
 | G. Story | 4 | 2 | 1 (+1 later) |
 | H. Characters | 3 | 2 | 0 |
-| I. Physics | 2 | 3 | 0 |
+| I. Physics | 3 | 2 | 0 |
 | J. Audio | 2 | 4 | 0 (+1 later) |
 | K. UI | 3 | 4 | 0 |
-| **All** | **35** | **50** | **17** (+6 later) |
+| **All** | **36** | **49** | **17** (+6 later) |
 
 The strongest areas match or pass their references: the RPG kit and window skins (RPG
 Maker), auto-tiles and tile variants (RPG Maker, LDtk), no-code Rules with tags, *it*,
@@ -174,7 +174,7 @@ action kits (GameMaker), audio mixing (zones, reverb), and team features.
 | I1 | Collision | Tiled, Godot | **Partial**: solid tiles, half tiles, slopes, bodies; no sprite-alpha shapes |
 | I2 | Collision layers | Godot | **Done**: by the tags objects already have: Solid Bodies that block only some, Trigger Areas that notice only some, Health hurt only by some |
 | I3 | Character controllers | Godot | **Partial**: top-down and side-view movers |
-| I4 | Triggers and overlaps | Construct | **Partial**: trigger areas, touches, hit and hurt boxes, *is tagged*, line of sight for Walkers; no raycasts in logic |
+| I4 | Triggers and overlaps | Construct | **Done**: trigger areas, touches, hit and hurt boxes, *is tagged*, *can see* (a raycast past solid tiles) and *distance* in Rules, line of sight for Walkers |
 | I5 | Rigid-body props | Godot | **Done**: Box2D bodies to push, fall and bounce |
 
 ## J. Audio

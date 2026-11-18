@@ -102,6 +102,31 @@ void SaveObject::unlock(const std::string& name) {
     }
 }
 
+bool SaveObject::can_see(const std::string& object, const std::string& other) const {
+    if (!place_of_ || !clear_line_) {
+        return false;
+    }
+    const std::optional<std::array<double, 2>> from = place_of_(object);
+    const std::optional<std::array<double, 2>> to = place_of_(other);
+    if (!from || !to) {
+        return false;
+    }
+    // Their middles: half a tile above the feet.
+    return clear_line_({(*from)[0], (*from)[1] - 0.5}, {(*to)[0], (*to)[1] - 0.5});
+}
+
+double SaveObject::distance(const std::string& object, const std::string& other) const {
+    if (!place_of_) {
+        return -1.0;
+    }
+    const std::optional<std::array<double, 2>> from = place_of_(object);
+    const std::optional<std::array<double, 2>> to = place_of_(other);
+    if (!from || !to) {
+        return -1.0;
+    }
+    return std::hypot((*to)[0] - (*from)[0], (*to)[1] - (*from)[1]);
+}
+
 void register_save_types(reflect::Registry& registry) {
     auto game = registry.add_type<SaveObject>("game").display_name("Game").category("Game").tooltip(
         "Saving and loading the player's progress.");
@@ -192,6 +217,13 @@ void register_save_types(reflect::Registry& registry) {
     game.condition<&SaveObject::in_scene>("in_scene", {"scene"})
         .text("The scene is {scene}")
         .tooltip("Whether the scene being played is this one.");
+    game.condition<&SaveObject::can_see>("can_see", {"object", "other"})
+        .text("{object} can see {other}")
+        .tooltip("Whether nothing solid stands on the straight line between them: a guard "
+                 "that sees the hero, a turret with a clear shot.");
+    game.getter<&SaveObject::distance>("distance", {"object", "other"})
+        .text("The distance from {object} to {other}")
+        .tooltip("In tiles, between their positions; -1 if either is missing.");
     game.condition<&SaveObject::is_tagged>("is_tagged", {"object", "tag"})
         .text("{object} is tagged {tag}")
         .tooltip("Whether an object (such as the event's [who]) has the tag: \"[who] is "

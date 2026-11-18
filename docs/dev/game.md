@@ -505,6 +505,13 @@ tagged hero, go to the scene “maps/start.dscene”"*. It is no for an object w
 so it is safe whatever walked in. (`SaveObject::is_tagged()`, answered by the runtime
 from the world being played.)
 
+**Seeing and distance**, raycasts without the word: the condition **"{object} can see
+{other}"** is yes when nothing solid lies on the straight line between their middles
+(half a tile above each one's feet: `scene2d::line_of_sight()`), and no if either is
+missing: *"If guard can see hero: Say “Halt!”"*. **"The distance from {object} to
+{other}"** is the tiles between their positions, -1 if either is missing.
+(`SaveObject::can_see()` and `distance()`, answered by the runtime.)
+
 **For each object tagged enemy** is a step (with *Log*, *Wait* and *Repeat* in the
 editor's list of steps): the steps inside it run once for each object with the tag, in
 turn, each time as *it*, so *"For each object tagged enemy: Stand still (it)"* stops them
@@ -720,6 +727,7 @@ named by path (`maps/cave.dscene`) or GUID.
 | Falling and jumping | `fall()` on its own: pressed against the floor it is on the ground; a jump rises between 2.8 and 3 tiles and lands in 44 to 48 steps (0.77 s); held, it does not jump again in the air; a ceiling a tile up stops the rise and it falls back; it falls no faster than 20 tiles a second; gravity that is not a number moves nothing. In a world: a hero with Jumping falls onto a solid floor and stands on it; Down does nothing; Right walks 2 tiles in half a second facing right; Space and Up jump it off the floor and it lands again; it lands on a Solid Body's top and falls back to the floor walking off it; disabled, it neither walks nor jumps but still falls |
 | Slopes | A hero walking right up a slope onto the ground a tile up, standing on it, and back down onto the floor, on the ground at every step |
 | Health and combat | A rock that is not an enemy hurts nothing; a slime tagged enemy takes 2, makes the hero safe (a second hit does nothing) and pushes it exactly a tile away in 0.15 s, the keys not moving it meanwhile, then walking again; it blinks, and its alpha is as it was after; the flash starts at the hurt and is gone 0.12 s later; the next hit defeats it: half dissolved after 0.2 s, hidden and whole after 0.4, no knockback, not walking, and a defeated hero hurts nothing; revived, it is shown at full health; spikes with no Health take 1; healing stops at the most; NaN and negative hurts change nothing; tag lists. Knockback stops exactly at a wall. In a running game, one hit on a slime with 1 health: "hit" and "hits" once, "hurt" before "defeated", and the slime hidden |
+| Seeing and distance in Rules | A guard does not see the hero past a wall but sees a thief in the open below, and no one sees an object that is not there; the distance to the hero is 5, and to no one -1 |
 | Collision layers by tag | `body_blocks()` for a tag it names (any case), one it does not, and no tags; walking right for a second, the player stops at a fence that blocks only players while a slime walks through; a slime's way goes straight through it and the hero's round; a trap only for enemies notices a standing Walker tagged enemy and not the hero, and with no tags the Walker leaves and the hero enters |
 | Seeing the player | Line of sight past open ground, not through the middle wall or the outer one, NaN never; a chaser does not see the hero behind a wall, sees it four tiles away in the open (said once), reaches it in 1.5 s, loses it more than 7.5 tiles away and stands again; a fleer runs more than 1.5 tiles further away in a second; a defeated hero is lost |
 | Facing and walking | Every facing rule; exact frames of the cycle, back and forth and starting over, at 6 frames per second; the standing frame; clamped settings; the runtime turning the hero left and animating it |
