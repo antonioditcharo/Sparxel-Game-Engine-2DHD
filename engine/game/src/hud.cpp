@@ -268,6 +268,45 @@ void register_hud(reflect::Registry& registry) {
         "1 is solid; 0.5 lets half of what is behind show through.");
     picture.property<&ScreenPicture::visible>("visible").tooltip(
         "Hidden, for logic to show later.");
+
+    auto button = registry.add_type<ScreenButton>("screen_button")
+                      .display_name("Screen Button")
+                      .category("Interface")
+                      .tooltip("Words in a box the player clicks with the mouse; its Rules hear "
+                               "\"clicked\".");
+    button.property<&ScreenButton::text>("text").tooltip(
+        "The words, with values in braces as Screen Text's: {gold}.");
+    button.property<&ScreenButton::anchor>("anchor").display_name("Place").tooltip(
+        "The corner, side or middle of the screen it is fixed to.");
+    button.property<&ScreenButton::x>("x")
+        .range(-1000.0, 1000.0)
+        .step(1.0)
+        .tooltip("Pixels in from the place's side.");
+    button.property<&ScreenButton::y>("y")
+        .range(-1000.0, 1000.0)
+        .step(1.0)
+        .tooltip("Pixels in from the place's top or bottom.");
+    button.property<&ScreenButton::width>("width")
+        .range(0.0, 4000.0)
+        .step(1.0)
+        .tooltip("Pixels across; 0 fits the words.");
+    button.property<&ScreenButton::height>("height")
+        .range(0.0, 4000.0)
+        .step(1.0)
+        .tooltip("Pixels down; 0 fits a line.");
+    button.property<&ScreenButton::enabled>("enabled").tooltip(
+        "Off, it is dim and clicks do nothing.");
+    button.property<&ScreenButton::visible>("visible").tooltip("Hidden, for logic to show later.");
+    button.event<>("clicked")
+        .text("When it is clicked")
+        .tooltip("The player clicked it with the mouse.");
+}
+
+std::array<float, 2> button_size(const ScreenButton& button, float words_width,
+                                 float line_height) noexcept {
+    const auto own = [](double v) { return std::isfinite(v) && v > 0.0; };
+    return {own(button.width) ? static_cast<float>(button.width) : words_width + 8.0F,
+            own(button.height) ? static_cast<float>(button.height) : line_height + 6.0F};
 }
 
 bool register_hud_components(world::World& world) {
@@ -275,7 +314,8 @@ bool register_hud_components(world::World& world) {
     const bool bar = world.register_component<ScreenBar>();
     const bool picture = world.register_component<ScreenPicture>();
     const bool layout = world.register_component<ScreenLayout>();
-    return text && bar && picture && layout;
+    const bool button = world.register_component<ScreenButton>();
+    return text && bar && picture && layout && button;
 }
 
 } // namespace engine::game

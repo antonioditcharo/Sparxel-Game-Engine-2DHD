@@ -302,6 +302,13 @@ void SceneView::paint_hud(QPainter& painter, QPoint origin_at, int s) const {
             return std::array<float, 2>{static_cast<float>(bar->width + 2.0),
                                         static_cast<float>(bar->height + 2.0)};
         }
+        if (const auto* button = world.get<engine::game::ScreenButton>(e);
+            button != nullptr && button->visible) {
+            const QString words =
+                QString::fromUtf8(button->text.data(), static_cast<qsizetype>(button->text.size()));
+            return engine::game::button_size(
+                *button, static_cast<float>(metrics.horizontalAdvance(words) / s), 9.0F);
+        }
         if (const auto* label = world.get<engine::game::ScreenText>(e);
             label != nullptr && label->visible) {
             const QString words =
@@ -436,6 +443,28 @@ void SceneView::paint_hud(QPainter& painter, QPoint origin_at, int s) const {
             painter.fillRect(
                 QRectF(inside.topLeft(), QSizeF(inside.width() / 2.0, inside.height())),
                 fill.isValid() ? fill : QColor(220, 70, 70));
+        });
+    }
+    // Screen Buttons: a box with its words in the middle, as the game draws them.
+    if (const auto* type = world.registry().find_type<engine::game::ScreenButton>()) {
+        world.each(*type, [&](engine::world::Entity e, engine::reflect::ObjectRef ref) {
+            if (hidden.contains(e.id)) {
+                return;
+            }
+            const auto* button = ref.as<engine::game::ScreenButton>();
+            if (button == nullptr || !button->visible) {
+                return;
+            }
+            const QString words =
+                QString::fromUtf8(button->text.data(), static_cast<qsizetype>(button->text.size()));
+            const std::array<float, 2> size = engine::game::button_size(
+                *button, static_cast<float>(metrics.horizontalAdvance(words) / s), 9.0F);
+            const QRectF at =
+                position(e, type, button->anchor, button->x, button->y, size[0], size[1]);
+            painter.fillRect(at, QColor(230, 232, 240));
+            painter.fillRect(at.adjusted(s, s, -s, -s), QColor(18, 20, 40));
+            painter.setPen(button->enabled ? Qt::white : QColor(150, 155, 170));
+            painter.drawText(at, Qt::AlignCenter, words);
         });
     }
     for (const HudItem& item : hud_items_) {

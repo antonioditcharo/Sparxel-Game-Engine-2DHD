@@ -190,8 +190,9 @@ menus or battles.
 | **Screen Text** (`screen_text`) | *Text* with values in braces (below), its *Place* on the screen (a corner, a side or the middle), *X* and *Y* pixels in from there, *Size* (1, or 2 for twice as large) and *Visible*. Words have a one-pixel shadow so they read over any ground, in the look's word colour, and are translated ([localization.md](localization.md)) |
 | **Screen Bar** (`screen_bar`) | *Value* and *Most* (each a value in braces or a number), filled that far in its *Colour* (`#rrggbb`) inside a frame in the look's colours, its *Place*, *X*, *Y*, *Width*, *Height* and *Visible* |
 | **Screen Picture** (`screen_picture`) | A *Picture* (an icon, a portrait, a panel), its *Place*, *X* and *Y*, *Width* and *Height* (0 keeps the picture's own), *Frame edge* and *Opacity* (0 to 1). Pictures are drawn under the bars and words, so a panel can sit behind them |
+| **Screen Button** (`screen_button`) | *Text* (values in braces as Screen Text's), *Place*, *X*, *Y*, *Width* and *Height* (0 fits the words with 4 pixels round them), *Enabled* and *Visible*. Drawn as a box in the look's colours with the words in the middle; under the pointer its rim and words light in the look's highlight; turned off, its words are dim. A **click** (the left mouse button) on it tells its Rules **"clicked"** (*When it is clicked*) and does nothing else: the player does not also walk there (Point and Click). It lines up in Screen Layouts as the others do, and is dragged in the scene view (`button_size()`) |
 
-**Layouts.** A **Screen Layout** on an object lines up the Screen Text, Bars and Pictures
+**Layouts.** A **Screen Layout** on an object lines up the Screen Text, Bars, Pictures and Buttons
 of the objects under it, in the order they are listed: **Down** (one under another: a
 party's names and HP bars), **Across** (side by side: hearts, icons) or **Grid** (rows of
 *Columns*, each cell as large as the largest, things centred in it), *Spacing* pixels

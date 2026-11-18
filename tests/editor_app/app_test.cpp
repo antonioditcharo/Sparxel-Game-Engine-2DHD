@@ -2646,6 +2646,34 @@ TEST_CASE("Screen Layouts in the editor: children put under it, stacked, dragged
     CHECK_FALSE(d.world().parent(d.world().find(bars[1])).is_valid());
 }
 
+TEST_CASE("Screen Buttons show in the scene view and are dragged there") {
+    Editor e;
+    editor::Document& d = *e.window.document();
+    const reflect::TypeInfo* type = d.registry().find_type<game::ScreenButton>();
+    REQUIRE(type != nullptr);
+    const Guid buy = d.create_entity("buy", 0.0, 0.0);
+    REQUIRE(d.add_component(buy, *type));
+    e.window.scene_view()->refresh();
+    static_cast<void>(e.window.scene_view()->grab());
+    std::optional<QRectF> at;
+    for (const editor::SceneView::HudItem& item : e.window.scene_view()->hud_items()) {
+        if (item.entity == buy) {
+            at = item.at;
+        }
+    }
+    REQUIRE(at.has_value());
+    const QRectF box = at.value_or(QRectF{});
+    CHECK(box.width() > box.height()); // "Button", in a box
+    editor::SceneView* view = e.window.scene_view();
+    const int s = std::max(1, static_cast<int>(std::lround(box.height() / 15.0)));
+    const QPoint on = box.center().toPoint();
+    mouse(view, QEvent::MouseButtonPress, on, Qt::LeftButton);
+    mouse(view, QEvent::MouseMove, on + QPoint(10 * s, 0), Qt::LeftButton);
+    mouse(view, QEvent::MouseButtonRelease, on + QPoint(10 * s, 0), Qt::LeftButton);
+    CHECK(e.window.selection() == buy);
+    CHECK(d.world().get<game::ScreenButton>(d.world().find(buy))->x == 14.0);
+}
+
 TEST_CASE("Tile shapes from the palette: a wall tile made a half, then whole again") {
     Editor e;
     e.window.select(e.guid("walls"));

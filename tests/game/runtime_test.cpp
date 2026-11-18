@@ -5068,6 +5068,69 @@ TEST_CASE("A script that does not compile is reported with its line, and the gam
     CHECK(std::count(runtime->log().begin(), runtime->log().end(), "start") == 1); // the Rules
 }
 
+TEST_CASE("Screen Buttons are clicked with the mouse: Rules hear it, and the hero stays") {
+    const Project project;
+    {
+        reflect::Registry registry;
+        game::register_types(registry);
+        world::World w(registry);
+        REQUIRE(scene2d::register_components(w));
+        REQUIRE(game::register_behaviour_components(w));
+        const world::Entity hero = w.create("hero");
+        w.add<scene2d::Transform2D>(hero);
+        w.add<game::TopDownMover>(hero);
+        w.add<game::PointAndClick>(hero);
+        const world::Entity buy = w.create("buy");
+        game::ScreenButton* button = w.add<game::ScreenButton>(buy);
+        button->text = "Buy";
+        const world::Entity sell = w.create("sell");
+        game::ScreenButton* off = w.add<game::ScreenButton>(sell);
+        off->text = "Sell";
+        off->y = 20.0;
+        off->enabled = false;
+        write_json(project.folder.path / "assets/maps/shop.dscene", serialize::scene_to_json(w));
+        std::vector<serialize::Issue> issues;
+        std::optional<game::ProjectSettings> settings =
+            game::read_project(project.folder.path, issues);
+        REQUIRE(settings.has_value());
+        if (!settings) {
+            return;
+        }
+        settings->start_scene = "maps/shop.dscene";
+        write_json(project.folder.path / game::project_file, game::project_to_json(*settings));
+        logic::LogicAsset rules;
+        rules.name = "shop";
+        rules.rules.push_back(logic::Rule{
+            logic::BlockId{1}, "buy", "clicked", {}, {ir::log(2, Project::text("bought"))}, {}});
+        rules.rules.push_back(logic::Rule{
+            logic::BlockId{3}, "sell", "clicked", {}, {ir::log(4, Project::text("sold"))}, {}});
+        write_json(project.folder.path / "assets/logic/shop.drules",
+                   serialize::logic_to_json(rules));
+    }
+    // Buy is at (4, 4), Sell at (4, 20): a click on each, then one on the floor.
+    input::Recording replay;
+    const auto click = [&](std::uint64_t at, double x, double y) {
+        replay.record_pointer(at, input::Pointer{x, y});
+        replay.record(at, input::Binding::mouse(input::MouseButton::Left), true);
+        replay.record(at + 1, input::Binding::mouse(input::MouseButton::Left), false);
+    };
+    click(2, 6.0, 6.0);
+    click(5, 6.0, 22.0);
+    const auto runtime = project.open(no_graphics(&replay));
+    for (int i = 0; i < 40; ++i) {
+        runtime->step();
+    }
+    const std::vector<std::string>& log = runtime->log();
+    CHECK(std::count(log.begin(), log.end(), "bought") == 1);
+    CHECK(std::count(log.begin(), log.end(), "sold") == 0); // turned off
+    const world::World& w = runtime->world();
+    const scene2d::Transform2D* hero = w.get<scene2d::Transform2D>(w.find_named("hero").at(0));
+    CHECK(hero->x == 0.0); // the clicks were the buttons', not walks
+    CHECK(hero->y == 0.0);
+    CHECK(game::button_size(game::ScreenButton{}, 30.0F, 8.0F) ==
+          std::array<float, 2>{38.0F, 14.0F});
+}
+
 TEST_CASE("Clicking a chest in a running game walks the hero to it and opens it") {
     const Project project;
     {

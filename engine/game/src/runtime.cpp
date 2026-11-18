@@ -1357,6 +1357,128 @@ std::unique_ptr<Runtime> Runtime::open(const fs::path& root, const RuntimeOption
 
 namespace {
 
+/// Where Screen Layouts put their children's elements, and which they hide.
+struct HudPlaces {
+    std::unordered_map<std::uint64_t, std::array<float, 2>> laid;
+    std::unordered_set<std::uint64_t> hidden;
+};
+
+HudPlaces hud_places(const Runtime::Impl& r,
+                     const std::function<std::string(const std::string&)>& fill) {
+    const ui::PixelFont& font = r.font_face;
+    const auto sw = static_cast<float>(r.settings.width);
+    const auto sh = static_cast<float>(r.settings.height);
+    // An element's size, as drawn below: a picture's, a bar's with its frame, words'.
+    const auto picture_texture = [&r](const ScreenPicture& picture) -> const render::Texture* {
+        const std::optional<Guid> guid =
+            picture.visible ? Guid::parse(picture.image) : std::nullopt;
+        return guid && r.textures != nullptr ? r.textures->get(*guid) : nullptr;
+    };
+    const auto size_of = [&](world::Entity e) -> std::optional<std::array<float, 2>> {
+        if (const auto* picture = r.world->get<ScreenPicture>(e)) {
+            if (const render::Texture* texture = picture_texture(*picture)) {
+                return std::array<float, 2>{
+                    picture->width > 0.0 ? static_cast<float>(picture->width)
+                                         : static_cast<float>(texture->width()),
+                    picture->height > 0.0 ? static_cast<float>(picture->height)
+                                          : static_cast<float>(texture->height())};
+            }
+        }
+        if (const auto* bar = r.world->get<ScreenBar>(e); bar != nullptr && bar->visible) {
+            return std::array<float, 2>{static_cast<float>(bar->width) + 2.0F,
+                                        static_cast<float>(bar->height) + 2.0F};
+        }
+        if (const auto* button = r.world->get<ScreenButton>(e);
+            button != nullptr && button->visible) {
+            const std::string words = r.translations.translate(fill(button->text));
+            return button_size(*button, static_cast<float>(ui::measure(font, words)),
+                               static_cast<float>(font.line_height()));
+        }
+        if (const auto* label = r.world->get<ScreenText>(e); label != nullptr && label->visible) {
+            const std::string words = r.translations.translate(fill(label->text));
+            const int size = label->size >= 2 ? 2 : 1;
+            return std::array<float, 2>{static_cast<float>(ui::measure(font, words) * size),
+                                        static_cast<float>(font.line_height() * size)};
+        }
+        return std::nullopt;
+    };
+    HudPlaces out;
+    std::unordered_map<std::uint64_t, std::array<float, 2>>& laid = out.laid;
+    std::unordered_set<std::uint64_t>& hidden = out.hidden;
+    if (const reflect::TypeInfo* type = r.world->registry().find_type<ScreenLayout>()) {
+        r.world->each(*type, [&](world::Entity e, reflect::ObjectRef ref) {
+            const auto* layout = ref.as<ScreenLayout>();
+            if (layout == nullptr) {
+                return;
+            }
+            std::vector<std::uint64_t> members;
+            std::vector<std::array<float, 2>> sizes;
+            for (const world::Entity child : r.world->children(e)) {
+                if (!layout->visible) {
+                    hidden.insert(child.id);
+                } else if (const std::optional<std::array<float, 2>> size = size_of(child)) {
+                    members.push_back(child.id);
+                    sizes.push_back(*size);
+                }
+            }
+            const std::vector<std::array<float, 2>> at = lay_out(*layout, sizes, sw, sh);
+            for (std::size_t i = 0; i < members.size(); ++i) {
+                laid[members[i]] = at[i];
+            }
+        });
+    }
+    return out;
+}
+
+/// A Screen Button as the screen shows it: where, and its words.
+struct ButtonPlace {
+    world::Entity entity;
+    const ScreenButton* button = nullptr;
+    render::Rect rect;
+    std::string words;
+};
+
+/// Every visible Screen Button, where it is drawn.
+std::vector<ButtonPlace> button_places(const Runtime::Impl& r, const HudPlaces& places,
+                                       const std::function<std::string(const std::string&)>& fill) {
+    std::vector<ButtonPlace> out;
+    const reflect::TypeInfo* type = r.world->registry().find_type<ScreenButton>();
+    if (type == nullptr) {
+        return out;
+    }
+    const auto sw = static_cast<float>(r.settings.width);
+    const auto sh = static_cast<float>(r.settings.height);
+    r.world->each(*type, [&](world::Entity e, reflect::ObjectRef ref) {
+        const auto* button = ref.as<ScreenButton>();
+        if (button == nullptr || !button->visible || places.hidden.contains(e.id)) {
+            return;
+        }
+        std::string words = r.translations.translate(fill(button->text));
+        const std::array<float, 2> size =
+            button_size(*button, static_cast<float>(ui::measure(r.font_face, words)),
+                        static_cast<float>(r.font_face.line_height()));
+        const auto found = places.laid.find(e.id);
+        const std::array<float, 2> at =
+            found != places.laid.end()
+                ? found->second
+                : screen_place(button->anchor, button->x, button->y, size[0], size[1], sw, sh);
+        out.push_back(
+            ButtonPlace{e, button, render::Rect{at[0], at[1], size[0], size[1]}, std::move(words)});
+    });
+    return out;
+}
+
+/// Whether the pointer is over `rect`.
+bool pointing_at(const Runtime::Impl& r, const render::Rect& rect) {
+    const std::optional<input::Pointer>& p = r.state.pointer();
+    return p && p->x >= rect.x && p->y >= rect.y && p->x < rect.x + rect.w &&
+           p->y < rect.y + rect.h;
+}
+
+} // namespace
+
+namespace {
+
 /// What the game's camera shows: the flat camera, the Diorama's orbit about the same point,
 /// and the picture's width over its height, as frames are drawn.
 struct GameView {
@@ -1619,7 +1741,23 @@ void Runtime::step() {
     // Point and Click: a click walks the player there, or to what was clicked.
     std::vector<std::pair<world::Entity, world::Entity>> clicked_to;
     if (&moves == &r.state) {
+        // A click on a Screen Button is the button's, not a walk.
+        bool on_button = false;
         if (r.state.pressed("click")) {
+            const auto fill = [this](const std::string& text) {
+                return fill_values(text, [this](std::string_view name) { return hud_value(name); });
+            };
+            for (const ButtonPlace& placed : button_places(r, hud_places(r, fill), fill)) {
+                if (pointing_at(r, placed.rect)) {
+                    on_button = true;
+                    if (placed.button->enabled) {
+                        emit(*r.vm, *r.world, placed.entity, "clicked");
+                    }
+                    break;
+                }
+            }
+        }
+        if (r.state.pressed("click") && !on_button) {
             if (const std::optional<std::array<double, 2>> at = pointer_point(r)) {
                 click_to_walk(*r.world, (*at)[0], (*at)[1], r.settings.ppu);
             }
@@ -3246,58 +3384,9 @@ void Runtime::draw_hud() {
     const render::Rect one{0.0F, 0.0F, 1.0F, 1.0F};
 
     // Screen Layouts first: where their children's elements go, or that they are hidden.
-    // An element's size, as drawn below: a picture's, a bar's with its frame, words'.
-    const auto picture_texture = [&r](const ScreenPicture& picture) -> const render::Texture* {
-        const std::optional<Guid> guid =
-            picture.visible ? Guid::parse(picture.image) : std::nullopt;
-        return guid && r.textures != nullptr ? r.textures->get(*guid) : nullptr;
-    };
-    const auto size_of = [&](world::Entity e) -> std::optional<std::array<float, 2>> {
-        if (const auto* picture = r.world->get<ScreenPicture>(e)) {
-            if (const render::Texture* texture = picture_texture(*picture)) {
-                return std::array<float, 2>{
-                    picture->width > 0.0 ? static_cast<float>(picture->width)
-                                         : static_cast<float>(texture->width()),
-                    picture->height > 0.0 ? static_cast<float>(picture->height)
-                                          : static_cast<float>(texture->height())};
-            }
-        }
-        if (const auto* bar = r.world->get<ScreenBar>(e); bar != nullptr && bar->visible) {
-            return std::array<float, 2>{static_cast<float>(bar->width) + 2.0F,
-                                        static_cast<float>(bar->height) + 2.0F};
-        }
-        if (const auto* label = r.world->get<ScreenText>(e); label != nullptr && label->visible) {
-            const std::string words = r.translations.translate(fill(label->text));
-            const int size = label->size >= 2 ? 2 : 1;
-            return std::array<float, 2>{static_cast<float>(ui::measure(font, words) * size),
-                                        static_cast<float>(font.line_height() * size)};
-        }
-        return std::nullopt;
-    };
-    std::unordered_map<std::uint64_t, std::array<float, 2>> laid;
-    std::unordered_set<std::uint64_t> hidden;
-    if (const reflect::TypeInfo* type = r.world->registry().find_type<ScreenLayout>()) {
-        r.world->each(*type, [&](world::Entity e, reflect::ObjectRef ref) {
-            const auto* layout = ref.as<ScreenLayout>();
-            if (layout == nullptr) {
-                return;
-            }
-            std::vector<std::uint64_t> members;
-            std::vector<std::array<float, 2>> sizes;
-            for (const world::Entity child : r.world->children(e)) {
-                if (!layout->visible) {
-                    hidden.insert(child.id);
-                } else if (const std::optional<std::array<float, 2>> size = size_of(child)) {
-                    members.push_back(child.id);
-                    sizes.push_back(*size);
-                }
-            }
-            const std::vector<std::array<float, 2>> at = lay_out(*layout, sizes, sw, sh);
-            for (std::size_t i = 0; i < members.size(); ++i) {
-                laid[members[i]] = at[i];
-            }
-        });
-    }
+    const HudPlaces places = hud_places(r, fill);
+    const auto& laid = places.laid;
+    const auto& hidden = places.hidden;
     // Where an element goes: its layout's place for it, or its own.
     const auto where = [&laid](world::Entity e, std::array<float, 2> own) {
         const auto found = laid.find(e.id);
@@ -3355,6 +3444,24 @@ void Runtime::draw_hud() {
                 render::Rect{x + 1.0F, y + 1.0F, std::floor(w * static_cast<float>(part)), h},
                 hex_color(bar->color, render::Color{220, 70, 70, 255}));
         });
+    }
+    // Screen Buttons: a box in the menus' colours, lit under the pointer, dim when off.
+    for (const ButtonPlace& placed : button_places(r, places, fill)) {
+        const render::Rect& box = placed.rect;
+        const bool over = placed.button->enabled && pointing_at(r, box);
+        r.sprites->draw(*r.white, one, box, over ? r.settings.ui.highlight : r.settings.ui.border);
+        r.sprites->draw(*r.white, one,
+                        render::Rect{box.x + 1.0F, box.y + 1.0F, box.w - 2.0F, box.h - 2.0F},
+                        r.settings.ui.box);
+        const auto words_w = static_cast<float>(ui::measure(font, placed.words));
+        const auto words_h = static_cast<float>(font.line_height());
+        ui::draw_text(*r.sprites, *r.font, font, placed.words,
+                      std::floor(box.x + ((box.w - words_w) / 2.0F)),
+                      std::floor(box.y + ((box.h - words_h) / 2.0F)),
+                      !placed.button->enabled ? r.settings.ui.dim
+                      : over                  ? r.settings.ui.highlight
+                                              : r.settings.ui.text,
+                      1);
     }
     if (const reflect::TypeInfo* type = r.world->registry().find_type<ScreenText>()) {
         r.world->each(*type, [&](world::Entity e, reflect::ObjectRef ref) {

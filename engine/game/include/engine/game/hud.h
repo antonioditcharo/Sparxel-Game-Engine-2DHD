@@ -71,6 +71,26 @@ struct ScreenPicture {
     bool visible = true;
 };
 
+/// "Screen Button": words in a box on the screen that the player clicks with the mouse
+/// (the "click" action): its Rules hear "clicked" (a menu of the game's own, a shop's Buy,
+/// an adventure's verbs). Lit while the pointer is over it; dim, and not clicked, while
+/// turned off. A click on it does not also walk the player (Point and Click).
+struct ScreenButton {
+    std::string text = "Button"; ///< With values in braces, as Screen Text's.
+    ScreenAnchor anchor = ScreenAnchor::TopLeft;
+    double x = 4.0; ///< Pixels in from the anchor's sides.
+    double y = 4.0;
+    double width = 0.0;  ///< Pixels; 0 fits the words.
+    double height = 0.0; ///< Pixels; 0 fits a line.
+    bool enabled = true;
+    bool visible = true;
+};
+
+/// A button's size: its own, or the words (`words_width` pixels wide, `line_height` tall)
+/// with 4 pixels round them.
+[[nodiscard]] std::array<float, 2> button_size(const ScreenButton& button, float words_width,
+                                               float line_height) noexcept;
+
 /// How a Screen Layout places its children's on-screen elements.
 enum class LayoutDirection : std::uint8_t {
     Down,   ///< One under another: a list, a party's HP bars.

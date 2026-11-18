@@ -193,8 +193,8 @@ action kits (GameMaker), audio mixing (zones, reverb), and team features.
 
 | ID | Feature | Best today | Sparxel |
 |---|---|---|---|
-| K1 | UI designer | Godot Control nodes | **Partial**: anchors, stack and grid layouts, 9-slice pictures, themes, dragged in the scene view; no buttons, nested layouts |
-| K2 | Widget library | Godot | **Partial**: text, bars, pictures; no buttons, sliders, lists the player uses |
+| K1 | UI designer | Godot Control nodes | **Partial**: anchors, stack and grid layouts, 9-slice pictures, buttons, themes, dragged in the scene view; no nested layouts |
+| K2 | Widget library | Godot | **Partial**: text, bars, pictures, buttons clicked with the mouse; no sliders or lists the player uses |
 | K3 | Templates | RPG Maker | **Done**: title, pause, options, save and load, items, equipment, shop, battle, dialogue box, quest log |
 | K4 | Navigation and prompts | | **Done**: keyboard and gamepad menus, button prompts for the last device |
 | K5 | Pixel-perfect UI and bitmap fonts | | **Done**: whole-number scaling, the game's own pixel font |
