@@ -5030,6 +5030,44 @@ TEST_CASE("Screen Layouts: children's elements in a column, a row or a grid") {
     CHECK_FALSE(pixel(pixels, 64, 50, 32) == render::Color{0, 255, 0, 255}); // not its own
 }
 
+TEST_CASE("Luau scripts in assets/ run as the game starts, on events, alongside the Rules") {
+    const Project project;
+    write_bytes(project.folder.path / "assets/scripts/hello.luau",
+                "sx.on(\"game_start\", function()\n"
+                "    sx.log(\"hello from a script\")\n"
+                "    sx.set(\"hero\", \"speed\", 7)\n"
+                "end)\n"
+                "sx.on(\"elder.interacted\", function(who)\n"
+                "    sx.log(\"talked to by \" .. who)\n"
+                "end)\n");
+    const auto runtime = project.open(no_graphics(nullptr));
+    runtime->step();
+    const std::vector<std::string>& log = runtime->log();
+    CHECK(std::count(log.begin(), log.end(), "hello from a script") == 1);
+    world::World& w = runtime->world();
+    CHECK(w.get<game::TopDownMover>(w.find_named("hero").at(0))->speed == 7.0);
+    const std::array<reflect::Value, 1> by{reflect::Value{std::string("hero")}};
+    REQUIRE(game::emit(runtime->vm(), w, w.find_named("elder").at(0), "interacted", by));
+    runtime->step();
+    CHECK(std::count(log.begin(), log.end(), "talked to by hero") == 1);
+}
+
+TEST_CASE("A script that does not compile is reported with its line, and the game runs") {
+    const Project project;
+    write_bytes(project.folder.path / "assets/scripts/broken.luau",
+                "sx.on(\"game_start\", function()\n    sx.log(\"never\"\nend)\n");
+    std::vector<serialize::Issue> issues;
+    game::RuntimeOptions options = no_graphics(nullptr);
+    options.save_folder = project.folder.path / "saves";
+    const std::unique_ptr<game::Runtime> runtime =
+        game::Runtime::open(project.folder.path, options, issues);
+    REQUIRE(runtime != nullptr);
+    REQUIRE(issues.size() == 1);
+    CHECK(issues[0].path.starts_with("assets/scripts/broken.luau:"));
+    runtime->step();
+    CHECK(std::count(runtime->log().begin(), runtime->log().end(), "start") == 1); // the Rules
+}
+
 TEST_CASE("Links: a lever's events open a gate and say so; broken links are reported") {
     const Project project;
     {

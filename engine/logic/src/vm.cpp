@@ -1237,4 +1237,30 @@ std::uint64_t Vm::steps_last_update() const noexcept {
     return impl_->steps_last_update;
 }
 
+std::optional<ScriptError> check_script(std::string_view name, std::string_view source) {
+    lua_CompileOptions options{};
+    options.optimizationLevel = 0;
+    options.debugLevel = 1;
+    std::size_t size = 0;
+    const std::unique_ptr<char, decltype(&std::free)> bytecode(
+        luau_compile(source.data(), source.size(), &options, &size), &std::free);
+    if (bytecode == nullptr) {
+        return ScriptError{ScriptErrorKind::Compile, std::string(name), 0,
+                           "The script could not be compiled."};
+    }
+    // Loaded into a state of its own, never run: only whether it compiles is learned.
+    const std::unique_ptr<lua_State, decltype(&lua_close)> state(luaL_newstate(), &lua_close);
+    if (state == nullptr) {
+        return ScriptError{ScriptErrorKind::Compile, std::string(name), 0,
+                           "The script could not be checked."};
+    }
+    const std::string chunk_name = "=" + std::string(name);
+    if (luau_load(state.get(), chunk_name.c_str(), bytecode.get(), size, 0) != 0) {
+        ScriptError error{ScriptErrorKind::Compile, std::string(name), 0, {}};
+        split_location(string_at(state.get(), -1), name, error.line, error.message);
+        return error;
+    }
+    return std::nullopt;
+}
+
 } // namespace engine::logic

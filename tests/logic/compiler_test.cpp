@@ -324,6 +324,7 @@ TEST_CASE("Custom blocks: sequences that take values, run with them, and are che
         logic::Sequence{logic::BlockId{30}, "plain", {ir::run(31, "intro", {whole(1)})}});
     const logic::CompiledLogic compiled = world.compile(broken);
     std::vector<std::string> messages;
+    messages.reserve(compiled.errors.size());
     for (const logic::Diagnostic& d : compiled.errors) {
         messages.push_back(std::to_string(d.block.value) + ": " + d.message);
     }

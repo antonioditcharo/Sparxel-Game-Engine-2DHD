@@ -41,7 +41,9 @@ add_library(editor_app STATIC
     src/sprite_studio.cpp
     src/sprite_studio.h
     src/start_page.cpp
+    src/script_window.cpp
     src/story_window.cpp
+    src/script_window.h
     src/story_window.h
     src/table_window.cpp
     src/table_window.h

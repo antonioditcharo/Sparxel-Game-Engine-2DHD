@@ -3,6 +3,7 @@
 #include "engine/game/behaviours.h"
 #include "engine/game/conversation.h"
 #include "engine/game/tables.h"
+#include "engine/logic/vm.h"
 #include "engine/scene2d/scene2d.h"
 #include "engine/serialize/json.h"
 #include "engine/ui/text.h"
@@ -235,6 +236,23 @@ std::vector<Finding> examine(const Document& document) {
         }
         check_scene(scratch, path, assets, found, used);
         check_scene_links(scratch, path);
+    }
+
+    // Scripts: the first mistake of each that does not compile, with its line.
+    for (const engine::assets::AssetRecord& record : assets.assets()) {
+        if (!record.path.ends_with(".luau")) {
+            continue;
+        }
+        if (const std::optional<engine::logic::ScriptError> error = engine::logic::check_script(
+                record.path, read_text(document.folder() / "assets" / record.path))) {
+            Finding f;
+            f.message =
+                record.path +
+                (error->line > 0 ? ", line " + std::to_string(error->line) : std::string()) + ": " +
+                error->message;
+            f.asset = record.path;
+            found.push_back(std::move(f));
+        }
     }
 
     // Logic: every problem the compiler finds, on its block.

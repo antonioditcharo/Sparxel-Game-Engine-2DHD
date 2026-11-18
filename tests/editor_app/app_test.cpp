@@ -30,6 +30,7 @@
 #include <QMenu>
 #include <QMimeData>
 #include <QMouseEvent>
+#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSettings>
 #include <QSpinBox>
@@ -57,6 +58,7 @@
 #include "project_panel.h"
 #include "recolor_dialog.h"
 #include "scene_view.h"
+#include "script_window.h"
 #include "search.h"
 #include "start_page.h"
 #include "support/aseprite.h"
@@ -1383,6 +1385,94 @@ TEST_CASE("The Logic view edits logic: values typed in place, steps added, moved
     CHECK(marked[0]->text(0).endsWith(QStringLiteral("(elder)")));
     CHECK(marked[0]->foreground(0).color() == QColor(200, 40, 40));
     CHECK(marked[0]->toolTip(0) == QStringLiteral("There is no object called 'elder'."));
+}
+
+TEST_CASE("File > New script opens the Script editor: checked as typed, objects to use, saved") {
+    Editor e;
+    editor::ScriptWindow* script = e.window.new_script(QStringLiteral("boss"));
+    REQUIRE(script != nullptr);
+    const fs::path file = e.sample.path / "assets" / "scripts" / "boss.luau";
+    CHECK(fs::exists(file));
+    CHECK(script->status()->text() == QStringLiteral("Runs: no problems."));
+    CHECK(script->text()->toPlainText().contains(QStringLiteral("sx.on(\"game_start\"")));
+    CHECK(e.window.new_script(QStringLiteral("boss")) == nullptr);    // taken
+    CHECK(e.window.new_script(QStringLiteral("a boss!")) == nullptr); // not a usable name
+    // The objects beside it: the elder, with what it can do and its events.
+    QTreeWidgetItem* elder = nullptr;
+    for (int i = 0; i < script->objects()->topLevelItemCount(); ++i) {
+        if (script->objects()->topLevelItem(i)->text(0) == QStringLiteral("elder")) {
+            elder = script->objects()->topLevelItem(i);
+        }
+    }
+    REQUIRE(elder != nullptr);
+    QString event;
+    for (int i = 0; i < elder->childCount(); ++i) {
+        const QString snippet = elder->child(i)->data(0, Qt::UserRole).toString();
+        if (snippet.startsWith(QStringLiteral("sx.on(\"elder.interacted\""))) {
+            event = snippet;
+        }
+    }
+    REQUIRE_FALSE(event.isEmpty());
+    // A mistake: the line marked, said under the text; written right again, it runs.
+    script->text()->setPlainText(QStringLiteral("local x = 1\nif x then\n"));
+    CHECK_FALSE(script->check());
+    CHECK(script->status()->text().startsWith(QStringLiteral("Line 3:")));
+    CHECK(script->text()->extraSelections().size() == 1);
+    script->text()->setPlainText(QString());
+    script->insert_from(event);
+    CHECK(script->check());
+    REQUIRE(script->save());
+    std::ifstream in(file, std::ios::binary);
+    const std::string saved((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    CHECK(saved.starts_with("sx.on(\"elder.interacted\""));
+    // Opening it again brings the same window forward.
+    CHECK(e.window.open_script(QStringLiteral("scripts/boss.luau")) == script);
+}
+
+TEST_CASE("The Logic view gives a Sequence values to take, as a custom block") {
+    Editor e;
+    editor::LogicPanel* panel = e.window.logic_panel();
+    QTreeWidget* tree = e.window.logic_view();
+    auto* add = panel->findChild<QToolButton*>(QStringLiteral("logic_add"));
+    REQUIRE(add != nullptr);
+    const auto choose = [&](const QString& name) {
+        Q_EMIT add->menu()->aboutToShow();
+        auto* entry = add->menu()->findChild<QAction*>(name);
+        REQUIRE(entry != nullptr);
+        entry->trigger();
+        QApplication::processEvents();
+    };
+    const auto current = [&] {
+        REQUIRE(tree->currentItem() != nullptr);
+        return tree->currentItem()->text(0);
+    };
+    choose(QStringLiteral("add_file"));
+    choose(QStringLiteral("add_sequence"));
+    CHECK(current() == QStringLiteral("Sequence sequence_1"));
+    // A value it takes: named, a whole number, added; then shown with Remove.
+    auto* name = panel->findChild<QLineEdit*>(QStringLiteral("new_value_name"));
+    auto* kind = panel->findChild<QComboBox*>(QStringLiteral("new_value_kind"));
+    auto* button = panel->findChild<QPushButton*>(QStringLiteral("add_value"));
+    REQUIRE(name != nullptr);
+    REQUIRE(kind != nullptr);
+    REQUIRE(button != nullptr);
+    name->setText(QStringLiteral("gold"));
+    kind->setCurrentIndex(0); // a whole number
+    button->click();
+    QApplication::processEvents();
+    CHECK(current() == QStringLiteral("Sequence sequence_1 (takes gold)"));
+    auto* remove = panel->findChild<QPushButton*>(QStringLiteral("remove_value:gold"));
+    REQUIRE(remove != nullptr);
+    // A name that is not usable is refused, and nothing changes.
+    name = panel->findChild<QLineEdit*>(QStringLiteral("new_value_name"));
+    button = panel->findChild<QPushButton*>(QStringLiteral("add_value"));
+    name->setText(QStringLiteral("Gold!"));
+    button->click();
+    QApplication::processEvents();
+    CHECK(current() == QStringLiteral("Sequence sequence_1 (takes gold)"));
+    remove->click();
+    QApplication::processEvents();
+    CHECK(current() == QStringLiteral("Sequence sequence_1"));
 }
 
 TEST_CASE("The Logic view authors logic from its Add menu") {

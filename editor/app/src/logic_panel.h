@@ -73,6 +73,8 @@ private:
     /// The logic file and block of the selected line; an invalid block for none.
     [[nodiscard]] std::pair<std::string, engine::logic::BlockId> current() const;
     void show_fields();
+    /// For a selected Sequence: the values it takes, each with Remove, and adding one.
+    void show_sequence_values(const std::string& file, engine::logic::BlockId block);
     /// The selected file's variables: name, start and Delete for each.
     void show_variables();
     void refresh_texts();

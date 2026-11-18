@@ -468,6 +468,17 @@ GUIDs never change, so the editor will write them into logic assets. Names are f
 people, and for logic written by hand while they are unique. The runtime also binds the
 `input` object, for conditions such as *"Interact is held"*.
 
+### Scripts: Luau, for what the blocks do not say
+
+A project's **scripts** are Luau files anywhere in `assets/` (`scripts/boss.luau`), as
+Roblox's are. As the game starts, after the logic files, each is loaded into the same
+sandboxed VM as the Rules, named by its path, with the same objects and the same API
+([logic-runtime.md](logic-runtime.md) §3): `sx.on("elder.interacted", function(who) ...
+end)` runs on an object's event (`"game_start"` for the game's own), `sx.call`, `sx.get`
+and `sx.set` work the game's objects and entities, `sx.wait` pauses. A script that does
+not compile is reported with its file and line (*assets/scripts/broken.luau:3*), and the
+game runs without it. Exported games carry their scripts.
+
 ### Links: events wired to actions, with no Rule
 
 **Links** (`links`, links.h; `plan/02` E2, as Fortnite's devices are wired) are written on
@@ -753,6 +764,7 @@ named by path (`maps/cave.dscene`) or GUID.
 | Falling and jumping | `fall()` on its own: pressed against the floor it is on the ground; a jump rises between 2.8 and 3 tiles and lands in 44 to 48 steps (0.77 s); held, it does not jump again in the air; a ceiling a tile up stops the rise and it falls back; it falls no faster than 20 tiles a second; gravity that is not a number moves nothing. In a world: a hero with Jumping falls onto a solid floor and stands on it; Down does nothing; Right walks 2 tiles in half a second facing right; Space and Up jump it off the floor and it lands again; it lands on a Solid Body's top and falls back to the floor walking off it; disabled, it neither walks nor jumps but still falls |
 | Slopes | A hero walking right up a slope onto the ground a tile up, standing on it, and back down onto the floor, on the ground at every step |
 | Health and combat | A rock that is not an enemy hurts nothing; a slime tagged enemy takes 2, makes the hero safe (a second hit does nothing) and pushes it exactly a tile away in 0.15 s, the keys not moving it meanwhile, then walking again; it blinks, and its alpha is as it was after; the flash starts at the hurt and is gone 0.12 s later; the next hit defeats it: half dissolved after 0.2 s, hidden and whole after 0.4, no knockback, not walking, and a defeated hero hurts nothing; revived, it is shown at full health; spikes with no Health take 1; healing stops at the most; NaN and negative hurts change nothing; tag lists. Knockback stops exactly at a wall. In a running game, one hit on a slime with 1 health: "hit" and "hits" once, "hurt" before "defeated", and the slime hidden |
+| Scripts | A script's *game_start* function logs and sets the hero's speed to 7 as the game starts, and its *elder.interacted* function logs who talked; a script that does not compile is one issue, at its file and line, and the Rules still run |
 | Links | Read: three links with a comment, spaces and a blank line, one with no value; an empty text; five lines that are not links, each said with its line. In a running game: a lever's two links, when it is interacted with, turn the gate's body off and show *The gate opens.*; another scene's plate whose third line cannot be read, and a bell with no *entered* event, each told by name and nothing else told; a plate's link to an action the gate does not have and one with *maybe* for a yes or no, told exactly, while its good link turns the gate back on when left |
 | Reduced flashing | A hurt with flashes off changes neither the flash nor the alpha for a second, and hurts all the same |
 | Seeing and distance in Rules | A guard does not see the hero past a wall but sees a thief in the open below, and no one sees an object that is not there; the distance to the hero is 5, and to no one -1 |

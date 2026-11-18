@@ -2011,6 +2011,83 @@ TEST_CASE("Logic is edited in place, a step at a time, in the scene's undo") {
     CHECK(line_index(*again, "Say “Elder: Hello.” (dialogue)") >= 0);
 }
 
+TEST_CASE("Custom blocks are authored: a Sequence takes values, Runs give them, steps read them") {
+    const Sample sample;
+    const auto d = sample.open();
+    std::string error;
+    constexpr std::string_view blocks = "logic/blocks.drules";
+    REQUIRE(d->create_logic_file(blocks, error));
+    const auto file = [&]() -> const engine::logic::LogicAsset& {
+        for (const editor::LogicFile& f : d->logic()) {
+            if (f.path == blocks) {
+                return f.asset;
+            }
+        }
+        FAIL("no file");
+        return d->logic().front().asset;
+    };
+    const auto lines = [&] {
+        std::vector<std::string> shown;
+        for (const editor::LogicLine& line : editor::describe(file(), *d)) {
+            shown.push_back(std::string(static_cast<std::size_t>(line.depth) * 2, ' ') + line.text);
+        }
+        return shown;
+    };
+    const auto events = d->logic_events();
+    const auto interacted =
+        std::find_if(events.begin(), events.end(), [](const editor::LogicEvent& e) {
+            return e.object == "elder" && e.event == "interacted";
+        });
+    REQUIRE(interacted != events.end());
+    const engine::logic::BlockId rule = d->add_logic_rule(blocks, *interacted, error);
+    REQUIRE(rule.is_valid());
+    const engine::logic::BlockId sequence = d->add_logic_sequence(blocks, error);
+    REQUIRE(sequence.is_valid());
+    // A Run step before the sequence takes anything; then it takes two values.
+    const engine::logic::BlockId run =
+        d->add_logic_step(blocks, rule, editor::LogicAction{"", "run", ""}, error);
+    REQUIRE(run.is_valid());
+    REQUIRE(d->add_sequence_value(blocks, sequence, "gold", reflect::ValueKind::Int, error));
+    REQUIRE(d->add_sequence_value(blocks, sequence, "words", reflect::ValueKind::Text, error));
+    CHECK_FALSE(d->add_sequence_value(blocks, sequence, "gold", reflect::ValueKind::Int, error));
+    CHECK(error == "sequence_1 already takes a value called gold.");
+    CHECK_FALSE(d->add_sequence_value(blocks, sequence, "Gold!", reflect::ValueKind::Int, error));
+    CHECK_FALSE(d->add_sequence_value(blocks, rule, "x", reflect::ValueKind::Int, error));
+    CHECK(error == "There is no such sequence.");
+    // The Run got a start for each: 0 and empty words. Its fields: the name, then each.
+    CHECK(lines() == std::vector<std::string>{"When [who] interacts with it (elder)",
+                                              "  Run sequence_1 with 0, “” and wait for it",
+                                              "Sequence sequence_1 (takes gold, words)"});
+    std::vector<editor::LogicSlot> slots = d->logic_slots(blocks, run);
+    REQUIRE(slots.size() == 3);
+    CHECK(slots[1].label == "gold");
+    CHECK(slots[2].kind == reflect::ValueKind::Text);
+    REQUIRE(d->set_logic_slot(blocks, run, 1, reflect::Value{std::int64_t{5}}, error));
+    REQUIRE(d->set_logic_slot(blocks, run, 2, reflect::Value{std::string("thanks")}, error));
+    CHECK(lines()[1] == "  Run sequence_1 with 5, “thanks” and wait for it");
+    // Inside the sequence, a step reads a value it takes.
+    const engine::logic::BlockId said =
+        d->add_logic_step(blocks, sequence, editor::LogicAction{"dialogue", "say", ""}, error);
+    REQUIRE(said.is_valid());
+    const std::vector<editor::LogicSource> offered = d->logic_sources(blocks, said, 0);
+    const auto words =
+        std::find_if(offered.begin(), offered.end(), [](const editor::LogicSource& s) {
+            return s.kind == editor::LogicSource::Kind::EventValue && s.member == "words";
+        });
+    REQUIRE(words != offered.end());
+    CHECK(words->text == "[words] (a value it takes)");
+    REQUIRE(d->set_logic_source(blocks, said, 0, *words, error));
+    CHECK(lines()[3] == "  Say [words] (dialogue)");
+    CHECK(d->check_logic(blocks).empty());
+    // Taking a value away takes it from the Run too; one undo puts it back.
+    REQUIRE(d->remove_sequence_value(blocks, sequence, "gold", error));
+    CHECK(lines()[1] == "  Run sequence_1 with “thanks” and wait for it");
+    CHECK(d->check_logic(blocks).empty());
+    CHECK_FALSE(d->remove_sequence_value(blocks, sequence, "gold", error));
+    REQUIRE(d->undo());
+    CHECK(lines()[1] == "  Run sequence_1 with 5, “thanks” and wait for it");
+}
+
 TEST_CASE("Logic is authored from nothing: files, Rules, conditions, Sequences, Brains") {
     const Sample sample;
     const auto d = sample.open();
@@ -3178,6 +3255,25 @@ TEST_CASE("Project Doctor finds missing files, broken logic, unreachable scenes 
     CHECK(std::any_of(found.begin(), found.end(), [](const editor::Finding& f) {
         return f.severity == Severity::Warning && f.scene == "maps/attic.dscene";
     }));
+}
+
+TEST_CASE("Project Doctor tells which script does not compile, and where") {
+    const Sample sample;
+    std::filesystem::create_directories(sample.path / "assets" / "scripts");
+    std::ofstream(sample.path / "assets" / "scripts" / "boss.luau", std::ios::binary)
+        << "sx.on(\"game_start\", function()\n  sx.log(1\nend)\n";
+    std::ofstream(sample.path / "assets" / "scripts" / "fine.luau", std::ios::binary)
+        << "sx.log(1)\n";
+    const std::unique_ptr<editor::Document> doc = sample.open();
+    std::vector<std::string> said;
+    for (const editor::Finding& f : editor::examine(*doc)) {
+        if (f.asset.ends_with(".luau")) {
+            CHECK(f.severity == editor::Finding::Severity::Problem);
+            said.push_back(f.message);
+        }
+    }
+    REQUIRE(said.size() == 1);
+    CHECK(said[0].starts_with("scripts/boss.luau, line 3: "));
 }
 
 TEST_CASE("Project Doctor tells what is wrong with an object's links") {

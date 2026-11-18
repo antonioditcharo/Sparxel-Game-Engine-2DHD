@@ -531,3 +531,17 @@ TEST_CASE("Memory use is reported") {
     const Fixture f;
     CHECK(f.vm.memory_used() > 0);
 }
+
+TEST_CASE("Scripts are checked without running: the first mistake, with its line") {
+    CHECK_FALSE(logic::check_script("ok", "local x = 1\nsx.log(x)\n").has_value());
+    // Calls that would fail as it runs are not run, so not found.
+    CHECK_FALSE(logic::check_script("later", "error('only when run')").has_value());
+    const std::optional<logic::ScriptError> error =
+        logic::check_script("scripts/boss.luau", "local x = 1\nif x then\n  sx.log(x)\n");
+    REQUIRE(error.has_value());
+    const logic::ScriptError found = error.value_or(logic::ScriptError{});
+    CHECK(found.kind == logic::ScriptErrorKind::Compile);
+    CHECK(found.script == "scripts/boss.luau");
+    CHECK(found.line == 4);
+    CHECK(found.message.find("'end'") != std::string::npos);
+}

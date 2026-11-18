@@ -54,6 +54,12 @@ struct ScriptError {
     std::string message; ///< Plain language, without the "script:line:" prefix.
 };
 
+/// Whether `source` is a Luau script that compiles: nothing if it does; otherwise the first
+/// mistake, with its line, as Vm::load() would report it (for `name`). Nothing is run.
+/// For editors, to say what is wrong as a script is written.
+[[nodiscard]] std::optional<ScriptError> check_script(std::string_view name,
+                                                      std::string_view source);
+
 /// Limits that keep user logic from freezing or exhausting the game.
 struct VmLimits {
     /// Memory for all scripts together, in bytes. Allocations made by scripts beyond

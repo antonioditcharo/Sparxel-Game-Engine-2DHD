@@ -48,6 +48,7 @@ class StartPage;
 class SfxGenerator;
 class DoctorPanel;
 class StoryWindow;
+class ScriptWindow;
 class TableWindow;
 class TilePalette;
 
@@ -133,6 +134,12 @@ public:
     /// Opens a conversation of the project (its path in assets/, a .dtalk) in the Story
     /// editor, or brings its window forward. Null, showing why, if it cannot.
     StoryWindow* open_story(const QString& asset_path);
+    /// Opens the Luau script at `asset_path` (relative to assets/) in the Script editor, or
+    /// brings its window forward. Null, saying why, if it cannot be read.
+    ScriptWindow* open_script(const QString& asset_path);
+    /// File > New script: makes scripts/<name>.luau, with a first event to start from, and
+    /// opens it. Null, saying why, if the name is not usable or taken.
+    ScriptWindow* new_script(const QString& name);
     /// Makes auto-tiles from the picture at `asset_path` in assets/ (Document::
     /// make_autotiles()); returns the tileset made, or empty, saying why in the status bar.
     QString make_autotiles(const QString& asset_path);
@@ -282,6 +289,7 @@ private:
     std::map<std::string, SpriteStudio*> studios_;
     /// The open Story windows, by the conversation each edits.
     std::map<std::string, StoryWindow*> stories_;
+    std::map<std::string, ScriptWindow*> scripts_;
     /// The open table windows, by the table each edits.
     std::map<std::string, TableWindow*> tables_;
     QTimer* autosave_timer_ = nullptr;

@@ -21,14 +21,14 @@
 | B. Pixel art | 4 | 7 | 3 (+1 later) |
 | C. World building | 4 | 7 | 3 |
 | D. Rendering and the look | 4 | 10 | 1 (+1 later) |
-| E. No-code logic | 4 | 5 | 2 (+1 later) |
+| E. No-code logic | 5 | 6 | 0 (+1 later) |
 | F. Genre kits | 4 | 0 | 2 |
 | G. Story | 5 | 2 | 0 (+1 later) |
 | H. Characters | 3 | 2 | 0 |
 | I. Physics | 3 | 2 | 0 |
 | J. Audio | 2 | 4 | 0 (+1 later) |
 | K. UI | 3 | 4 | 0 |
-| **All** | **41** | **50** | **11** (+6 later) |
+| **All** | **42** | **51** | **9** (+6 later) |
 
 The strongest areas match or pass their references: the RPG kit and window skins (RPG
 Maker), auto-tiles and tile variants (RPG Maker, LDtk), no-code Rules with tags, *it*,
@@ -127,10 +127,10 @@ action kits (GameMaker), audio mixing (zones, reverb), and team features.
 | E5 | Brains | Unity Behavior | **Partial**: state machines written as logic; no graph editor |
 | E6 | Variables | GDevelop | **Partial**: typed, saved with the game; per-object variables not yet |
 | E7 | Expressions | GDevelop | **Partial**: values from properties, events, variables, arithmetic; no formula editor |
-| E8 | Custom blocks | GDevelop extensions | **Not yet** |
+| E8 | Custom blocks | GDevelop extensions | **Partial**: Sequences that take typed values, run with them, read inside, authored in the Logic view; not yet shared between projects or given a block text of their own |
 | E9 | Messages, timers, spawners | Construct | **Done** |
 | E10 | Live logic debugger | GDevelop | **Partial**: lines keep their blocks and the VM traces them; no breakpoints or watches in the editor |
-| E11 | Luau scripting | Roblox | **Not yet** in the editor (the runtime runs Luau) |
+| E11 | Luau scripting | Roblox | **Done**: `.luau` scripts run with the Rules; a Script editor that colours, checks as you type and lists what scripts can use; the Doctor checks them |
 | E12 | Rewind debugging | | Later |
 
 ## F. Genre kits

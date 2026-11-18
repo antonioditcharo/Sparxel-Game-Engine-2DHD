@@ -812,6 +812,82 @@ void LogicPanel::show_fields() {
         }
         form_->addRow(text_of(slot.label), row);
     }
+    show_sequence_values(file, block);
+}
+
+void LogicPanel::show_sequence_values(const std::string& file, engine::logic::BlockId block) {
+    const auto found = std::find_if(document_->logic().begin(), document_->logic().end(),
+                                    [&file](const LogicFile& f) { return f.path == file; });
+    if (found == document_->logic().end()) {
+        return;
+    }
+    const auto sequence =
+        std::find_if(found->asset.sequences.begin(), found->asset.sequences.end(),
+                     [block](const engine::logic::Sequence& q) { return q.id == block; });
+    if (sequence == found->asset.sequences.end()) {
+        return;
+    }
+    // Later, not from inside the button's own signal: the fields go when rebuilt.
+    const auto later = [this, file, block](const auto& change) {
+        QTimer::singleShot(0, this, [this, file, block, change] {
+            std::string error;
+            if (!change(error)) {
+                Q_EMIT refused(text_of(error));
+                return;
+            }
+            rebuild();
+            select(file, block);
+            Q_EMIT edited();
+        });
+    };
+    const auto kind_name = [](reflect::ValueKind kind) {
+        return text_of(std::string(reflect::kind_display_name(kind)));
+    };
+    // What it takes: a custom block's values, each read inside as [name].
+    for (const engine::logic::Variable& value : sequence->parameters) {
+        const std::string name = value.id;
+        auto* row = new QWidget(fields_);
+        auto* line = new QHBoxLayout(row);
+        line->setContentsMargins(0, 0, 0, 0);
+        line->addWidget(new QLabel(tr("[%1], %2").arg(text_of(name), kind_name(value.kind)), row),
+                        1);
+        auto* remove = new QPushButton(tr("Remove"), row);
+        remove->setObjectName(text_of("remove_value:" + name));
+        connect(remove, &QPushButton::clicked, this, [this, file, block, name, later] {
+            later([this, file, block, name](std::string& error) {
+                return document_->remove_sequence_value(file, block, name, error);
+            });
+        });
+        line->addWidget(remove);
+        form_->addRow(tr("Takes"), row);
+    }
+    auto* row = new QWidget(fields_);
+    auto* line = new QHBoxLayout(row);
+    line->setContentsMargins(0, 0, 0, 0);
+    auto* name = new QLineEdit(row);
+    name->setObjectName(QStringLiteral("new_value_name"));
+    name->setPlaceholderText(tr("amount"));
+    auto* kind = new QComboBox(row);
+    kind->setObjectName(QStringLiteral("new_value_kind"));
+    for (const reflect::ValueKind k : {reflect::ValueKind::Int, reflect::ValueKind::Float,
+                                       reflect::ValueKind::Text, reflect::ValueKind::Bool}) {
+        kind->addItem(kind_name(k), static_cast<int>(k));
+    }
+    auto* add = new QPushButton(tr("Add a value"), row);
+    add->setObjectName(QStringLiteral("add_value"));
+    add->setToolTip(tr("Each Run of this sequence gives one, and its steps read it as [name]: "
+                       "a block of your own."));
+    connect(add, &QPushButton::clicked, this, [this, file, block, name, kind, later] {
+        const std::string wanted = utf8(name->text().trimmed());
+        const auto chosen = static_cast<reflect::ValueKind>(kind->currentData().toInt());
+        later([this, file, block, wanted, chosen](std::string& error) {
+            return document_->add_sequence_value(file, block, wanted, chosen, error);
+        });
+    });
+    line->addWidget(name, 1);
+    line->addWidget(kind);
+    line->addWidget(add);
+    form_->addRow(tr("Takes also"), row);
 }
 
 void LogicPanel::update_buttons() {

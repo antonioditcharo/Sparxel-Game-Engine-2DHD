@@ -1225,6 +1225,27 @@ std::unique_ptr<Runtime> Runtime::open(const fs::path& root, const RuntimeOption
         }
     }
 
+    // Scripts written in Luau (assets/**/*.luau), named by their path, after the logic.
+    for (const assets::AssetRecord& record : r.assets.assets()) {
+        if (!record.path.ends_with(".luau")) {
+            continue;
+        }
+        const std::optional<std::vector<std::uint8_t>> bytes = r.assets.read(record.guid);
+        if (!bytes) {
+            continue;
+        }
+        const std::string_view source(reinterpret_cast<const char*>(bytes->data()), // NOLINT
+                                      bytes->size());
+        if (!r.vm->load(record.path, source)) {
+            for (const logic::ScriptError& error : r.vm->errors()) {
+                issues.push_back(serialize::Issue{
+                    "assets/" + record.path +
+                        (error.line > 0 ? ":" + std::to_string(error.line) : std::string()),
+                    error.message});
+            }
+            r.vm->clear_errors();
+        }
+    }
     // Links, on objects of every scene: Rules of their own.
     {
         logic::LogicAsset links;

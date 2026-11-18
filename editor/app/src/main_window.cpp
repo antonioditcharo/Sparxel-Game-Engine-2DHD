@@ -64,6 +64,7 @@
 #include "logic_panel.h"
 #include "project_panel.h"
 #include "scene_view.h"
+#include "script_window.h"
 #include "sfx_generator.h"
 #include "sprite_studio.h"
 #include "start_page.h"
@@ -412,6 +413,8 @@ std::vector<SearchItem> MainWindow::search_items() {
             items.push_back({path, tr("Table"), [this, path] { open_table(path); }});
         } else if (path.endsWith(QStringLiteral(".dtalk"))) {
             items.push_back({path, tr("Conversation"), [this, path] { open_story(path); }});
+        } else if (path.endsWith(QStringLiteral(".luau"))) {
+            items.push_back({path, tr("Script"), [this, path] { open_script(path); }});
         } else if (path.endsWith(QStringLiteral(".drules"))) {
             items.push_back({path, tr("Logic"), [this, path] {
                                  for (QDockWidget* dock : findChildren<QDockWidget*>()) {
@@ -1109,6 +1112,70 @@ StoryWindow* MainWindow::open_story(const QString& asset_path) {
     return story;
 }
 
+ScriptWindow* MainWindow::open_script(const QString& asset_path) {
+    if (document_ == nullptr) {
+        return nullptr;
+    }
+    const fs::path file = (document_->folder() / "assets" / path_of(asset_path)).lexically_normal();
+    const std::string key = file.generic_string();
+    if (const auto found = scripts_.find(key); found != scripts_.end()) {
+        found->second->show();
+        found->second->raise();
+        found->second->activateWindow();
+        return found->second;
+    }
+    auto* script = new ScriptWindow(this);
+    script->setWindowFlag(Qt::Window);
+    std::string error;
+    if (!script->open(file, utf8_of(asset_path), document_.get(), error)) {
+        delete script;
+        report(tr("%1 could not be opened: %2").arg(asset_path, text_of(error)));
+        return nullptr;
+    }
+    connect(script, &ScriptWindow::saved, this, [this] { reload_assets(); });
+    scripts_[key] = script;
+    script->show();
+    return script;
+}
+
+ScriptWindow* MainWindow::new_script(const QString& name) {
+    if (document_ == nullptr) {
+        return nullptr;
+    }
+    const QString trimmed = name.trimmed();
+    const bool plain =
+        !trimmed.isEmpty() && std::all_of(trimmed.begin(), trimmed.end(), [](QChar c) {
+            return c.isLetterOrNumber() || c == QLatin1Char('_') || c == QLatin1Char('-');
+        });
+    if (!plain) {
+        report(tr("A script needs a name of letters, digits, _ and -, such as \"boss\"."));
+        return nullptr;
+    }
+    const QString relative = QStringLiteral("scripts/%1.luau").arg(trimmed);
+    const fs::path file = document_->folder() / "assets" / path_of(relative);
+    std::error_code ignored;
+    if (fs::exists(file, ignored)) {
+        report(tr("There is a script called %1 already.").arg(trimmed));
+        return nullptr;
+    }
+    fs::create_directories(file.parent_path(), ignored);
+    {
+        std::ofstream out(file, std::ios::binary);
+        out << "-- " << utf8_of(trimmed)
+            << ": a script of the game, run as it starts. sx.on runs a function on an event;\n"
+               "-- sx.call, sx.get and sx.set work the game's objects. See the list beside.\n\n"
+               "sx.on(\"game_start\", function()\n"
+               "    sx.log(\"Hello from "
+            << utf8_of(trimmed) << "\")\nend)\n";
+        if (!out.good()) {
+            report(tr("The script could not be made."));
+            return nullptr;
+        }
+    }
+    reload_assets();
+    return open_script(relative);
+}
+
 StoryWindow* MainWindow::new_story(const QString& name) {
     if (document_ == nullptr) {
         return nullptr;
@@ -1401,6 +1468,16 @@ void MainWindow::build_actions() {
         }
     });
     talk_action->setObjectName(QStringLiteral("new_conversation"));
+    QAction* script_action = file->addAction(tr("New sc&ript…"), this, [this] {
+        bool named = false;
+        const QString name = QInputDialog::getText(this, tr("New script"), tr("The script's name:"),
+                                                   QLineEdit::Normal, tr("boss"), &named);
+        if (named) {
+            new_script(name);
+        }
+    });
+    script_action->setObjectName(QStringLiteral("new_script"));
+    script_action->setToolTip(tr("A Luau script, for what the blocks do not say"));
     QAction* table_action = file->addAction(tr("New &table…"), this, [this] {
         bool named = false;
         const QString name = QInputDialog::getText(this, tr("New table"), tr("The table's name:"),
@@ -1441,6 +1518,8 @@ void MainWindow::build_actions() {
             open_scene(relative);
         } else if (file_path.endsWith(QStringLiteral(".dtalk"))) {
             open_story(relative);
+        } else if (file_path.endsWith(QStringLiteral(".luau"))) {
+            open_script(relative);
         } else if (file_path.endsWith(QStringLiteral(".dtable"))) {
             open_table(relative);
         } else if (file_path.endsWith(QStringLiteral(".aseprite"), Qt::CaseInsensitive) ||
@@ -1935,6 +2014,13 @@ bool MainWindow::close_sprites() {
         }
         it->second->deleteLater();
         it = stories_.erase(it);
+    }
+    for (auto it = scripts_.begin(); it != scripts_.end();) {
+        if (!it->second->close()) {
+            return false;
+        }
+        it->second->deleteLater();
+        it = scripts_.erase(it);
     }
     for (auto it = tables_.begin(); it != tables_.end();) {
         if (!it->second->close()) {

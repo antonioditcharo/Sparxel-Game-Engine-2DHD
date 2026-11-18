@@ -57,6 +57,11 @@ was added to the reflection registry for this module (`reflect.h`), together wit
 
 ## 3. The script API
 
+Scripts are the no-code logic's own compiled Luau, and the project's own `.luau` files
+(game.md, *Scripts*). `check_script(name, source)` says whether a script compiles, and
+its first mistake with its line, without running it: the Script editor and the Project
+Doctor use it.
+
 | Function | Does |
 |---|---|
 | `sx.call(object, function, ...)` | Calls an action, condition or value getter. Conditions and getters return their value |
@@ -174,7 +179,7 @@ A `LogicAsset` is what one logic file in a project holds, and compiles to one sc
 | Part | Holds |
 |---|---|
 | `Variable` | An id, a kind (choices name their choice list) and an optional starting value. Shared by everything in the asset |
-| `Sequence` | A name and a list of steps (layer 4 of `plan/05` §3) |
+| `Sequence` | A name, the values it takes (`parameters`: each a name, a kind and the value a new Run step starts with; saved as `takes`), and a list of steps (layer 4 of `plan/05` §3). With values it is a **custom block**, as GDevelop's functions are: each Run gives one for each, and its steps read them as event values (`event_value("gold")`) |
 | `Rule` | When (an object's event, or a game-wide event), If (conditions, all must hold), Do and Otherwise (layer 3) |
 | `Brain` | A state machine (layer 5): states with On Enter, While In and On Exit steps and transitions out, plus "from any state" transitions; see Brains below |
 
@@ -187,7 +192,7 @@ A `LogicAsset` is what one logic file in a project holds, and compiles to one sc
 | `WaitUntil` | Waits until a condition holds: checked at once (no wait if it already holds), then once per update. Compiles to `while not (…) do sx.wait(0) end` |
 | `If` | Runs one list of steps or the other |
 | `Repeat` | Runs steps a number of times |
-| `Run` | Runs another sequence and waits until it ends |
+| `Run` | Runs another sequence and waits until it ends, giving it a value for each it takes, in order (`ir::run(id, name, values)`): each checked against the value's kind as any slot is; too many or too few is an error (*'reward' takes 2 values: gold, words.*), and so is reading a value a sequence does not take |
 | `Log` | Writes a value to the log |
 
 Expressions fill the slots: a constant, a property, a condition or value of an object, a
@@ -255,7 +260,8 @@ levels). An asset with any error produces no source, so it cannot be run by mist
 - **Text cannot escape.** Every byte of user text that is not printable ASCII is written as
   a three-digit escape, so text cannot end its string, start a comment or add a line (a
   test feeds it `"); print("pwned") --` with a newline).
-- Sequences become global functions named by `sequence_entry()` (`seq_<name>`), for
+- Sequences become global functions named by `sequence_entry()` (`seq_<name>`), taking
+  their values as parameters `q1`, `q2`, ..., for
   `Vm::start()`. Rules become `sx.on` registrations keyed by `event_key()` ("chest.opened").
 - **Tracing:** with `CompileOptions::trace`, every block first calls `sx.trace()`. The
   trace handler receives the line, and the debug map gives the block: this is the
