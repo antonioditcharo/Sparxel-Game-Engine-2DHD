@@ -590,14 +590,13 @@ bool MainWindow::git(const QStringList& args, QString* out, QString* error) cons
 }
 
 bool MainWindow::keeps_versions() const {
-    QString top;
-    if (!git({QStringLiteral("rev-parse"), QStringLiteral("--show-toplevel")}, &top, nullptr)) {
-        return false;
-    }
-    // This project's own repository, not one it happens to sit in.
+    // This project's own repository, not one it happens to sit in: git prints where the
+    // folder is in its repository, nothing at the top. (Comparing paths would trip over
+    // short and long names of the same folder on Windows.)
+    QString prefix;
     return document_ != nullptr &&
-           QFileInfo(top.trimmed()).canonicalFilePath() ==
-               QFileInfo(path_text(document_->folder())).canonicalFilePath();
+           git({QStringLiteral("rev-parse"), QStringLiteral("--show-prefix")}, &prefix, nullptr) &&
+           prefix.trimmed().isEmpty();
 }
 
 bool MainWindow::start_versions() {
