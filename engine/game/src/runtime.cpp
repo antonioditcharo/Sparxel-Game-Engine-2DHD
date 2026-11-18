@@ -2189,7 +2189,7 @@ bool Runtime::draw() {
     // The camera rig: the player (the first Top-down Mover not walking by itself), or what
     // logic told it to follow or look at, shaken; else the origin.
     const GameView seen = game_view(r);
-    scene2d::Camera2D camera = seen.flat;
+    const scene2d::Camera2D camera = seen.flat;
     scene2d::DioramaCamera orbit = seen.orbit;
     const double aspect = seen.aspect;
     // A look that comes to need processing while playing (night falls): its pass, now.
