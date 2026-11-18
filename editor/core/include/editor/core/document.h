@@ -535,6 +535,16 @@ public:
     /// say when it starts. Empty if nothing.
     [[nodiscard]] std::vector<engine::serialize::Issue>
     check_links(const engine::world::World& scene) const;
+    /// Gives the sequence `sequence` of the logic file `path` one more value it takes, as a
+    /// custom block's (a yes/no, a whole number, a number or words), named `name`; every
+    /// Run of it gives the value its start. One undo step. False, with `error`, for a name
+    /// that is not usable or is taken.
+    bool add_sequence_value(std::string_view path, engine::logic::BlockId sequence,
+                            std::string_view name, engine::reflect::ValueKind kind,
+                            std::string& error);
+    /// Takes the value `name` from the sequence, and from every Run of it. One undo step.
+    bool remove_sequence_value(std::string_view path, engine::logic::BlockId sequence,
+                               std::string_view name, std::string& error);
 
     [[nodiscard]] bool can_undo() const noexcept;
     [[nodiscard]] bool can_redo() const noexcept;

@@ -780,6 +780,9 @@ logic::Expr* slot_target(logic::LogicAsset& asset, BlockId block, std::size_t ar
         case StmtKind::WaitUntil:
             return s.arguments.empty() ? nullptr : in_test(s.arguments[0]);
         case StmtKind::Run:
+            // The sequence's name is the first; then a value for each it takes.
+            return argument >= 1 && argument - 1 < s.arguments.size() ? &s.arguments[argument - 1]
+                                                                      : nullptr;
         case StmtKind::ForEachTagged:
             return nullptr;
         case StmtKind::SetVariable:
@@ -795,6 +798,50 @@ logic::Expr* slot_target(logic::LogicAsset& asset, BlockId block, std::size_t ar
     }
     const Header h = find_header(asset, block);
     return h.condition != nullptr ? in_test(*h.condition) : nullptr;
+}
+
+/// The Sequence `block` is, or is a step of; null if none.
+logic::Sequence* sequence_of(logic::LogicAsset& asset, BlockId block) {
+    for (logic::Sequence& sequence : asset.sequences) {
+        if (sequence.id == block || find_in(sequence.steps, block).list != nullptr) {
+            return &sequence;
+        }
+    }
+    return nullptr;
+}
+
+/// The sequence called `name`; null if none.
+const logic::Sequence* sequence_named(const logic::LogicAsset& asset, std::string_view name) {
+    for (const logic::Sequence& sequence : asset.sequences) {
+        if (sequence.name == name) {
+            return &sequence;
+        }
+    }
+    return nullptr;
+}
+
+/// What a new value of `kind` starts as: no, 0, 0.0, empty words, or a choice's first.
+reflect::Value starting_of(const logic::Variable& v, const reflect::Registry& registry) {
+    if (v.initial) {
+        return *v.initial;
+    }
+    switch (v.kind) {
+    case reflect::ValueKind::Bool:
+        return reflect::Value{false};
+    case reflect::ValueKind::Int:
+        return reflect::Value{std::int64_t{0}};
+    case reflect::ValueKind::Float:
+        return reflect::Value{0.0};
+    case reflect::ValueKind::Text:
+        return reflect::Value{std::string()};
+    case reflect::ValueKind::Choice:
+        if (const reflect::ChoiceInfo* list = registry.find_choice_list(v.choice_list);
+            list != nullptr && !list->entries.empty()) {
+            return reflect::Value{list->entries.front().id};
+        }
+        return reflect::Value{std::string()};
+    }
+    return reflect::Value{false};
 }
 
 /// The Rule `block` is, or is inside (a condition or a step of it); null if none.
@@ -826,6 +873,14 @@ std::optional<reflect::ValueKind> kind_of(const Lookup& look, logic::LogicAsset&
         }
         return std::nullopt;
     case logic::ExprKind::EventValue:
+        if (const logic::Sequence* sequence = sequence_of(asset, block)) {
+            for (const logic::Variable& p : sequence->parameters) {
+                if (p.id == left.member) {
+                    return p.kind;
+                }
+            }
+            return std::nullopt;
+        }
         if (const logic::Rule* rule = rule_of(asset, block); rule != nullptr) {
             for (const reflect::TypeInfo* type : types_of(look, rule->object)) {
                 if (const reflect::EventInfo* event = type->find_event(rule->event)) {
@@ -1128,6 +1183,19 @@ std::vector<LogicSlot> Document::unfilled_slots(std::string_view path, BlockId s
         break;
     case StmtKind::Run:
         slots.push_back(slot(0, "Sequence", reflect::ValueKind::Text, s.member));
+        // A value for each the sequence takes.
+        if (const logic::Sequence* run = sequence_named(file->asset, s.member)) {
+            for (std::size_t i = 0; i < run->parameters.size(); ++i) {
+                const logic::Variable& p = run->parameters[i];
+                if (literal(i)) {
+                    LogicSlot one = slot(i + 1, p.id, p.kind, s.arguments[i].literal);
+                    if (p.kind == reflect::ValueKind::Choice) {
+                        one.choice = d.registry.find_choice_list(p.choice_list);
+                    }
+                    slots.push_back(std::move(one));
+                }
+            }
+        }
         break;
     case StmtKind::ForEachTagged:
         slots.push_back(slot(0, "Tag", reflect::ValueKind::Text, s.member));
@@ -1183,6 +1251,7 @@ bool Document::set_logic_slot(std::string_view path, BlockId step, std::size_t a
     // Names: valid, free, and followed by what refers to them.
     const auto* text = std::get_if<std::string>(&*fitted);
     if (place.list != nullptr && (*place.list)[place.index].kind == StmtKind::Run &&
+        argument == 0 &&
         (text == nullptr ||
          std::none_of(asset.sequences.begin(), asset.sequences.end(),
                       [text](const logic::Sequence& q) { return q.name == *text; }))) {
@@ -1271,9 +1340,26 @@ bool Document::set_logic_slot(std::string_view path, BlockId step, std::size_t a
         if (was == nullptr || was->kind != chosen->kind) {
             setting->arguments.assign(1, logic::ir::literal(zero_of(chosen->kind)));
         }
+    } else if (place.list != nullptr && (*place.list)[place.index].kind == StmtKind::Run &&
+               argument >= 1) {
+        Stmt& run = (*place.list)[place.index];
+        if (argument - 1 >= run.arguments.size()) {
+            error = "That sequence takes no such value.";
+            return false;
+        }
+        write_value(run.arguments[argument - 1], std::move(*fitted));
+    } else if (place.list != nullptr && (*place.list)[place.index].kind == StmtKind::Run) {
+        // Another sequence: its values start again.
+        Stmt& run = (*place.list)[place.index];
+        run.member = *text;
+        run.arguments.clear();
+        if (const logic::Sequence* chosen_run = sequence_named(asset, *text)) {
+            for (const logic::Variable& p : chosen_run->parameters) {
+                run.arguments.push_back(logic::ir::literal(starting_of(p, d.registry)));
+            }
+        }
     } else if (place.list != nullptr &&
-               ((*place.list)[place.index].kind == StmtKind::Run ||
-                (*place.list)[place.index].kind == StmtKind::ForEachTagged)) {
+               (*place.list)[place.index].kind == StmtKind::ForEachTagged) {
         (*place.list)[place.index].member = *text;
     } else if (place.list != nullptr && ((*place.list)[place.index].kind == StmtKind::If ||
                                          (*place.list)[place.index].kind == StmtKind::WaitUntil)) {
@@ -1465,6 +1551,9 @@ BlockId Document::add_logic_step(std::string_view path, BlockId after, const Log
         label = "Repeat";
     } else if (built_in && action.member == "run") {
         step = logic::ir::run(next, file->asset.sequences.front().name);
+        for (const logic::Variable& p : file->asset.sequences.front().parameters) {
+            step.arguments.push_back(logic::ir::literal(starting_of(p, d.registry)));
+        }
         label = "Run";
     } else if (built_in && action.member == "for_each_tagged") {
         step = logic::ir::for_each_tagged(next, tags.front().substr(1), {});
@@ -1877,6 +1966,15 @@ std::vector<LogicSource> Document::sources_of(std::string_view path, BlockId blo
     for (const logic::Variable& v : file->asset.variables) {
         if (fits(v.kind)) {
             sources.push_back(LogicSource{LogicSource::Kind::Variable, "", v.id, v.id, v.kind});
+        }
+    }
+    // The values a sequence takes, for its steps.
+    if (const logic::Sequence* sequence = sequence_of(file->asset, block)) {
+        for (const logic::Variable& p : sequence->parameters) {
+            if (fits(p.kind)) {
+                sources.push_back(LogicSource{LogicSource::Kind::EventValue, "", p.id,
+                                              "[" + p.id + "] (a value it takes)", p.kind});
+            }
         }
     }
     // The values the Rule's event carries, for blocks inside a Rule.
@@ -2554,6 +2652,90 @@ Document::check_links(const engine::world::World& scene) const {
         issues.push_back(engine::serialize::Issue{"links", error.message});
     }
     return issues;
+}
+
+bool Document::add_sequence_value(std::string_view path, BlockId sequence, std::string_view name,
+                                  reflect::ValueKind kind, std::string& error) {
+    Impl& d = *impl_;
+    LogicFile* file = d.logic_file(path);
+    logic::Sequence* found = nullptr;
+    if (file == nullptr) {
+        error = "There is no logic file " + std::string(path) + ".";
+        return false;
+    }
+    for (logic::Sequence& q : file->asset.sequences) {
+        if (q.id == sequence) {
+            found = &q;
+        }
+    }
+    if (found == nullptr) {
+        error = "There is no such sequence.";
+        return false;
+    }
+    if (!reflect::is_valid_id(name)) {
+        error = "A value's name is lowercase letters, digits and _, starting with a letter: "
+                "amount.";
+        return false;
+    }
+    if (std::any_of(found->parameters.begin(), found->parameters.end(),
+                    [&](const logic::Variable& p) { return p.id == name; })) {
+        error = found->name + " already takes a value called " + std::string(name) + ".";
+        return false;
+    }
+    if (kind == reflect::ValueKind::Choice) {
+        error = "A sequence's values are yes/no, whole numbers, numbers or words.";
+        return false;
+    }
+    engine::serialize::Json before = d.snapshot();
+    logic::Variable value{std::string(name), kind, "", std::nullopt};
+    found->parameters.push_back(value);
+    // Every Run of it gives the new value its start.
+    for (std::vector<Stmt>* list : step_lists(file->asset)) {
+        for (Stmt& st : *list) {
+            if (st.kind == StmtKind::Run && st.member == found->name) {
+                st.arguments.push_back(logic::ir::literal(starting_of(value, d.registry)));
+            }
+        }
+    }
+    d.record("Add the value " + std::string(name) + " to " + found->name, std::move(before));
+    return true;
+}
+
+bool Document::remove_sequence_value(std::string_view path, BlockId sequence, std::string_view name,
+                                     std::string& error) {
+    Impl& d = *impl_;
+    LogicFile* file = d.logic_file(path);
+    if (file == nullptr) {
+        error = "There is no logic file " + std::string(path) + ".";
+        return false;
+    }
+    logic::Sequence* found = nullptr;
+    for (logic::Sequence& q : file->asset.sequences) {
+        if (q.id == sequence) {
+            found = &q;
+        }
+    }
+    const auto at = found == nullptr
+                        ? std::vector<logic::Variable>::iterator{}
+                        : std::find_if(found->parameters.begin(), found->parameters.end(),
+                                       [&](const logic::Variable& p) { return p.id == name; });
+    if (found == nullptr || at == found->parameters.end()) {
+        error = "There is no such value.";
+        return false;
+    }
+    const auto index = static_cast<std::size_t>(at - found->parameters.begin());
+    engine::serialize::Json before = d.snapshot();
+    found->parameters.erase(at);
+    for (std::vector<Stmt>* list : step_lists(file->asset)) {
+        for (Stmt& st : *list) {
+            if (st.kind == StmtKind::Run && st.member == found->name &&
+                index < st.arguments.size()) {
+                st.arguments.erase(st.arguments.begin() + static_cast<std::ptrdiff_t>(index));
+            }
+        }
+    }
+    d.record("Remove the value " + std::string(name) + " from " + found->name, std::move(before));
+    return true;
 }
 
 } // namespace editor

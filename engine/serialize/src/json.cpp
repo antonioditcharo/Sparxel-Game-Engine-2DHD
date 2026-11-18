@@ -598,11 +598,21 @@ private:
     }
 
     bool read_sequence(const Json& json, const std::string& path, logic::Sequence& out) {
-        if (!object(json, path, {"block", "name", "steps"})) {
+        if (!object(json, path, {"block", "name", "takes", "steps"})) {
             return false;
         }
         bool ok = block_field(json, path, out.id, true);
         ok = string_field(json, path, "name", out.name, true) && ok;
+        ok = list(json, path, "takes",
+                  [&](const Json& item, const std::string& at) {
+                      logic::Variable parameter;
+                      const bool read = read_variable(item, at, parameter);
+                      if (read) {
+                          out.parameters.push_back(std::move(parameter));
+                      }
+                      return read;
+                  }) &&
+             ok;
         ok = stmts(json, path, "steps", out.steps, 0) && ok;
         return ok;
     }
@@ -813,19 +823,22 @@ Json logic_to_json(const logic::LogicAsset& asset) {
     out["format"] = logic_format;
     out["version"] = logic_version;
     out["name"] = asset.name;
+    const auto variable_json = [](const logic::Variable& variable) {
+        Json item = Json::object();
+        item["id"] = variable.id;
+        item["kind"] = name_of(value_kind_names, variable.kind);
+        if (!variable.choice_list.empty()) {
+            item["choice_list"] = variable.choice_list;
+        }
+        if (variable.initial) {
+            item["initial"] = literal_to_json(*variable.initial);
+        }
+        return item;
+    };
     if (!asset.variables.empty()) {
         Json variables = Json::array();
         for (const logic::Variable& variable : asset.variables) {
-            Json item = Json::object();
-            item["id"] = variable.id;
-            item["kind"] = name_of(value_kind_names, variable.kind);
-            if (!variable.choice_list.empty()) {
-                item["choice_list"] = variable.choice_list;
-            }
-            if (variable.initial) {
-                item["initial"] = literal_to_json(*variable.initial);
-            }
-            variables.push_back(std::move(item));
+            variables.push_back(variable_json(variable));
         }
         out["variables"] = std::move(variables);
     }
@@ -835,6 +848,13 @@ Json logic_to_json(const logic::LogicAsset& asset) {
             Json item = Json::object();
             item["block"] = sequence.id.value;
             item["name"] = sequence.name;
+            if (!sequence.parameters.empty()) {
+                Json takes = Json::array();
+                for (const logic::Variable& parameter : sequence.parameters) {
+                    takes.push_back(variable_json(parameter));
+                }
+                item["takes"] = std::move(takes);
+            }
             if (!sequence.steps.empty()) {
                 item["steps"] = stmts_to_json(sequence.steps);
             }

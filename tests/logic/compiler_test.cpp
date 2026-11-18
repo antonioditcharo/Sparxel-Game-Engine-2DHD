@@ -283,6 +283,59 @@ TEST_CASE("Sequences with variables, loops, branches, waits and nested sequences
     CHECK(world.vm.errors().empty());
 }
 
+TEST_CASE("Custom blocks: sequences that take values, run with them, and are checked") {
+    World world;
+    logic::LogicAsset asset;
+    asset.name = "blocks";
+    // "Reward [gold] with [words]": gives the gold and logs the words, twice the gold too.
+    logic::Sequence reward{
+        logic::BlockId{1},
+        "reward",
+        {
+            ir::do_action(2, "player", "add_gold", {ir::event_value("gold")}),
+            ir::log(3, ir::event_value("words")),
+            ir::log(4, ir::arithmetic(ArithmeticOp::Multiply, ir::event_value("gold"), whole(2))),
+        }};
+    reward.parameters = {logic::Variable{"gold", reflect::ValueKind::Int, "", std::nullopt},
+                         logic::Variable{"words", reflect::ValueKind::Text, "", std::nullopt}};
+    asset.sequences.push_back(reward);
+    asset.sequences.push_back(logic::Sequence{
+        logic::BlockId{10},
+        "intro",
+        {ir::run(11, "reward", {whole(5), text("well done")}),
+         ir::run(12, "reward",
+                 {ir::arithmetic(ArithmeticOp::Add, whole(1), whole(2)), text("again")})}});
+    const logic::ScriptId script = world.load(asset);
+    REQUIRE(world.vm.start(script, logic::sequence_entry("intro")).has_value());
+    CHECK(world.player.gold == 8);
+    CHECK(world.log == std::vector<std::string>{"well done", "10", "again", "6"});
+
+    // Mistakes: the wrong number of values, one of the wrong kind, a value it does not take,
+    // and two values with one name.
+    logic::LogicAsset broken = asset;
+    broken.sequences[1].steps = {ir::run(11, "reward", {whole(5)}),
+                                 ir::run(12, "reward", {text("five"), text("x")})};
+    broken.sequences[0].steps.push_back(ir::log(5, ir::event_value("silver")));
+    logic::Sequence twice{logic::BlockId{20}, "twice", {}};
+    twice.parameters = {logic::Variable{"a", reflect::ValueKind::Int, "", std::nullopt},
+                        logic::Variable{"a", reflect::ValueKind::Int, "", std::nullopt}};
+    broken.sequences.push_back(twice);
+    broken.sequences.push_back(
+        logic::Sequence{logic::BlockId{30}, "plain", {ir::run(31, "intro", {whole(1)})}});
+    const logic::CompiledLogic compiled = world.compile(broken);
+    std::vector<std::string> messages;
+    for (const logic::Diagnostic& d : compiled.errors) {
+        messages.push_back(std::to_string(d.block.value) + ": " + d.message);
+    }
+    CHECK(messages == std::vector<std::string>{
+                          "20: 'twice' already takes a value called 'a'.",
+                          "5: 'silver' is not a value this sequence takes.",
+                          "11: 'reward' takes 2 values: gold, words.",
+                          "12: The value 'gold' must be a whole number, but is 'five'.",
+                          "31: 'intro' takes no values.",
+                      });
+}
+
 TEST_CASE("Rules read their event's values, and rules for one event run in order") {
     World world;
     logic::LogicAsset asset;
@@ -445,7 +498,7 @@ TEST_CASE("Invalid logic is reported on the block, in plain language") {
         {ir::if_then(1, ir::all({yes_no(true)}), {}), 1, "'All of' needs at least two conditions."},
         {ir::log(1, ir::arithmetic(ArithmeticOp::Add, text("a"), whole(1))), 1,
          "Only numbers can be used in a calculation."},
-        {ir::log(1, ir::event_value("damage")), 1, "'damage' is not a value of this rule's event."},
+        {ir::log(1, ir::event_value("damage")), 1, "'damage' is not a value this sequence takes."},
         {ir::log(1, ir::variable("score")), 1, "There is no variable called 'score'."},
         {ir::log(1, number(not_a_number)), 1,
          "This value must be a finite number, but is not a number."},

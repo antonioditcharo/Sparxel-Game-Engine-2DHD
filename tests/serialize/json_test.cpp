@@ -96,6 +96,18 @@ logic::LogicAsset sample_asset() {
                           {ir::property("lamp", "brightness"), ir::call("lamp", "is_on")}),
         }});
     asset.sequences.push_back(logic::Sequence{logic::BlockId{11}, "outro", {}});
+    // A custom block: a sequence that takes values, run with them.
+    logic::Sequence reward{
+        logic::BlockId{12},
+        "reward",
+        {ir::log(13, ir::event_value("gold"))},
+        {logic::Variable{"gold", reflect::ValueKind::Int, "", reflect::Value{std::int64_t{5}}},
+         logic::Variable{"facing", reflect::ValueKind::Choice, "facing", std::nullopt}}};
+    asset.sequences.push_back(reward);
+    asset.sequences[1].steps.push_back(
+        ir::run(14, "reward",
+                {ir::literal(reflect::Value{std::int64_t{2}}),
+                 ir::literal(reflect::Value{std::string("north")})}));
     asset.rules.push_back(
         logic::Rule{logic::BlockId{20},
                     "lamp",

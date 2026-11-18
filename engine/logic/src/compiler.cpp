@@ -1,5 +1,6 @@
 #include "engine/logic/compiler.h"
 
+#include <algorithm>
 #include <array>
 #include <charconv>
 #include <cmath>
@@ -171,9 +172,10 @@ Stmt for_each_tagged(std::uint64_t id, std::string tag, std::vector<Stmt> body) 
     return stmt;
 }
 
-Stmt run(std::uint64_t id, std::string sequence_name) {
+Stmt run(std::uint64_t id, std::string sequence_name, std::vector<Expr> values) {
     Stmt stmt = statement(StmtKind::Run, id);
     stmt.member = std::move(sequence_name);
+    stmt.arguments = std::move(values);
     return stmt;
 }
 
@@ -513,6 +515,34 @@ private:
             } else if (!sequences_.insert(sequence.name).second) {
                 error(sequence.id,
                       "There is already a sequence called " + quote(sequence.name) + ".");
+            }
+            // The values it takes: named, each once, of a kind that exists.
+            std::vector<VariableInfo>& takes = sequence_takes_[sequence.name];
+            for (const Variable& parameter : sequence.parameters) {
+                if (!reflect::is_valid_id(parameter.id)) {
+                    error(sequence.id, "The value name " + quote(parameter.id) +
+                                           " is not valid: use lowercase letters, digits and "
+                                           "underscores, starting with a letter.");
+                    continue;
+                }
+                if (std::any_of(takes.begin(), takes.end(), [&](const VariableInfo& t) {
+                        return t.variable->id == parameter.id;
+                    })) {
+                    error(sequence.id, quote(sequence.name) + " already takes a value called " +
+                                           quote(parameter.id) + ".");
+                    continue;
+                }
+                VariableInfo info{&parameter, nullptr};
+                if (parameter.kind == reflect::ValueKind::Choice) {
+                    info.choice = registry_.find_choice_list(parameter.choice_list);
+                    if (info.choice == nullptr) {
+                        error(sequence.id,
+                              "The value " + quote(parameter.id) + " uses the choice list " +
+                                  quote(parameter.choice_list) + ", which does not exist.");
+                        continue;
+                    }
+                }
+                takes.push_back(info);
             }
             claim_ids(sequence.steps);
         }
@@ -890,6 +920,17 @@ private:
     }
 
     std::optional<std::string> event_value_code(BlockId where, const Expr& expr, Type& type) {
+        if (takes_ != nullptr) {
+            // In a sequence: one of the values it takes.
+            for (std::size_t i = 0; i < takes_->size(); ++i) {
+                if ((*takes_)[i].variable->id == expr.member) {
+                    type = Type{(*takes_)[i].variable->kind, (*takes_)[i].choice};
+                    return "q" + std::to_string(i + 1);
+                }
+            }
+            error(where, quote(expr.member) + " is not a value this sequence takes.");
+            return std::nullopt;
+        }
         if (event_ != nullptr) {
             for (std::size_t i = 0; i < event_->parameters.size(); ++i) {
                 const reflect::ParameterInfo& parameter = event_->parameters[i];
@@ -1074,13 +1115,40 @@ private:
         case StmtKind::ForEachTagged:
             for_each_tagged_statement(stmt);
             return;
-        case StmtKind::Run:
+        case StmtKind::Run: {
             if (!sequences_.contains(stmt.member)) {
                 error(stmt.id, "There is no sequence called " + quote(stmt.member) + ".");
                 return;
             }
-            emit(stmt.id, trace() + sequence_entry(stmt.member) + "()");
+            // A value for each it takes, in order, of its kind.
+            const std::vector<VariableInfo>& takes = sequence_takes_[stmt.member];
+            if (stmt.arguments.size() != takes.size()) {
+                std::string names;
+                for (std::size_t i = 0; i < takes.size(); ++i) {
+                    names += (i == 0 ? "" : ", ") + takes[i].variable->id;
+                }
+                error(stmt.id,
+                      quote(stmt.member) +
+                          (takes.empty()
+                               ? std::string(" takes no values.")
+                               : " takes " + std::to_string(takes.size()) +
+                                     (takes.size() == 1 ? " value: " : " values: ") + names + "."));
+                return;
+            }
+            std::string arguments;
+            bool ok = true;
+            for (std::size_t i = 0; i < takes.size(); ++i) {
+                const std::optional<std::string> code = slot_code(
+                    stmt.id, stmt.arguments[i], Slot{takes[i].variable->kind, takes[i].choice, {}},
+                    "The value " + quote(takes[i].variable->id));
+                ok = ok && code.has_value();
+                arguments += (i == 0 ? "" : ", ") + code.value_or(std::string());
+            }
+            if (ok) {
+                emit(stmt.id, trace() + sequence_entry(stmt.member) + "(" + arguments + ")");
+            }
             return;
+        }
         case StmtKind::Log:
             if (const Expr* value = single_argument(stmt)) {
                 Type type;
@@ -1237,7 +1305,14 @@ private:
         if (!reflect::is_valid_id(sequence.name)) {
             return; // Already reported; the name cannot be used as a function name.
         }
-        emit(sequence.id, "function " + sequence_entry(sequence.name) + "()");
+        // The values it takes are its parameters, q1, q2, ...
+        event_ = nullptr;
+        takes_ = &sequence_takes_[sequence.name];
+        std::string parameters;
+        for (std::size_t i = 0; i < takes_->size(); ++i) {
+            parameters += (i == 0 ? "q" : ", q") + std::to_string(i + 1);
+        }
+        emit(sequence.id, "function " + sequence_entry(sequence.name) + "(" + parameters + ")");
         ++indent_;
         if (options_.trace) {
             emit(sequence.id, "sx.trace()");
@@ -1245,6 +1320,7 @@ private:
         statements(sequence.steps);
         --indent_;
         emit(sequence.id, "end");
+        takes_ = nullptr;
     }
 
     void compile_rule(const Rule& rule) {
@@ -1451,6 +1527,10 @@ private:
     int depth_ = 0;
     std::set<std::uint64_t> ids_;
     std::set<std::string, std::less<>> sequences_;
+    /// What each sequence takes, by its name.
+    std::map<std::string, std::vector<VariableInfo>, std::less<>> sequence_takes_;
+    /// While a sequence is compiled: what it takes.
+    const std::vector<VariableInfo>* takes_{nullptr};
     std::map<std::string, VariableInfo, std::less<>> variables_;
     const reflect::EventInfo* event_{nullptr};
     /// In a Rule about a tag: its object ("#enemy"), which "it" stands for there.

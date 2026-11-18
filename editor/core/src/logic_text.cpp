@@ -320,9 +320,14 @@ public:
             line(depth, "For each object tagged " + s.member + " (as it):", s.id);
             steps(s.body, depth + 1);
             return;
-        case StmtKind::Run:
-            line(depth, "Run " + s.member + " and wait for it", s.id);
+        case StmtKind::Run: {
+            std::string with;
+            for (std::size_t i = 0; i < s.arguments.size(); ++i) {
+                with += (i == 0 ? " with " : ", ") + arg(i);
+            }
+            line(depth, "Run " + s.member + with + " and wait for it", s.id);
             return;
+        }
         case StmtKind::Log:
             line(depth, "Log " + arg(0), s.id);
             return;
@@ -388,7 +393,11 @@ std::vector<LogicLine> describe(const logic::LogicAsset& asset, const Document& 
         }
     }
     for (const logic::Sequence& sequence : asset.sequences) {
-        w.line(0, "Sequence " + sequence.name, sequence.id);
+        std::string takes;
+        for (std::size_t i = 0; i < sequence.parameters.size(); ++i) {
+            takes += (i == 0 ? " (takes " : ", ") + sequence.parameters[i].id;
+        }
+        w.line(0, "Sequence " + sequence.name + (takes.empty() ? "" : takes + ")"), sequence.id);
         w.steps(sequence.steps, 1);
     }
     for (const logic::Brain& brain : asset.brains) {

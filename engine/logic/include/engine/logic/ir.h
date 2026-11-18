@@ -110,6 +110,10 @@ struct Sequence {
     BlockId id;
     std::string name; ///< An id: how other blocks and the host start it.
     std::vector<Stmt> steps;
+    /// The values it takes, as a custom block does (GDevelop's functions): each "Run" of it
+    /// gives one for each, in order, and its steps read them as "the value [name]"
+    /// (ExprKind::EventValue). Their `initial` is what a new Run step starts with.
+    std::vector<Variable> parameters;
 
     friend bool operator==(const Sequence&, const Sequence&) = default;
 };
@@ -204,7 +208,8 @@ namespace ir {
 [[nodiscard]] Stmt if_then(std::uint64_t id, Expr condition, std::vector<Stmt> body,
                            std::vector<Stmt> otherwise = {});
 [[nodiscard]] Stmt repeat(std::uint64_t id, Expr count, std::vector<Stmt> body);
-[[nodiscard]] Stmt run(std::uint64_t id, std::string sequence_name);
+/// Runs a sequence and waits for it, giving it `values`, one for each it takes.
+[[nodiscard]] Stmt run(std::uint64_t id, std::string sequence_name, std::vector<Expr> values = {});
 [[nodiscard]] Stmt log(std::uint64_t id, Expr value);
 [[nodiscard]] Stmt for_each_tagged(std::uint64_t id, std::string tag, std::vector<Stmt> body);
 
