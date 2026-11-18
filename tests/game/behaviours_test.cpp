@@ -1,6 +1,7 @@
 // Behaviours on their own, without a project: blocking bodies, trigger areas and
 // interaction, driven by an input state the test sets directly.
 
+#include "engine/game/combat.h"
 #include "engine/game/runtime.h"
 
 #include <doctest/doctest.h>
@@ -11,6 +12,8 @@
 #include <initializer_list>
 #include <limits>
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 namespace game = engine::game;
@@ -832,4 +835,189 @@ TEST_CASE("Slopes: walked up and down, the feet on the surface, onto the ground 
     CHECK(always_down);
     CHECK(f.at(f.hero).x < 2.5);
     CHECK(f.at(f.hero).y == doctest::Approx(4.0));
+}
+
+TEST_CASE("Health: hits hurt by tag, keep it safe a moment, knock it back, and defeat it") {
+    Fixture f;
+    f.at(f.hero) = scene2d::Transform2D{3.0, 3.0};
+    f.w->add<scene2d::Sprite>(f.hero);
+    game::Health* hp = f.w->add<game::Health>(f.hero);
+    REQUIRE(hp != nullptr);
+    scene2d::Sprite* look = f.w->get<scene2d::Sprite>(f.hero); // after adding: it moves
+    REQUIRE(look != nullptr);
+    hp->hurt_by = "Enemy";
+    const world::Entity slime = f.place("slime", 2.0, 3.0);
+    f.w->add<game::Tags>(slime)->tags = "enemy, small";
+    f.w->add<game::Health>(slime)->damage = 2.0;
+    const world::Entity rock = f.place("rock", 4.0, 3.0);
+
+    // A rock is not an enemy: nothing.
+    const std::array<scene2d::HitContact, 1> by_rock{scene2d::HitContact{rock, f.hero}};
+    CHECK(game::apply_hits(*f.w, by_rock).empty());
+    CHECK(hp->health == 3.0);
+
+    // The slime: 2 taken, safe, pushed right, away from it.
+    const std::array<scene2d::HitContact, 1> by_slime{scene2d::HitContact{slime, f.hero}};
+    const std::vector<game::Hurt> hurts = game::apply_hits(*f.w, by_slime);
+    REQUIRE(hurts.size() == 1);
+    CHECK(hurts[0].target == f.hero);
+    CHECK(hurts[0].attacker == slime);
+    CHECK(hurts[0].amount == 2.0);
+    CHECK_FALSE(hurts[0].defeated);
+    CHECK(hp->health == 1.0);
+    CHECK(hp->safe == doctest::Approx(0.8));
+    CHECK(game::apply_hits(*f.w, by_slime).empty()); // safe
+    // While pushed the keys do not move it.
+    f.walk(1, {input::Key::Left});
+    CHECK(f.at(f.hero).x == 3.0);
+    bool blinked = false;
+    for (int i = 0; i < 9; ++i) {
+        game::update_health(*f.w, 1.0 / 60.0, 16);
+        blinked = blinked || look->tint_a < 255;
+    }
+    CHECK(f.at(f.hero).x == doctest::Approx(4.0));
+    CHECK(f.at(f.hero).y == 3.0);
+    CHECK(hp->push_time == 0.0);
+    f.walk(15, {input::Key::Left}); // it walks again, 4 tiles a second
+    CHECK(f.at(f.hero).x == doctest::Approx(3.0));
+    for (int i = 0; i < 60; ++i) {
+        game::update_health(*f.w, 1.0 / 60.0, 16);
+        blinked = blinked || look->tint_a < 255;
+    }
+    CHECK(blinked);
+    CHECK(hp->safe == 0.0);
+    CHECK(look->tint_a == 255); // shown as it was
+
+    // Again: defeated, hidden, still; then revived and shown.
+    const std::vector<game::Hurt> last = game::apply_hits(*f.w, by_slime);
+    REQUIRE(last.size() == 1);
+    CHECK(last[0].defeated);
+    CHECK(hp->health == 0.0);
+    CHECK(hp->defeated);
+    game::update_health(*f.w, 1.0 / 60.0, 16);
+    CHECK_FALSE(look->visible);
+    CHECK(hp->push_time == 0.0); // no knockback for the defeated
+    const double x = f.at(f.hero).x;
+    f.walk(10, {input::Key::Right});
+    CHECK(f.at(f.hero).x == x);
+    // A defeated one hurts nothing.
+    f.w->get<game::Health>(slime)->hurt_by = "";
+    const std::array<scene2d::HitContact, 1> by_hero{scene2d::HitContact{f.hero, slime}};
+    CHECK(game::apply_hits(*f.w, by_hero).empty());
+    hp->revive();
+    game::update_health(*f.w, 1.0 / 60.0, 16);
+    CHECK(look->visible);
+    CHECK(hp->health == 3.0);
+    // Something with no Health (spikes) takes 1, from one hurt by anything.
+    const std::array<scene2d::HitContact, 1> by_spikes{scene2d::HitContact{rock, slime}};
+    REQUIRE(game::apply_hits(*f.w, by_spikes).size() == 1);
+    game::Health& slime_hp = *f.w->get<game::Health>(slime);
+    CHECK(slime_hp.health == 2.0);
+    // Healing stops at the most; logic's hurt takes health as hits do.
+    slime_hp.heal(5.0);
+    CHECK(slime_hp.health == 3.0);
+    slime_hp.hurt(std::numeric_limits<double>::quiet_NaN());
+    slime_hp.hurt(-1.0);
+    CHECK(slime_hp.health == 3.0);
+    slime_hp.hurt(3.0);
+    CHECK(slime_hp.defeated);
+    CHECK(game::parse_tag_list(" Enemy,flying  enemy;x-y ") ==
+          std::vector<std::string>{"enemy", "flying", "x", "y"});
+}
+
+TEST_CASE("Knockback stops at walls") {
+    Fixture f;
+    build_room(f);
+    f.at(f.hero) = scene2d::Transform2D{10.5, 6.75};
+    f.w->add<game::Health>(f.hero)->knockback = 3.0;
+    const world::Entity spikes = f.place("spikes", 9.5, 6.75);
+    const std::array<scene2d::HitContact, 1> hit{scene2d::HitContact{spikes, f.hero}};
+    REQUIRE(game::apply_hits(*f.w, hit).size() == 1);
+    for (int i = 0; i < 30; ++i) {
+        game::update_health(*f.w, 1.0 / 60.0, 16);
+    }
+    // The wall starts at x = 11; the hitbox reaches half its width right of the feet.
+    const double right =
+        f.at(f.hero).x + (f.w->get<game::TopDownMover>(f.hero)->hitbox_width / 2.0);
+    CHECK(right == doctest::Approx(11.0));
+}
+
+TEST_CASE("Line of sight is blocked by solid tiles") {
+    Fixture f;
+    build_room(f);
+    CHECK(scene2d::line_of_sight(*f.w, 2.5, 6.0, 9.5, 6.0, 16));
+    CHECK_FALSE(scene2d::line_of_sight(*f.w, 2.5, 3.0, 7.5, 3.0, 16));  // the middle wall
+    CHECK_FALSE(scene2d::line_of_sight(*f.w, 2.5, 3.0, 2.5, -3.0, 16)); // the outer wall
+    CHECK(scene2d::line_of_sight(*f.w, 2.5, 3.0, 2.5, 3.0, 16));
+    CHECK_FALSE(
+        scene2d::line_of_sight(*f.w, 2.5, std::numeric_limits<double>::quiet_NaN(), 3.0, 3.0, 16));
+}
+
+namespace {
+
+/// run(), also gathering who saw or lost the player.
+void watch(Fixture& f, int steps, std::vector<std::pair<world::Entity, bool>>& sightings) {
+    for (int i = 0; i < steps; ++i) {
+        f.state.begin_step();
+        static_cast<void>(game::steer_walkers(*f.w, 1.0 / 60.0, 16, false, &sightings));
+        game::move_characters(*f.w, f.state, 1.0 / 60.0, 16);
+    }
+}
+
+} // namespace
+
+TEST_CASE("Walkers that see the player chase or flee, and give up when far") {
+    Fixture f;
+    build_room(f);
+    const world::Entity enemy = f.place("enemy", 2.5, 3.5);
+    f.w->add<game::TopDownMover>(enemy)->speed = 3.0;
+    game::Walker* walker = f.w->add<game::Walker>(enemy);
+    REQUIRE(walker != nullptr);
+    walker->mode = game::WalkMode::Stand;
+    walker->on_sight = game::Sighted::Chase;
+    walker->sight = 5.0;
+    std::vector<std::pair<world::Entity, bool>> sightings;
+    using Seen = std::pair<world::Entity, bool>;
+
+    // Behind the middle wall, five tiles away: not seen.
+    f.at(f.hero) = scene2d::Transform2D{7.5, 3.5};
+    watch(f, 30, sightings);
+    CHECK(sightings.empty());
+    CHECK(f.at(enemy).x == 2.5);
+
+    // In the open below, four tiles away: seen, and chased to.
+    f.at(f.hero) = scene2d::Transform2D{6.5, 6.5};
+    f.at(enemy) = scene2d::Transform2D{2.5, 6.5};
+    watch(f, 1, sightings);
+    REQUIRE(sightings.size() == 1);
+    CHECK(sightings[0] == Seen{enemy, true});
+    watch(f, 90, sightings);
+    CHECK(std::hypot(f.at(enemy).x - 6.5, f.at(enemy).y - 6.5) < 0.2);
+
+    // Far away (more than 7.5 tiles): lost; it goes back to standing.
+    f.at(f.hero) = scene2d::Transform2D{10.5, 1.5};
+    f.at(enemy) = scene2d::Transform2D{1.5, 6.5};
+    watch(f, 1, sightings);
+    REQUIRE(sightings.size() == 2);
+    CHECK(sightings[1] == Seen{enemy, false});
+    watch(f, 30, sightings);
+    CHECK(f.at(enemy).x == 1.5);
+
+    // Fleeing: it runs away from the player.
+    walker->on_sight = game::Sighted::Flee;
+    f.at(f.hero) = scene2d::Transform2D{4.5, 6.5};
+    f.at(enemy) = scene2d::Transform2D{6.5, 6.5};
+    watch(f, 60, sightings);
+    CHECK(sightings.back() == Seen{enemy, true});
+    CHECK(f.at(enemy).x > 8.0);
+
+    // A defeated player is not seen; one already chasing gives up.
+    walker->on_sight = game::Sighted::Chase;
+    f.at(f.hero) = scene2d::Transform2D{8.5, 6.5};
+    watch(f, 1, sightings);
+    CHECK(walker->alerted);
+    f.w->add<game::Health>(f.hero)->defeated = true;
+    watch(f, 1, sightings);
+    CHECK_FALSE(walker->alerted);
+    CHECK(sightings.back() == Seen{enemy, false});
 }

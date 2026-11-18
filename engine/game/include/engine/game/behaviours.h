@@ -55,6 +55,13 @@ enum class WalkMode : std::uint8_t {
     GoTo,   ///< Walks to one point, then stands and says it arrived.
 };
 
+/// What a Walker does when it sees the player.
+enum class Sighted : std::uint8_t {
+    Ignore, ///< Nothing: it goes on as it was.
+    Chase,  ///< Runs after the player, around walls, until the player is far away.
+    Flee,   ///< Runs away from the player until far enough.
+};
+
 /// "Walker": the entity's Top-down Mover walks by itself, not with the player's keys: a
 /// villager who wanders, a guard on patrol, a friend who follows, someone sent somewhere
 /// by logic. It finds its way around solid tiles and Solid Bodies (grid A*, find_path()).
@@ -71,6 +78,12 @@ struct Walker {
     double distance = 1.5;      ///< Follow: how close it comes, in tiles.
     double goal_x = 0.0;        ///< Go to: where, in tiles.
     double goal_y = 0.0;
+    /// When the player comes within `sight` tiles, in a clear line past solid tiles, it
+    /// chases or flees until the player is half as far again away; then it goes back to
+    /// its walking (an enemy that patrols and chases, a bird that flies off).
+    Sighted on_sight = Sighted::Ignore;
+    double sight = 5.0;   ///< In tiles.
+    bool alerted = false; ///< Chasing or fleeing now (hidden; saved).
     // Hidden, saved with the scene and games.
     bool homed = false; ///< Whether `home_x`, `home_y` (where it started) are set.
     double home_x = 0.0;
@@ -112,8 +125,10 @@ find_path(const world::World& world, const TopDownMover& mover, world::Entity se
 /// Decides where every enabled Walker walks in the next step of `seconds` (Stand while
 /// `paused`, as when a message is open). Returns the Walkers that arrived where they were
 /// sent, for their "arrived" event. Run it before move_characters().
-std::vector<world::Entity> steer_walkers(world::World& world, double seconds, std::uint32_t ppu,
-                                         bool paused);
+/// Walkers that saw the player (`true`) or lost them (`false`) are added to `sightings`.
+std::vector<world::Entity>
+steer_walkers(world::World& world, double seconds, std::uint32_t ppu, bool paused,
+              std::vector<std::pair<world::Entity, bool>>* sightings = nullptr);
 
 /// "Jumping": the game seen from the side. With a Top-down Mover on the same entity, the
 /// move actions walk it left and right only; it falls, lands on solid tiles and Solid

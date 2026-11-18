@@ -395,6 +395,12 @@ parse_tile_shapes(std::string_view text, std::string& error);
 /// a character cannot stand. `ppu` sizes tilemaps whose tile_size is 0.
 [[nodiscard]] bool solid_at(const world::World& world, const Box& box, std::uint32_t ppu);
 
+/// True if nothing solid (tiles, as solid_at() finds them) lies on the straight line from
+/// (x0, y0) to (x1, y1): whether one can see the other. Looks every eighth of a tile; never
+/// further than 256 tiles.
+[[nodiscard]] bool line_of_sight(const world::World& world, double x0, double y0, double x1,
+                                 double y1, std::uint32_t ppu);
+
 /// The area the tilemaps of `world` cover, in units: the smallest box around every
 /// tilemap's grid (visible or not, solid or not). Nothing if no tilemap has tiles. `ppu`
 /// sizes tilemaps whose tile_size is 0.

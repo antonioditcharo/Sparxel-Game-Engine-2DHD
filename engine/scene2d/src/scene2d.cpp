@@ -753,6 +753,29 @@ double sweep(const world::World& world, const Box& box, Axis axis, double distan
     return sweep_boxes(box, axis, distance, solid_boxes(world, area, ppu));
 }
 
+bool line_of_sight(const world::World& world, double x0, double y0, double x1, double y1,
+                   std::uint32_t ppu) {
+    if (!std::isfinite(x0) || !std::isfinite(y0) || !std::isfinite(x1) || !std::isfinite(y1)) {
+        return false;
+    }
+    constexpr double look_every = 0.125;
+    constexpr double point = 0.01; // a point, as a box that overlaps what it is in
+    const double far = std::hypot(x1 - x0, y1 - y0);
+    if (far > 256.0) {
+        return false;
+    }
+    const auto looks = static_cast<std::int64_t>(std::ceil(far / look_every));
+    for (std::int64_t i = 0; i <= looks; ++i) {
+        const double t = looks == 0 ? 0.0 : static_cast<double>(i) / static_cast<double>(looks);
+        const double x = x0 + ((x1 - x0) * t);
+        const double y = y0 + ((y1 - y0) * t);
+        if (solid_at(world, Box{x - point, y - point, x + point, y + point}, ppu)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 bool solid_at(const world::World& world, const Box& box, std::uint32_t ppu) {
     const std::vector<Box> parts = solid_boxes(world, box, ppu);
     return std::any_of(parts.begin(), parts.end(),

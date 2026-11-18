@@ -285,6 +285,16 @@ turns and walks as the player does.
 Logic changes what it does: *Walk to {x}, {y}*, *Follow {name}*, *Wander* (near where it is
 now), *Patrol* (from the route's first point) and *Stand still*.
 
+**Seeing the player** (*On seeing the player*, `on_sight`): *Ignore* (the default), *Chase*
+or *Flee*. When the player (`player_position()`'s, unless defeated: *Health and combat*)
+comes within *Sight* (`sight`, 5 tiles), with nothing solid on the straight line from its
+middle to theirs (`scene2d::line_of_sight()`), it says **"spotted"** (*When it sees the
+player*) and chases them round walls (finding the way again twice a second) or runs from
+them, three tiles away at a time (turned up to a quarter either way where a wall is). Once
+they are half as far again away, it says **"lost_sight"** (*When it loses the player*) and
+goes back to its walking from where it is: an enemy that patrols and chases, a bird that
+wanders and flies off. Whether it is chasing (`alerted`) is saved with games.
+
 **Finding the way** (`find_path()`): the map is a grid of tiles; the character fits in a
 tile if its hitbox, standing in the tile's middle, touches no solid tile
 (`scene2d::solid_at()`) and no enabled Solid Body but its own (and, following, not the one
@@ -403,6 +413,30 @@ across. The map's edges still stop the view (*Stay inside the map*), after all o
 
 Events are sent in a fixed order (exits before entries, then by trigger and mover GUID),
 so a replay always runs Rules in the same order.
+
+### Health and combat
+
+**Health** (`health`, combat.h) is what hit boxes take away: the boxes drawn per frame in
+Sprite Studio ([sprite-studio.md](sprite-studio.md)), a sword's hit box on a slime's hurt box
+(`scene2d::hit_contacts()`). Each contact that begins in a step (not again while it lasts)
+goes to `apply_hits()`:
+
+| Property | What it does |
+|---|---|
+| `health`, `max_health` (3, 3) | What it has, and as much as healing gives back |
+| `damage` (1) | What its own hit boxes take from others; something with no Health (spikes, a fireball) takes 1 |
+| *Hurt by* (`hurt_by`) | Tags of the objects whose hits hurt it (`enemy` for the hero, `player` for the slimes), any case; empty for any hit box |
+| *Safe after a hurt* (`invulnerable`, 0.8 s) | Hits do nothing meanwhile, and it blinks: its sprite faint every other 0.08 s, then as it was |
+| `knockback` (1 tile) | It is pushed away from the attacker over 0.15 s, as far as solid tiles and Solid Bodies let it, and cannot walk meanwhile. Seen from the side (Jumping) it is pushed sideways and hops half a tile |
+| *Hide when defeated* (on) | At 0 it is **defeated**: hidden (once, so logic can show it again), it stops walking and jumping, hits nothing and is hit by nothing, and Walkers no longer see it as the player. Off, it stays where it fell |
+
+Rules hear **"hurt"** (*When it is hurt by {who}*, with `amount`) and then, at 0,
+**"defeated"** (*When it is defeated by {who}*), after the hit's own "hit" and "hits".
+Logic can *Hurt it by {amount}* (`take_health`, no knockback), *Heal it by {amount}* (up to
+`max_health`) and *Revive it* (full health, shown again), and set `health` like any
+property; a HUD bar shows it. Amounts that are not numbers, or not above 0, change nothing.
+`update_health()` runs each step after the hits: the safe time, the blink and the
+knockback; everything it keeps (safe time, knockback, defeat) is saved with games.
 
 ## 5. Logic meets the world
 
@@ -685,6 +719,8 @@ named by path (`maps/cave.dscene`) or GUID.
 | Talking and doorways | In the runtime: Interact facing the elder runs its "interacted" Rule after the Interact input Rule, and the next Interact closes what the elder said; walking left runs the doorway's "entered" Rule with `who` = "hero" at exactly 4.2 tiles, and "exited" after leaving it |
 | Falling and jumping | `fall()` on its own: pressed against the floor it is on the ground; a jump rises between 2.8 and 3 tiles and lands in 44 to 48 steps (0.77 s); held, it does not jump again in the air; a ceiling a tile up stops the rise and it falls back; it falls no faster than 20 tiles a second; gravity that is not a number moves nothing. In a world: a hero with Jumping falls onto a solid floor and stands on it; Down does nothing; Right walks 2 tiles in half a second facing right; Space and Up jump it off the floor and it lands again; it lands on a Solid Body's top and falls back to the floor walking off it; disabled, it neither walks nor jumps but still falls |
 | Slopes | A hero walking right up a slope onto the ground a tile up, standing on it, and back down onto the floor, on the ground at every step |
+| Health and combat | A rock that is not an enemy hurts nothing; a slime tagged enemy takes 2, makes the hero safe (a second hit does nothing) and pushes it exactly a tile away in 0.15 s, the keys not moving it meanwhile, then walking again; it blinks, and its alpha is as it was after; the next hit defeats it: hidden, no knockback, not walking, and a defeated hero hurts nothing; revived, it is shown at full health; spikes with no Health take 1; healing stops at the most; NaN and negative hurts change nothing; tag lists. Knockback stops exactly at a wall. In a running game, one hit on a slime with 1 health: "hit" and "hits" once, "hurt" before "defeated", and the slime hidden |
+| Seeing the player | Line of sight past open ground, not through the middle wall or the outer one, NaN never; a chaser does not see the hero behind a wall, sees it four tiles away in the open (said once), reaches it in 1.5 s, loses it more than 7.5 tiles away and stands again; a fleer runs more than 1.5 tiles further away in a second; a defeated hero is lost |
 | Facing and walking | Every facing rule; exact frames of the cycle, back and forth and starting over, at 6 frames per second; the standing frame; clamped settings; the runtime turning the hero left and animating it |
 | Problems | A Rules asset naming a missing object is reported at its block and left out, and the game still runs; a missing start scene stops it |
 | Drawing (GPU) | Exact pixels: the hero centred, and after walking one tile the rock drawn 8 pixels to the left |

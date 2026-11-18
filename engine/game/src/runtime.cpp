@@ -1,6 +1,7 @@
 #include "engine/game/runtime.h"
 
 #include "engine/foundation/text.h"
+#include "engine/game/combat.h"
 #include "engine/game/debug_menu.h"
 #include "engine/game/hud.h"
 #include "engine/game/localization.h"
@@ -1443,12 +1444,16 @@ void Runtime::step() {
 
     // 2. Movement, with walls, bodies and walk animations; then trigger areas.
     const double dt = r.clock.step_seconds();
-    const std::vector<world::Entity> arrived =
-        steer_walkers(*r.world, dt, r.settings.ppu, talking || r.fading != Impl::Fade::None);
+    std::vector<std::pair<world::Entity, bool>> sightings;
+    const std::vector<world::Entity> arrived = steer_walkers(
+        *r.world, dt, r.settings.ppu, talking || r.fading != Impl::Fade::None, &sightings);
     move_platforms(*r.world, dt, r.settings.ppu);
     move_characters(*r.world, moves, dt, r.settings.ppu);
     for (const world::Entity entity : arrived) {
         emit(*r.vm, *r.world, entity, "arrived");
+    }
+    for (const auto& [entity, seen] : sightings) {
+        emit(*r.vm, *r.world, entity, seen ? "spotted" : "lost_sight");
     }
     update_camera(r.camera, *r.world, dt);
     // Encounters: the distance the player walked counts inside Encounter Areas.
@@ -1823,6 +1828,7 @@ void Runtime::step() {
     // Hit boxes on hurt boxes: said as each contact begins (not again while it lasts).
     {
         std::set<std::pair<std::uint64_t, std::uint64_t>> now;
+        std::vector<scene2d::HitContact> started;
         for (const scene2d::HitContact& contact :
              scene2d::hit_contacts(*r.world, *r.sheets, r.settings.ppu)) {
             const std::pair<std::uint64_t, std::uint64_t> key{contact.attacker.id,
@@ -1831,6 +1837,7 @@ void Runtime::step() {
             if (r.hitting.contains(key)) {
                 continue;
             }
+            started.push_back(contact);
             const std::array<reflect::Value, 1> by{
                 reflect::Value{r.world->guid(contact.attacker).to_string()}};
             emit(*r.vm, *r.world, contact.target, "hit", by);
@@ -1839,7 +1846,19 @@ void Runtime::step() {
             emit(*r.vm, *r.world, contact.attacker, "hits", struck);
         }
         r.hitting = std::move(now);
+        // What they do to Health: "hurt", then "defeated".
+        for (const Hurt& hurt : apply_hits(*r.world, started)) {
+            const std::string by = r.world->guid(hurt.attacker).to_string();
+            const std::array<reflect::Value, 2> payload{reflect::Value{hurt.amount},
+                                                        reflect::Value{by}};
+            emit(*r.vm, *r.world, hurt.target, "hurt", payload);
+            if (hurt.defeated) {
+                const std::array<reflect::Value, 1> who{reflect::Value{by}};
+                emit(*r.vm, *r.world, hurt.target, "defeated", who);
+            }
+        }
     }
+    update_health(*r.world, dt, r.settings.ppu);
     update_particles(*r.world, dt);
     ++r.steps;
 

@@ -1,6 +1,7 @@
 // Walkers: characters who walk by themselves, and the paths they find (behaviours.h).
 
 #include "engine/game/behaviours.h"
+#include "engine/game/combat.h"
 
 #include <algorithm>
 #include <charconv>
@@ -270,12 +271,34 @@ find_path(const world::World& world, const TopDownMover& mover, world::Entity se
 }
 
 std::vector<world::Entity> steer_walkers(world::World& world, double seconds, std::uint32_t ppu,
-                                         bool paused) {
+                                         bool paused,
+                                         std::vector<std::pair<world::Entity, bool>>* sightings) {
     std::vector<world::Entity> arrived;
     const reflect::TypeInfo* type = world.registry().find_type<Walker>();
     if (type == nullptr || !std::isfinite(seconds) || seconds < 0.0) {
         return arrived;
     }
+    // The player, for chasing and fleeing: the first Top-down Mover no Walker steers, not
+    // defeated.
+    world::Entity player;
+    std::array<double, 2> player_at{};
+    if (const reflect::TypeInfo* mover_type = world.registry().find_type<TopDownMover>()) {
+        world.each(*mover_type, [&](world::Entity entity, reflect::ObjectRef) {
+            const scene2d::Transform2D* where = world.get<scene2d::Transform2D>(entity);
+            const Walker* steers = world.get<Walker>(entity);
+            const Health* health = world.get<Health>(entity);
+            if (!player.is_valid() && where != nullptr && (steers == nullptr || !steers->enabled) &&
+                (health == nullptr || !health->defeated)) {
+                player = entity;
+                player_at = {where->x, where->y};
+            }
+        });
+    }
+    const auto tell = [&](world::Entity entity, bool seen) {
+        if (sightings != nullptr) {
+            sightings->emplace_back(entity, seen);
+        }
+    };
     world.each(*type, [&](world::Entity entity, reflect::ObjectRef ref) {
         Walker* walker = ref.as<Walker>();
         const TopDownMover* mover = world.get<TopDownMover>(entity);
@@ -308,92 +331,143 @@ std::vector<world::Entity> steer_walkers(world::World& world, double seconds, st
             walker->path.clear();
             walker->waiting = std::max(walker->rest, 0.0);
         };
-        // Choose where to go when there is no way to walk.
-        switch (walker->mode) {
-        case WalkMode::Stand:
+        // Seeing the player: from its middle to theirs, half a tile up from the feet.
+        if (walker->on_sight != Sighted::Ignore && player.is_valid() && player != entity) {
+            const double far = std::hypot(player_at[0] - x, player_at[1] - y);
+            const double sight = std::isfinite(walker->sight) ? std::max(walker->sight, 0.0) : 0.0;
+            if (!walker->alerted && far <= sight &&
+                scene2d::line_of_sight(world, x, y - 0.5, player_at[0], player_at[1] - 0.5, ppu)) {
+                walker->alerted = true;
+                walker->path.clear();
+                walker->repath = 0.0;
+                tell(entity, true);
+            } else if (walker->alerted && far > sight * 1.5) {
+                walker->alerted = false;
+                walker->path.clear(); // back to its walking from here
+                walker->waiting = 0.0;
+                tell(entity, false);
+            }
+        } else if (walker->alerted) {
+            walker->alerted = false;
             walker->path.clear();
-            return;
-        case WalkMode::Wander:
-        case WalkMode::Patrol:
-            if (walker->path.empty()) {
-                if (walker->waiting > 0.0) {
-                    walker->waiting -= seconds;
-                    return;
-                }
-                std::optional<std::array<double, 2>> goal;
-                if (walker->mode == WalkMode::Wander) {
-                    // A tile near home, tried a few times in case some are walls.
-                    const double radius = std::clamp(walker->wander_radius, 0.0, 32.0);
-                    for (int attempt = 0; attempt < 4 && !goal; ++attempt) {
-                        const double a = (next_random(walker->seed) % 10000U) / 10000.0;
-                        const double b = (next_random(walker->seed) % 10000U) / 10000.0;
-                        // Whole tiles from home, so it stands as it stood there.
+            tell(entity, false);
+        }
+        if (walker->alerted) {
+            walker->repath -= seconds;
+            if (walker->path.empty() || walker->repath <= 0.0) {
+                walker->repath = follow_repath;
+                if (walker->on_sight == Sighted::Chase) {
+                    walker->path = find_path(world, *mover, entity, x, y, player_at[0],
+                                             player_at[1], ppu, player)
+                                       .value_or(std::vector<std::array<double, 2>>{});
+                } else {
+                    // Away: three tiles straight away, or turned a little either way if a
+                    // wall is there.
+                    walker->path.clear();
+                    const double away = std::atan2(y - player_at[1], x - player_at[0]);
+                    constexpr std::array<double, 5> turns{0.0, 0.785, -0.785, 1.571, -1.571};
+                    for (const double turn : turns) {
                         const std::array<double, 2> spot{
-                            walker->home_x + std::round(((a * 2.0) - 1.0) * radius),
-                            walker->home_y + std::round(((b * 2.0) - 1.0) * radius)};
+                            std::round(x + (3.0 * std::cos(away + turn))),
+                            std::round(y + (3.0 * std::sin(away + turn)))};
+                        auto way =
+                            find_path(world, *mover, entity, x, y, spot[0], spot[1], ppu, player);
+                        if (way && !way->empty()) {
+                            walker->path = std::move(*way);
+                            break;
+                        }
+                    }
+                }
+            }
+        } else {
+            // Choose where to go when there is no way to walk.
+            switch (walker->mode) {
+            case WalkMode::Stand:
+                walker->path.clear();
+                return;
+            case WalkMode::Wander:
+            case WalkMode::Patrol:
+                if (walker->path.empty()) {
+                    if (walker->waiting > 0.0) {
+                        walker->waiting -= seconds;
+                        return;
+                    }
+                    std::optional<std::array<double, 2>> goal;
+                    if (walker->mode == WalkMode::Wander) {
+                        // A tile near home, tried a few times in case some are walls.
+                        const double radius = std::clamp(walker->wander_radius, 0.0, 32.0);
+                        for (int attempt = 0; attempt < 4 && !goal; ++attempt) {
+                            const double a = (next_random(walker->seed) % 10000U) / 10000.0;
+                            const double b = (next_random(walker->seed) % 10000U) / 10000.0;
+                            // Whole tiles from home, so it stands as it stood there.
+                            const std::array<double, 2> spot{
+                                walker->home_x + std::round(((a * 2.0) - 1.0) * radius),
+                                walker->home_y + std::round(((b * 2.0) - 1.0) * radius)};
+                            if (auto way =
+                                    find_path(world, *mover, entity, x, y, spot[0], spot[1], ppu)) {
+                                walker->path = std::move(*way);
+                                goal = spot;
+                            }
+                        }
+                    } else {
+                        const std::vector<std::array<double, 2>> route = parse_route(walker->route);
+                        if (route.empty()) {
+                            return;
+                        }
+                        const std::array<double, 2> spot = route[walker->leg % route.size()];
+                        walker->leg = static_cast<std::uint32_t>((walker->leg + 1) % route.size());
                         if (auto way =
                                 find_path(world, *mover, entity, x, y, spot[0], spot[1], ppu)) {
                             walker->path = std::move(*way);
                             goal = spot;
                         }
                     }
-                } else {
-                    const std::vector<std::array<double, 2>> route = parse_route(walker->route);
-                    if (route.empty()) {
+                    if (!goal || walker->path.empty()) {
+                        rest();
                         return;
                     }
-                    const std::array<double, 2> spot = route[walker->leg % route.size()];
-                    walker->leg = static_cast<std::uint32_t>((walker->leg + 1) % route.size());
-                    if (auto way = find_path(world, *mover, entity, x, y, spot[0], spot[1], ppu)) {
-                        walker->path = std::move(*way);
-                        goal = spot;
+                }
+                break;
+            case WalkMode::Follow: {
+                const std::vector<world::Entity> named = world.find_named(walker->target);
+                const scene2d::Transform2D* leader =
+                    named.empty() ? nullptr : world.get<scene2d::Transform2D>(named.front());
+                if (leader == nullptr || named.front() == entity) {
+                    walker->path.clear();
+                    return;
+                }
+                const double far = std::hypot(leader->x - x, leader->y - y);
+                if (far <= std::max(walker->distance, arrive_within)) {
+                    walker->path.clear();
+                    return;
+                }
+                walker->repath -= seconds;
+                if (walker->path.empty() || walker->repath <= 0.0) {
+                    walker->repath = follow_repath;
+                    walker->path = find_path(world, *mover, entity, x, y, leader->x, leader->y, ppu,
+                                             named.front())
+                                       .value_or(std::vector<std::array<double, 2>>{});
+                }
+                break;
+            }
+            case WalkMode::GoTo:
+                if (walker->path.empty()) {
+                    if (std::abs(walker->goal_x - x) <= arrive_within &&
+                        std::abs(walker->goal_y - y) <= arrive_within) {
+                        walker->mode = WalkMode::Stand;
+                        arrived.push_back(entity);
+                        return;
                     }
+                    const auto way =
+                        find_path(world, *mover, entity, x, y, walker->goal_x, walker->goal_y, ppu);
+                    if (!way || way->empty()) {
+                        walker->mode = WalkMode::Stand; // nowhere to go: it stays
+                        return;
+                    }
+                    walker->path = *way;
                 }
-                if (!goal || walker->path.empty()) {
-                    rest();
-                    return;
-                }
+                break;
             }
-            break;
-        case WalkMode::Follow: {
-            const std::vector<world::Entity> named = world.find_named(walker->target);
-            const scene2d::Transform2D* leader =
-                named.empty() ? nullptr : world.get<scene2d::Transform2D>(named.front());
-            if (leader == nullptr || named.front() == entity) {
-                walker->path.clear();
-                return;
-            }
-            const double far = std::hypot(leader->x - x, leader->y - y);
-            if (far <= std::max(walker->distance, arrive_within)) {
-                walker->path.clear();
-                return;
-            }
-            walker->repath -= seconds;
-            if (walker->path.empty() || walker->repath <= 0.0) {
-                walker->repath = follow_repath;
-                walker->path =
-                    find_path(world, *mover, entity, x, y, leader->x, leader->y, ppu, named.front())
-                        .value_or(std::vector<std::array<double, 2>>{});
-            }
-            break;
-        }
-        case WalkMode::GoTo:
-            if (walker->path.empty()) {
-                if (std::abs(walker->goal_x - x) <= arrive_within &&
-                    std::abs(walker->goal_y - y) <= arrive_within) {
-                    walker->mode = WalkMode::Stand;
-                    arrived.push_back(entity);
-                    return;
-                }
-                const auto way =
-                    find_path(world, *mover, entity, x, y, walker->goal_x, walker->goal_y, ppu);
-                if (!way || way->empty()) {
-                    walker->mode = WalkMode::Stand; // nowhere to go: it stays
-                    return;
-                }
-                walker->path = *way;
-            }
-            break;
         }
         if (walker->path.empty()) {
             return;
@@ -407,7 +481,7 @@ std::vector<world::Entity> steer_walkers(world::World& world, double seconds, st
             if (walker->mode == WalkMode::GoTo) {
                 walker->mode = WalkMode::Stand;
                 arrived.push_back(entity);
-            } else if (walker->mode != WalkMode::Follow) {
+            } else if (walker->mode != WalkMode::Follow && !walker->alerted) {
                 rest();
             }
             return;
@@ -427,7 +501,8 @@ std::vector<world::Entity> steer_walkers(world::World& world, double seconds, st
         walker->last_y = y;
         if (walker->stuck > give_up_after) {
             walker->stuck = 0.0;
-            if (walker->mode == WalkMode::GoTo || walker->mode == WalkMode::Follow) {
+            if (walker->mode == WalkMode::GoTo || walker->mode == WalkMode::Follow ||
+                walker->alerted) {
                 walker->path.clear(); // found again next step
             } else {
                 rest();

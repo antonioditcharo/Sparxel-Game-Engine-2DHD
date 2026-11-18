@@ -3,6 +3,7 @@
 // run without graphics, as servers and tools do.
 
 #include "engine/game/battle.h"
+#include "engine/game/combat.h"
 #include "engine/game/conversation.h"
 #include "engine/game/hud.h"
 #include "engine/game/localization.h"
@@ -5010,7 +5011,7 @@ TEST_CASE("Screen Layouts: children's elements in a column, a row or a grid") {
     CHECK_FALSE(pixel(pixels, 64, 50, 32) == render::Color{0, 255, 0, 255}); // not its own
 }
 
-TEST_CASE("Hit boxes in a running game: Rules hear a hit as it lands, once") {
+TEST_CASE("Hit boxes in a running game: Rules hear a hit as it lands, once, and it hurts") {
     const Project project;
     {
         // One 8 x 8 frame: a sword reaching right (hit box) and a body (hurt box).
@@ -5046,6 +5047,10 @@ TEST_CASE("Hit boxes in a running game: Rules hear a hit as it lands, once") {
             sprite->pivot_x = 0.0;
             sprite->pivot_y = 0.0;
         }
+        // The slime has 1 health: the hit defeats it.
+        game::Health* health = w.add<game::Health>(w.find_named("slime").front());
+        REQUIRE(health != nullptr);
+        health->health = 1.0;
         write_json(project.folder.path / "assets/maps/fight.dscene", serialize::scene_to_json(w));
         std::vector<serialize::Issue> issues;
         std::optional<game::ProjectSettings> settings =
@@ -5062,6 +5067,10 @@ TEST_CASE("Hit boxes in a running game: Rules hear a hit as it lands, once") {
             logic::BlockId{1}, "slime", "hit", {}, {ir::log(2, Project::text("ouch"))}, {}});
         rules.rules.push_back(logic::Rule{
             logic::BlockId{3}, "knight", "hits", {}, {ir::log(4, Project::text("got one"))}, {}});
+        rules.rules.push_back(logic::Rule{
+            logic::BlockId{5}, "slime", "hurt", {}, {ir::log(6, Project::text("hurt"))}, {}});
+        rules.rules.push_back(logic::Rule{
+            logic::BlockId{7}, "slime", "defeated", {}, {ir::log(8, Project::text("beaten"))}, {}});
         write_json(project.folder.path / "assets/logic/fight.drules",
                    serialize::logic_to_json(rules));
     }
@@ -5072,4 +5081,15 @@ TEST_CASE("Hit boxes in a running game: Rules hear a hit as it lands, once") {
     const std::vector<std::string>& log = runtime->log();
     CHECK(std::count(log.begin(), log.end(), "ouch") == 1); // once, though it lasts
     CHECK(std::count(log.begin(), log.end(), "got one") == 1);
+    // Hurt, then defeated, by the one hit; hidden after.
+    const auto hurt = std::find(log.begin(), log.end(), "hurt");
+    const auto beaten = std::find(log.begin(), log.end(), "beaten");
+    CHECK(hurt != log.end());
+    CHECK(beaten != log.end());
+    CHECK(hurt < beaten);
+    CHECK(std::count(log.begin(), log.end(), "beaten") == 1);
+    const world::World& w = runtime->world();
+    const scene2d::Sprite* slime = w.get<scene2d::Sprite>(w.find_named("slime").front());
+    REQUIRE(slime != nullptr);
+    CHECK_FALSE(slime->visible);
 }

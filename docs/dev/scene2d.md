@@ -187,6 +187,9 @@ nothing extra to write ([reflection.md](reflection.md)).
   The top half / … / Nothing*, one undo step (the text keeps only the tiles that differ
   from *All of it*). Unreadable pairs are skipped (`parse_tile_shapes()`,
   `tile_shape_box()`).
+- **Line of sight:** `line_of_sight()` looks along a straight line every eighth of a tile
+  for a solid tile (as `solid_at()` finds them): whether a Walker sees the player
+  (game.md). Never more than 256 tiles.
 - **Slopes:** `slope_right` rises from the tile's bottom-left corner to its top-right,
   `slope_left` the other way (*Blocks ▸ A slope rising to the right / left*). They block
   nothing as boxes, so a character walks into them sideways; `slope_floor()` gives the

@@ -1,5 +1,6 @@
 #include "engine/game/behaviours.h"
 
+#include "engine/game/combat.h"
 #include "engine/game/hud.h"
 #include "engine/game/particles.h"
 
@@ -18,6 +19,7 @@ namespace engine::game {
 
 void register_behaviours(reflect::Registry& registry) {
     register_hud(registry);
+    register_combat(registry);
     registry.add_type<Tags>("tags")
         .display_name("Tags")
         .category("General")
@@ -39,6 +41,11 @@ void register_behaviours(reflect::Registry& registry) {
         .entry(WalkMode::Patrol, "patrol")
         .entry(WalkMode::Follow, "follow")
         .entry(WalkMode::GoTo, "go_to");
+    registry.add_choice_list<Sighted>("sighted")
+        .display_name("On seeing the player")
+        .entry(Sighted::Ignore, "ignore")
+        .entry(Sighted::Chase, "chase")
+        .entry(Sighted::Flee, "flee");
     auto walker = registry.add_type<Walker>("walker")
                       .display_name("Walker")
                       .category("Movement")
@@ -108,6 +115,22 @@ void register_behaviours(reflect::Registry& registry) {
     walker.action<&Walker::patrol>("patrol").text("Patrol").tooltip(
         "Walks its route again from the first point.");
     walker.action<&Walker::stand>("stand").text("Stand still").tooltip("Stops walking.");
+    walker.property<&Walker::on_sight>("on_sight")
+        .display_name("On seeing the player")
+        .tooltip("Ignore them, chase them, or flee from them, around walls, until they are "
+                 "half as far again away as it sees.");
+    walker.property<&Walker::sight>("sight")
+        .range(0.0, 64.0)
+        .step(0.5)
+        .unit(reflect::Unit::Tiles)
+        .tooltip("How far it sees, past nothing solid.");
+    walker.property<&Walker::alerted>("alerted").flags(reflect::property_flag::hidden);
+    walker.event<>("spotted")
+        .text("When it sees the player")
+        .tooltip("It starts chasing or fleeing.");
+    walker.event<>("lost_sight")
+        .text("When it loses the player")
+        .tooltip("The player got far enough away; it goes back to its walking.");
     walker.event<>("arrived")
         .text("When it arrives")
         .tooltip("Happens when it reaches where Walk to sent it.");
@@ -557,8 +580,9 @@ bool register_behaviour_components(world::World& world) {
                        world.register_component<MovingPlatform>() &&
                        world.register_component<Ladder>();
     const bool hud = register_hud_components(world);
+    const bool combat = register_combat_components(world);
     return mover && walker && particles && prefab && encounter && walk && body && trigger &&
-           interactable && simulated && sound && jumping && enemy && hud;
+           interactable && simulated && sound && jumping && enemy && hud && combat;
 }
 
 // ---------------------------------------------------------------------------------------
@@ -856,6 +880,13 @@ void move_characters(world::World& world, const input::InputState& input, double
             my = walker->step_dy;
             scale = std::clamp(walker->step_scale, 0.0, 1.0);
         }
+        // Knocked back or defeated (Health): it does not walk or jump meanwhile.
+        const Health* health = world.get<Health>(entity);
+        const bool stunned = health != nullptr && (health->defeated || health->push_time > 0.0);
+        if (stunned) {
+            mx = 0.0;
+            my = 0.0;
+        }
         const double mlength = std::sqrt((mx * mx) + (my * my));
         if (Jumping* jumping = world.get<Jumping>(entity); jumping != nullptr) {
             // Seen from the side: left and right with the move actions, up and down by
@@ -871,7 +902,7 @@ void move_characters(world::World& world, const input::InputState& input, double
                     sweep_by(scene2d::Axis::X,
                              (mx > 0.0 ? 1.0 : -1.0) * mover->speed * seconds * scale);
                 }
-                const bool player = mover->enabled && !steered;
+                const bool player = mover->enabled && !steered && !stunned;
                 // A ladder it is in: up and down climb it (up does not jump there).
                 const scene2d::Box feet = hitbox(*mover, transform->x, transform->y);
                 const scene2d::Box* ladder = nullptr;
