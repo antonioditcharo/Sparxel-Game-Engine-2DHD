@@ -210,7 +210,14 @@ struct Body {
     double width = 0.75; ///< In tiles.
     double height = 0.5; ///< In tiles, upwards from the position.
     bool enabled = true;
+    /// Tags of the characters it blocks ("player": a fence the slimes slip through); empty
+    /// blocks every one. As collision layers are, by the tags objects already have.
+    std::string blocks;
 };
+
+/// Whether `body` blocks a character with the tags `tags` (tags_of()): every one if its
+/// `blocks` is empty, otherwise those with one of them.
+[[nodiscard]] bool body_blocks(const Body& body, const std::vector<std::string>& tags);
 
 /// "Moving Platform": with a Solid Body, travels back and forth between where it was placed
 /// and `move_x`, `move_y` tiles from there, carrying whatever stands on it (plan/02 F5).
@@ -239,6 +246,10 @@ struct Trigger {
     double width = 1.0;  ///< In tiles.
     double height = 1.0; ///< In tiles, upwards from the position.
     bool enabled = true;
+    /// Tags of the characters it notices ("enemy": a trap only enemies set off), Walkers
+    /// among them; empty: the player's characters, never Walkers (so a villager does not
+    /// walk through a door).
+    std::string only;
     /// The movers inside after the last update, sorted. Not reflected, so not saved.
     std::vector<Guid> inside;
 };

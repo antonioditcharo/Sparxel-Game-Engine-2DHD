@@ -1030,3 +1030,59 @@ TEST_CASE("Walkers that see the player chase or flee, and give up when far") {
     CHECK_FALSE(walker->alerted);
     CHECK(sightings.back() == Seen{enemy, false});
 }
+
+TEST_CASE("Collision layers by tag: bodies that block some, areas that notice some") {
+    Fixture f;
+    f.w->add<game::Tags>(f.hero)->tags = "player";
+    const world::Entity slime = f.place("slime", 0.0, 2.0);
+    f.w->add<game::TopDownMover>(slime);
+    f.w->add<game::Tags>(slime)->tags = "enemy";
+    // A fence a tile right of both, stopping the player only.
+    for (const auto& [name, y] : {std::pair{"fence_a", 0.0}, std::pair{"fence_b", 2.0}}) {
+        const world::Entity fence = f.place(name, 1.5, y);
+        game::Body* body = f.w->add<game::Body>(fence);
+        body->width = 1.0;
+        body->height = 1.0;
+        body->blocks = "Player";
+    }
+    CHECK(game::body_blocks(*f.w->get<game::Body>(f.w->find_named("fence_a").at(0)), {"player"}));
+    CHECK_FALSE(
+        game::body_blocks(*f.w->get<game::Body>(f.w->find_named("fence_a").at(0)), {"enemy"}));
+    CHECK(game::body_blocks(game::Body{}, {}));
+    // Both walk right for a second: the hero stops at the fence, the slime goes through.
+    f.walk(60, {input::Key::Right});
+    const double hero_right =
+        f.at(f.hero).x + (f.w->get<game::TopDownMover>(f.hero)->hitbox_width / 2.0);
+    CHECK(hero_right == doctest::Approx(1.0));
+    CHECK(f.at(slime).x == doctest::Approx(4.0));
+
+    // A way found by a slime goes straight through the fence; the hero's goes round it.
+    const game::TopDownMover& mover = *f.w->get<game::TopDownMover>(slime);
+    const auto through = game::find_path(*f.w, mover, slime, 0.5, 2.0, 2.5, 2.0, 16);
+    REQUIRE(through.has_value());
+    CHECK(through.value_or(std::vector<std::array<double, 2>>{}).size() == 1);
+    const auto round = game::find_path(*f.w, mover, f.hero, 0.5, 2.0, 2.5, 2.0, 16);
+    REQUIRE(round.has_value());
+    CHECK(round.value_or(std::vector<std::array<double, 2>>{}).size() > 1);
+
+    // A trap only enemies set off, walking by themselves or not; and an area for anyone.
+    const world::Entity trap = f.place("trap", 8.0, 6.0);
+    game::Trigger* area = f.w->add<game::Trigger>(trap);
+    area->width = 4.0;
+    area->height = 4.0;
+    area->only = "enemy";
+    f.at(f.hero) = scene2d::Transform2D{8.0, 5.0};
+    f.at(slime) = scene2d::Transform2D{8.5, 5.0};
+    f.w->add<game::Walker>(slime)->mode = game::WalkMode::Stand;
+    const std::vector<game::TriggerEvent> events = game::update_triggers(*f.w);
+    REQUIRE(events.size() == 1);
+    CHECK(events[0].who == slime);
+    // With no tags given, Walkers are not noticed, and the player is.
+    f.w->get<game::Trigger>(trap)->only.clear();
+    const std::vector<game::TriggerEvent> plain = game::update_triggers(*f.w);
+    REQUIRE(plain.size() == 2); // the slime leaves, the hero enters
+    CHECK_FALSE(plain[0].entered);
+    CHECK(plain[0].who == slime);
+    CHECK(plain[1].entered);
+    CHECK(plain[1].who == f.hero);
+}

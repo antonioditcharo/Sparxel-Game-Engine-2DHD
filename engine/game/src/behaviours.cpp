@@ -2,6 +2,7 @@
 
 #include "engine/game/combat.h"
 #include "engine/game/hud.h"
+#include "engine/game/logic_world.h"
 #include "engine/game/particles.h"
 
 #include <algorithm>
@@ -324,6 +325,9 @@ void register_behaviours(reflect::Registry& registry) {
         .unit(reflect::Unit::Tiles)
         .tooltip("How deep the blocking area is, upwards from the position.");
     body.property<&Body::enabled>("enabled").tooltip("Turn off to let characters walk through.");
+    body.property<&Body::blocks>("blocks")
+        .display_name("Blocks only")
+        .tooltip("Tags of the characters it stops, such as player; empty stops everyone.");
 
     auto trigger = registry.add_type<Trigger>("trigger")
                        .display_name("Trigger Area")
@@ -341,6 +345,10 @@ void register_behaviours(reflect::Registry& registry) {
         .tooltip("How deep the area is, upwards from the position.");
     trigger.property<&Trigger::enabled>("enabled").tooltip(
         "Turn off to ignore characters; anyone inside leaves.");
+    trigger.property<&Trigger::only>("only")
+        .display_name("Only for")
+        .tooltip("Tags of the characters it notices, such as enemy, walking by themselves or "
+                 "not; empty notices the player's characters.");
     trigger.event<std::string>("entered", {"who"})
         .text("When {who} walks in")
         .tooltip("Happens when a walking character enters the area.");
@@ -561,6 +569,13 @@ std::optional<std::array<double, 2>> player_position(const world::World& world) 
         }
     });
     return found;
+}
+
+bool body_blocks(const Body& body, const std::vector<std::string>& tags) {
+    const std::vector<std::string> wanted = parse_tag_list(body.blocks);
+    return wanted.empty() || std::any_of(wanted.begin(), wanted.end(), [&](const std::string& t) {
+               return std::find(tags.begin(), tags.end(), t) != tags.end();
+           });
 }
 
 bool register_behaviour_components(world::World& world) {
@@ -814,6 +829,7 @@ void move_characters(world::World& world, const input::InputState& input, double
     struct Obstacle {
         world::Entity entity;
         scene2d::Box box;
+        const Body* body;
     };
     std::vector<Obstacle> obstacles;
     // Ladders, as areas.
@@ -833,7 +849,7 @@ void move_characters(world::World& world, const input::InputState& input, double
             const scene2d::Transform2D* at = world.get<scene2d::Transform2D>(entity);
             if (body != nullptr && at != nullptr && body->enabled) {
                 obstacles.push_back(
-                    Obstacle{entity, feet_box(at->x, at->y, body->width, body->height)});
+                    Obstacle{entity, feet_box(at->x, at->y, body->width, body->height), body});
             }
         });
     }
@@ -856,8 +872,9 @@ void move_characters(world::World& world, const input::InputState& input, double
         std::vector<scene2d::Box> others;
         if (!by_physics) {
             others.reserve(obstacles.size());
+            const std::vector<std::string> tags = tags_of(world, entity);
             for (const Obstacle& obstacle : obstacles) {
-                if (obstacle.entity != entity) {
+                if (obstacle.entity != entity && body_blocks(*obstacle.body, tags)) {
                     others.push_back(obstacle.box);
                 }
             }
@@ -1029,9 +1046,12 @@ struct Placed {
     world::Entity entity;
     Guid guid;
     scene2d::Box box;
+    bool walker = false; ///< A Walker steers it.
+    std::vector<std::string> tags;
 };
 
-/// Every Top-down Mover's hitbox, sorted by GUID.
+/// Every Top-down Mover's hitbox, sorted by GUID, with whether a Walker steers it and its
+/// tags.
 std::vector<Placed> movers(const world::World& world) {
     std::vector<Placed> found;
     if (const reflect::TypeInfo* type = world.registry().find_type<TopDownMover>()) {
@@ -1039,8 +1059,10 @@ std::vector<Placed> movers(const world::World& world) {
             const TopDownMover* mover = ref.as<TopDownMover>();
             const scene2d::Transform2D* at = world.get<scene2d::Transform2D>(entity);
             const Walker* walker = world.get<Walker>(entity);
-            if (mover != nullptr && at != nullptr && (walker == nullptr || !walker->enabled)) {
-                found.push_back(Placed{entity, world.guid(entity), hitbox(*mover, at->x, at->y)});
+            if (mover != nullptr && at != nullptr) {
+                found.push_back(Placed{entity, world.guid(entity), hitbox(*mover, at->x, at->y),
+                                       walker != nullptr && walker->enabled,
+                                       tags_of(world, entity)});
             }
         });
     }
@@ -1069,8 +1091,16 @@ std::vector<TriggerEvent> update_triggers(world::World& world) {
         std::vector<Guid> now;
         if (at != nullptr && trigger->enabled) {
             const scene2d::Box area = feet_box(at->x, at->y, trigger->width, trigger->height);
+            const std::vector<std::string> wanted = parse_tag_list(trigger->only);
             for (const Placed& walker : walkers) {
-                if (walker.entity != entity && scene2d::overlaps(area, walker.box)) {
+                const bool noticed =
+                    wanted.empty()
+                        ? !walker.walker
+                        : std::any_of(wanted.begin(), wanted.end(), [&](const std::string& t) {
+                              return std::find(walker.tags.begin(), walker.tags.end(), t) !=
+                                     walker.tags.end();
+                          });
+                if (noticed && walker.entity != entity && scene2d::overlaps(area, walker.box)) {
                     now.push_back(walker.guid); // sorted, as walkers are
                 }
             }

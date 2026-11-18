@@ -233,6 +233,7 @@ void update_health(world::World& world, double seconds, std::uint32_t ppu) {
     struct Obstacle {
         world::Entity entity;
         scene2d::Box box;
+        const Body* body;
     };
     std::vector<Obstacle> obstacles;
     if (const reflect::TypeInfo* body_type = world.registry().find_type<Body>()) {
@@ -241,7 +242,7 @@ void update_health(world::World& world, double seconds, std::uint32_t ppu) {
             const scene2d::Transform2D* at = world.get<scene2d::Transform2D>(entity);
             if (body != nullptr && at != nullptr && body->enabled) {
                 obstacles.push_back(
-                    Obstacle{entity, feet_box(at->x, at->y, body->width, body->height)});
+                    Obstacle{entity, feet_box(at->x, at->y, body->width, body->height), body});
             }
         });
     }
@@ -316,8 +317,9 @@ void update_health(world::World& world, double seconds, std::uint32_t ppu) {
                 return;
             }
             std::vector<scene2d::Box> others;
+            const std::vector<std::string> tags = tags_of(world, entity);
             for (const Obstacle& obstacle : obstacles) {
-                if (obstacle.entity != entity) {
+                if (obstacle.entity != entity && body_blocks(*obstacle.body, tags)) {
                     others.push_back(obstacle.box);
                 }
             }

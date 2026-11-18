@@ -2,6 +2,7 @@
 
 #include "engine/game/behaviours.h"
 #include "engine/game/combat.h"
+#include "engine/game/logic_world.h"
 
 #include <algorithm>
 #include <charconv>
@@ -132,14 +133,15 @@ find_path(const world::World& world, const TopDownMover& mover, world::Entity se
     if (std::abs(to_x - x) <= arrive_within && std::abs(to_y - y) <= arrive_within) {
         return std::vector<std::array<double, 2>>{};
     }
-    // Solid Bodies where they stand now.
+    // Solid Bodies where they stand now, those that block it.
     std::vector<scene2d::Box> bodies;
+    const std::vector<std::string> tags = tags_of(world, self);
     if (const reflect::TypeInfo* type = world.registry().find_type<Body>()) {
         world.each(*type, [&](world::Entity entity, reflect::ObjectRef ref) {
             const Body* body = ref.as<Body>();
             const scene2d::Transform2D* at = world.get<scene2d::Transform2D>(entity);
             if (body != nullptr && at != nullptr && body->enabled && entity != self &&
-                entity != ignore) {
+                entity != ignore && body_blocks(*body, tags)) {
                 bodies.push_back(feet_box(at->x, at->y, body->width, body->height));
             }
         });

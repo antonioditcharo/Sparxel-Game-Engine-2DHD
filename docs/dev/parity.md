@@ -25,10 +25,10 @@
 | F. Genre kits | 4 | 0 | 2 |
 | G. Story | 4 | 2 | 1 (+1 later) |
 | H. Characters | 3 | 2 | 0 |
-| I. Physics | 1 | 3 | 1 |
+| I. Physics | 2 | 3 | 0 |
 | J. Audio | 2 | 4 | 0 (+1 later) |
 | K. UI | 3 | 4 | 0 |
-| **All** | **34** | **50** | **18** (+6 later) |
+| **All** | **35** | **50** | **17** (+6 later) |
 
 The strongest areas match or pass their references: the RPG kit and window skins (RPG
 Maker), auto-tiles and tile variants (RPG Maker, LDtk), no-code Rules with tags, *it*,
@@ -172,7 +172,7 @@ action kits (GameMaker), audio mixing (zones, reverb), and team features.
 | ID | Feature | Best today | Sparxel |
 |---|---|---|---|
 | I1 | Collision | Tiled, Godot | **Partial**: solid tiles, half tiles, slopes, bodies; no sprite-alpha shapes |
-| I2 | Collision layers | Godot | **Not yet** |
+| I2 | Collision layers | Godot | **Done**: by the tags objects already have: Solid Bodies that block only some, Trigger Areas that notice only some, Health hurt only by some |
 | I3 | Character controllers | Godot | **Partial**: top-down and side-view movers |
 | I4 | Triggers and overlaps | Construct | **Partial**: trigger areas, touches, hit and hurt boxes, *is tagged*, line of sight for Walkers; no raycasts in logic |
 | I5 | Rigid-body props | Godot | **Done**: Box2D bodies to push, fall and bounce |
