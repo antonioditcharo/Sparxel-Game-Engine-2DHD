@@ -175,6 +175,10 @@ jobs:
           for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
           if not defined VSINSTALL (echo Visual Studio with C++ tools was not found & exit /b 1)
           call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat" || exit /b 1
+          rem The runner's newest Visual Studio can carry a standard library newer than the
+          rem clang-cl beside it accepts (STL1000); its documented escape hatch lets the
+          rem second compiler keep checking the code.
+          if "${{ matrix.preset }}"=="windows-clang-cl" set "CXXFLAGS=/D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH"
           cmake --preset ${{ matrix.preset }} -DCMAKE_COMPILE_WARNING_AS_ERROR=ON -DSPARXEL_REQUIRE_EDITOR=ON || exit /b 1
           cmake --build --preset ${{ matrix.preset }} || exit /b 1
           ctest --preset ${{ matrix.preset }} || exit /b 1

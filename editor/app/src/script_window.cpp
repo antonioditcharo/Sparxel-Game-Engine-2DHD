@@ -164,6 +164,9 @@ bool ScriptWindow::open(const fs::path& file, const std::string& name, const Doc
     return true;
 }
 
+// The tree owns every item made with it as their parent; the analyzer cannot see Qt's
+// ownership.
+// NOLINTBEGIN(clang-analyzer-cplusplus.NewDeleteLeaks)
 void ScriptWindow::fill_objects(const Document* document) {
     objects_->clear();
     auto* api = new QTreeWidgetItem(objects_, {tr("The game's script functions")});
@@ -209,6 +212,8 @@ void ScriptWindow::fill_objects(const Document* document) {
             text_of("sx.on(\"" + event.object + "." + event.event + "\", function(...)\n\nend)"));
     }
 }
+
+// NOLINTEND(clang-analyzer-cplusplus.NewDeleteLeaks)
 
 void ScriptWindow::insert_from(const QString& snippet) {
     text_->insertPlainText(snippet);

@@ -97,7 +97,7 @@ logic::LogicAsset sample_asset() {
         }});
     asset.sequences.push_back(logic::Sequence{logic::BlockId{11}, "outro", {}});
     // A custom block: a sequence that takes values, run with them.
-    logic::Sequence reward{
+    const logic::Sequence reward{
         logic::BlockId{12},
         "reward",
         {ir::log(13, ir::event_value("gold"))},

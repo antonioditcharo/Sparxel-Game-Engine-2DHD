@@ -2687,7 +2687,7 @@ bool Document::add_sequence_value(std::string_view path, BlockId sequence, std::
         return false;
     }
     engine::serialize::Json before = d.snapshot();
-    logic::Variable value{std::string(name), kind, "", std::nullopt};
+    const logic::Variable value{std::string(name), kind, "", std::nullopt};
     found->parameters.push_back(value);
     // Every Run of it gives the new value its start.
     for (std::vector<Stmt>* list : step_lists(file->asset)) {
