@@ -1430,7 +1430,7 @@ TEST_CASE("File > New script opens the Script editor: checked as typed, objects 
 }
 
 TEST_CASE("The Logic view gives a Sequence values to take, as a custom block") {
-    Editor e;
+    const Editor e;
     editor::LogicPanel* panel = e.window.logic_panel();
     QTreeWidget* tree = e.window.logic_view();
     auto* add = panel->findChild<QToolButton*>(QStringLiteral("logic_add"));

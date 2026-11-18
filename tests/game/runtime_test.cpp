@@ -5044,7 +5044,7 @@ TEST_CASE("Luau scripts in assets/ run as the game starts, on events, alongside 
     runtime->step();
     const std::vector<std::string>& log = runtime->log();
     CHECK(std::count(log.begin(), log.end(), "hello from a script") == 1);
-    world::World& w = runtime->world();
+    const world::World& w = runtime->world();
     CHECK(w.get<game::TopDownMover>(w.find_named("hero").at(0))->speed == 7.0);
     const std::array<reflect::Value, 1> by{reflect::Value{std::string("hero")}};
     REQUIRE(game::emit(runtime->vm(), w, w.find_named("elder").at(0), "interacted", by));
