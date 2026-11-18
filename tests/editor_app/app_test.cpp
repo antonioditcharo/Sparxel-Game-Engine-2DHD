@@ -2647,7 +2647,7 @@ TEST_CASE("Screen Layouts in the editor: children put under it, stacked, dragged
 }
 
 TEST_CASE("Screen Buttons show in the scene view and are dragged there") {
-    Editor e;
+    const Editor e;
     editor::Document& d = *e.window.document();
     const reflect::TypeInfo* type = d.registry().find_type<game::ScreenButton>();
     REQUIRE(type != nullptr);

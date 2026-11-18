@@ -768,14 +768,17 @@ engine::serialize::Json room_rules() {
         rule.id = logic::BlockId{block++};
         rule.object = "door";
         rule.event = "interacted";
+        // Each block's number first: arguments are not worked out in any set order.
         const std::uint64_t test = block++;
+        const std::uint64_t opens = block++;
+        const std::uint64_t locked = block++;
         rule.actions.push_back(ir::if_then(
             test,
             ir::call("inventory", "has_at_least",
                      {text("key"), ir::literal(Value{std::int64_t{1}})}),
-            {ir::do_action(block++, "dialogue", "say",
+            {ir::do_action(opens, "dialogue", "say",
                            {text("The key turns. The door creaks open: you are free!")})},
-            {ir::do_action(block++, "dialogue", "say",
+            {ir::do_action(locked, "dialogue", "say",
                            {text("It is locked. There must be a key somewhere.")})}));
         rules.rules.push_back(std::move(rule));
     }
