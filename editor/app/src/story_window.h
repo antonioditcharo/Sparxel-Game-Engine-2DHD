@@ -18,12 +18,15 @@
 #include "editor/core/story.h"
 
 class QAction;
+class QDialog;
+class QPlainTextEdit;
 class QComboBox;
 class QString;
 class QWidget;
 class QFormLayout;
 class QGraphicsScene;
 class QGraphicsView;
+class QLabel;
 class QListWidget;
 class QScrollArea;
 
@@ -63,6 +66,13 @@ public:
     bool delete_node();
     /// What is wrong with the conversation, in plain language; shown in the status bar.
     std::vector<std::string> check();
+    /// Opens the screenplay beside the graph: the conversation as a writer's text, to write
+    /// and apply (engine::game::conversation_to_screenplay()).
+    void show_screenplay();
+    /// Replaces the conversation with the screenplay `text`, as one undo step. False, with
+    /// the line that is wrong reported, if it cannot be read.
+    bool apply_screenplay(const std::string& text);
+    [[nodiscard]] QDialog* screenplay() const noexcept { return screenplay_; }
     void set_quiet(bool quiet) noexcept { quiet_ = quiet; }
     /// Shows everything again.
     void refresh();
@@ -104,6 +114,9 @@ private:
     QWidget* inspector_ = nullptr;
     QAction* undo_ = nullptr;
     QAction* redo_ = nullptr;
+    QDialog* screenplay_ = nullptr;
+    QPlainTextEdit* screenplay_text_ = nullptr;
+    QLabel* screenplay_note_ = nullptr;
 };
 
 } // namespace editor

@@ -56,6 +56,11 @@ public:
     /// Adds a choice to a node, leading nowhere yet; returns its index.
     std::optional<std::size_t> add_choice(std::string_view id, std::string& error);
     bool remove_choice(std::string_view id, std::size_t index);
+    /// Replaces the conversation with one read from a screenplay
+    /// (engine::game::screenplay_to_conversation()), as one step: nodes of the same name stay
+    /// where they were in the graph, and the speakers stay. False, with `error` naming the
+    /// line, if it cannot be read; false without one if nothing changes.
+    bool apply_screenplay(std::string_view text, std::string& error);
     /// Adds a speaker (unless one has the name) with a name plate colour.
     bool add_speaker(std::string_view name, std::string_view color = "#ffd27a");
     /// Changes how a speaker looks and sounds (plate colour, portrait, voice, pitch); the

@@ -6,6 +6,7 @@
 #include <QCloseEvent>
 #include <QColorDialog>
 #include <QComboBox>
+#include <QDialog>
 #include <QDockWidget>
 #include <QDoubleSpinBox>
 #include <QFontMetrics>
@@ -179,9 +180,15 @@ void StoryWindow::build_menus() {
     });
     QAction* checking = node->addAction(tr("&Check the conversation"), this, [this] { check(); });
     checking->setShortcut(QKeySequence(QStringLiteral("F7")));
+    node->addSeparator();
+    QAction* writing =
+        node->addAction(tr("Write as a s&creenplay…"), this, [this] { show_screenplay(); });
+    writing->setObjectName(QStringLiteral("show_screenplay"));
+    writing->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+W")));
+    writing->setToolTip(tr("The conversation as a script: Elder: words, * answers -> where"));
     QToolBar* tools = addToolBar(tr("Story"));
     tools->setObjectName(QStringLiteral("story_tools"));
-    for (QAction* action : {fresh, gone, start, checking, undo_, redo_}) {
+    for (QAction* action : {fresh, gone, start, checking, writing, undo_, redo_}) {
         tools->addAction(action);
     }
 }
@@ -273,6 +280,83 @@ std::vector<std::string> StoryWindow::check() {
                                               : text_of(problems.front()),
                              8000);
     return problems;
+}
+
+void StoryWindow::show_screenplay() {
+    if (editor_ == nullptr) {
+        return;
+    }
+    if (screenplay_ == nullptr) {
+        screenplay_ = new QDialog(this);
+        screenplay_->setObjectName(QStringLiteral("screenplay"));
+        screenplay_->setWindowTitle(tr("Screenplay"));
+        screenplay_->resize(560, 620);
+        auto* layout = new QVBoxLayout(screenplay_);
+        auto* help = new QLabel(
+            tr("<b>== name</b> starts a passage. <b>Elder: words</b> is a line. "
+               "<b>* answer -&gt; passage</b> is a choice. <b>-&gt; passage</b> goes on. "
+               "Notes: <b>[if has potion]</b> <b>[give potion 2]</b> <b>[set met_elder]</b> "
+               "<b>[start quest slime: Its title]</b>."),
+            screenplay_);
+        help->setWordWrap(true);
+        layout->addWidget(help);
+        screenplay_text_ = new QPlainTextEdit(screenplay_);
+        screenplay_text_->setObjectName(QStringLiteral("screenplay_text"));
+        QFont mono = screenplay_text_->font();
+        mono.setFamily(QStringLiteral("Consolas"));
+        mono.setStyleHint(QFont::Monospace);
+        screenplay_text_->setFont(mono);
+        layout->addWidget(screenplay_text_, 1);
+        screenplay_note_ = new QLabel(screenplay_);
+        screenplay_note_->setObjectName(QStringLiteral("screenplay_note"));
+        screenplay_note_->setWordWrap(true);
+        layout->addWidget(screenplay_note_);
+        auto* buttons = new QHBoxLayout;
+        auto* apply = new QPushButton(tr("Apply to the graph"), screenplay_);
+        apply->setObjectName(QStringLiteral("screenplay_apply"));
+        apply->setDefault(true);
+        auto* reread = new QPushButton(tr("Read the graph again"), screenplay_);
+        buttons->addStretch(1);
+        buttons->addWidget(reread);
+        buttons->addWidget(apply);
+        layout->addLayout(buttons);
+        connect(apply, &QPushButton::clicked, this,
+                [this] { apply_screenplay(screenplay_text_->toPlainText().toStdString()); });
+        connect(reread, &QPushButton::clicked, this, [this] {
+            screenplay_text_->setPlainText(
+                text_of(engine::game::conversation_to_screenplay(editor_->conversation())));
+            screenplay_note_->clear();
+        });
+    }
+    screenplay_text_->setPlainText(
+        text_of(engine::game::conversation_to_screenplay(editor_->conversation())));
+    screenplay_note_->clear();
+    screenplay_->show();
+    screenplay_->raise();
+}
+
+bool StoryWindow::apply_screenplay(const std::string& text) {
+    if (editor_ == nullptr) {
+        return false;
+    }
+    std::string error;
+    const bool changed = editor_->apply_screenplay(text, error);
+    if (!error.empty()) {
+        if (screenplay_note_ != nullptr) {
+            screenplay_note_->setText(text_of(error));
+        }
+        statusBar()->showMessage(text_of(error), 8000);
+        return false;
+    }
+    if (screenplay_note_ != nullptr) {
+        screenplay_note_->setText(
+            changed ? tr("Applied: %1 lines.").arg(editor_->conversation().nodes.size())
+                    : tr("Nothing changed."));
+    }
+    if (changed) {
+        refresh();
+    }
+    return true;
 }
 
 void StoryWindow::report(const QString& message) {

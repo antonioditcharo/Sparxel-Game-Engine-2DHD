@@ -22,6 +22,7 @@ add_library(engine_game STATIC
     src/quests.cpp
     src/runtime.cpp
     src/save.cpp
+    src/screenplay.cpp
     src/sound.cpp
     src/tables.cpp
     src/ui_theme.cpp

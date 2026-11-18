@@ -110,3 +110,29 @@ TEST_CASE("Story: a speaker's look is changed with undo, typing as one step") {
     CHECK(story.undo()); // both changes, one step
     CHECK(story.conversation().speaker("Elder")->portrait.empty());
 }
+
+TEST_CASE("Story: a screenplay replaces the conversation as one step, keeping places") {
+    editor::StoryEditor story(editor::StoryEditor::blank());
+    REQUIRE(story.move_node("start", 40.0, 80.0));
+    std::string error;
+    CHECK(story.apply_screenplay("== start\nElder: Hello.\nElder: Help us?\n* Yes -> yes\n"
+                                 "\n== yes\nElder: Thank you.\n[set helped]\n",
+                                 error));
+    CHECK(error.empty());
+    CHECK(story.conversation().nodes.size() == 3);
+    const game::TalkNode* start = story.node("start");
+    REQUIRE(start != nullptr);
+    CHECK(start->x == 40.0); // kept where it was
+    CHECK(start->y == 80.0);
+    CHECK(start->next == "start_2");
+    CHECK(story.undo_text() == "Write as a screenplay");
+    // The same again changes nothing; a broken one changes nothing and says where.
+    CHECK_FALSE(
+        story.apply_screenplay(game::conversation_to_screenplay(story.conversation()), error));
+    CHECK(error.empty());
+    CHECK_FALSE(story.apply_screenplay("Elder: Hi.\n* Yes [give x] -> yes", error));
+    CHECK(error == "Line 2: A choice can only have [if ...] notes: [give x].");
+    CHECK(story.conversation().nodes.size() == 3);
+    CHECK(story.undo());
+    CHECK(story.conversation().nodes.size() == 1);
+}

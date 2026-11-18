@@ -6,9 +6,11 @@
 
 #include <QApplication>
 #include <QComboBox>
+#include <QDialog>
 #include <QDoubleSpinBox>
 #include <QGraphicsItem>
 #include <QGraphicsScene>
+#include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QPlainTextEdit>
@@ -120,4 +122,41 @@ TEST_CASE("File > New conversation opens the Story editor; nodes are made, edite
     }
     std::error_code ignored;
     fs::remove_all(path, ignored);
+}
+
+TEST_CASE("The Story editor writes a conversation as a screenplay and applies one") {
+    editor::StoryWindow story;
+    story.set_quiet(true);
+    story.edit(editor::StoryEditor::blank(),
+               fs::temp_directory_path() /
+                   ("sparxel-screenplay-" + Guid::generate().to_string() + ".dtalk"));
+    story.show_screenplay();
+    QDialog* dialog = story.screenplay();
+    REQUIRE(dialog != nullptr);
+    CHECK(dialog->isVisible());
+    auto* text = dialog->findChild<QPlainTextEdit*>(QStringLiteral("screenplay_text"));
+    auto* apply = dialog->findChild<QPushButton*>(QStringLiteral("screenplay_apply"));
+    auto* note = dialog->findChild<QLabel*>(QStringLiteral("screenplay_note"));
+    REQUIRE(text != nullptr);
+    REQUIRE(apply != nullptr);
+    REQUIRE(note != nullptr);
+    CHECK(text->toPlainText().startsWith(QStringLiteral("== start\n")));
+    // Written and applied: the graph has its three lines, the second chosen leads on.
+    text->setPlainText(QStringLiteral("== start\nElder: Welcome.\nElder: Stay a while?\n"
+                                      "* Yes -> stay\n* No\n\n== stay\nElder: Good.\n"));
+    apply->click();
+    QApplication::processEvents();
+    CHECK(note->text() == QStringLiteral("Applied: 3 lines."));
+    REQUIRE(story.editor() != nullptr);
+    CHECK(story.editor()->conversation().nodes.size() == 3);
+    CHECK(story.node_list()->count() == 3);
+    // A mistake: said under the button, and nothing changes.
+    text->setPlainText(QStringLiteral("* Yes -> stay"));
+    apply->click();
+    QApplication::processEvents();
+    CHECK(note->text() ==
+          QStringLiteral("Line 1: a choice (*) answers a line, but there is none yet."));
+    CHECK(story.editor()->conversation().nodes.size() == 3);
+    story.undo();
+    CHECK(story.editor()->conversation().nodes.size() == 1);
 }

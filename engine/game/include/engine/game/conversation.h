@@ -109,6 +109,30 @@ inline constexpr std::size_t most_talk_nodes = 2000;
                                                              std::string& error);
 /// The ".dtalk" text of a conversation; the same conversation is always the same text.
 [[nodiscard]] std::string conversation_to_text(const Conversation& conversation);
+/// A conversation as a screenplay, for writers (docs/dev/story.md, *Screenplay*):
+///
+///     == start
+///     Elder: Welcome, traveller.
+///     Elder: Will you help us?
+///     [if not flag helped]
+///     * Yes [if has sword] -> yes
+///     * Not yet -> later
+///
+/// "== name" starts a passage; each line after is a node, "Speaker: words" (or words alone,
+/// after ":" if they could be taken for something else), named after the passage (its
+/// second line "start_2", and so on) and leading on to the next. "* words -> passage" is a
+/// choice; "-> passage" goes on elsewhere; notes in brackets are a line's conditions and
+/// effects ([if has potion], [give potion 2], [set met_elder], [start quest slime: Its
+/// title], [portrait art/elder_glad.png]) or a choice's conditions. Nodes the passages do
+/// not reach are passages of their own. The graph's places are not written.
+[[nodiscard]] std::string conversation_to_screenplay(const Conversation& conversation);
+/// Reads a screenplay. Nothing, with `error` naming the line, if it cannot. With `keep`, its
+/// speakers stay and nodes of the same name stay where they were in the graph; new ones are
+/// laid out by passage. Speakers not met before are added.
+[[nodiscard]] std::optional<Conversation>
+screenplay_to_conversation(std::string_view text, std::string& error,
+                           const Conversation* keep = nullptr);
+
 /// What is wrong with a conversation, in plain language: a start or a "next" naming a node
 /// that is not there, two nodes with one id, a node no way leads to. Empty if nothing.
 [[nodiscard]] std::vector<std::string> check_conversation(const Conversation& conversation);

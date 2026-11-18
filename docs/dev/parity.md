@@ -23,12 +23,12 @@
 | D. Rendering and the look | 4 | 10 | 1 (+1 later) |
 | E. No-code logic | 3 | 5 | 3 (+1 later) |
 | F. Genre kits | 4 | 0 | 2 |
-| G. Story | 4 | 2 | 1 (+1 later) |
+| G. Story | 5 | 2 | 0 (+1 later) |
 | H. Characters | 3 | 2 | 0 |
 | I. Physics | 3 | 2 | 0 |
 | J. Audio | 2 | 4 | 0 (+1 later) |
 | K. UI | 3 | 4 | 0 |
-| **All** | **37** | **49** | **16** (+6 later) |
+| **All** | **38** | **49** | **15** (+6 later) |
 
 The strongest areas match or pass their references: the RPG kit and window skins (RPG
 Maker), auto-tiles and tile variants (RPG Maker, LDtk), no-code Rules with tags, *it*,
@@ -149,7 +149,7 @@ action kits (GameMaker), audio mixing (zones, reverb), and team features.
 | ID | Feature | Best today | Sparxel |
 |---|---|---|---|
 | G1 | Dialogue graph | Yarn, articy | **Done**: the Story editor |
-| G2 | Screenplay mode | | **Not yet** |
+| G2 | Screenplay mode | | **Done**: conversations written as a script (speakers, passages, choices, conditions and effects as notes), applied to the graph as one undo step and written back from it exactly |
 | G3 | Speakers | RPG Maker | **Done**: portraits, name plates, voice blips |
 | G4 | Text effects | RPG Maker | **Done**: colour, wave, shake, speed, pauses |
 | G5 | Quests | | **Done**: stages, journal |

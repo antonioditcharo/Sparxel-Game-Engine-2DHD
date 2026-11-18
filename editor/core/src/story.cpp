@@ -200,6 +200,21 @@ bool StoryEditor::move_node(std::string_view id, double x, double y) {
     return true;
 }
 
+bool StoryEditor::apply_screenplay(std::string_view text, std::string& error) {
+    std::optional<game::Conversation> read =
+        game::screenplay_to_conversation(text, error, &conversation_);
+    if (!read) {
+        return false;
+    }
+    if (*read == conversation_) {
+        return false;
+    }
+    game::Conversation before = std::move(conversation_);
+    conversation_ = std::move(*read);
+    record("Write as a screenplay", std::move(before));
+    return true;
+}
+
 bool StoryEditor::set_start(std::string_view id, std::string& error) {
     if (find(id) == nullptr) {
         error = "There is no such node.";

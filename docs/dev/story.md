@@ -32,13 +32,53 @@ with Ctrl+K) opens one. Each conversation has its own window.
 | **Graph** (middle) | Each node is a box: its name (*(start)* on the one it starts with, outlined in green), who says it, and its words. A grey arrow leads to the node after it; a blue arrow for each choice, labelled with the choice's words (dashed when it leads nowhere yet). *if…* and *does…* mark nodes with conditions and effects. Boxes drag anywhere (one undo step per drag); clicking one chooses it |
 | **Nodes** (left) | Every node with its speaker and the start of its words; clicking one chooses it |
 | **Node** (right) | The chosen node: its **Name** (renaming it renames every arrow to it; letters, digits and _), **Speaker** (pick one, or type a new name, which adds it), and how that speaker looks and sounds in all their lines: **Name colour** (the plate's, picked from a colour dialog), **Portrait** (a picture in assets/), **Voice** (a short sound in assets/) and **Voice pitch** (0.25 to 4; 1 as recorded). Then what it **Says**, **Portrait here** (another picture of the speaker for this line only: a mood), and **Then** (the node after it, or *the conversation ends*). **Choices**: each with its words, where it leads, and an item it **needs** (offered only if the player carries it); *Add a choice*. **Only if**: conditions that must all hold for the node to be said (the player has an item, a flag is set, a quest is under way or complete, each with *not*); otherwise the conversation goes on to *Then*. **Does**: effects as it is said (give or take items, set or clear a flag, start or complete a quest; *how many* is a number of items, or a quest's title) |
-| **Commands** | *New node after this one* (Ctrl+Enter: below the chosen node, which now leads to it, said by the same speaker), *Delete node* (Delete; what led to it now ends there; the start node stays), *Make it the start*, *Check the conversation* (F7), Undo and Redo, Save (Ctrl+S) and Close (asking to save) |
+| **Commands** | *New node after this one* (Ctrl+Enter: below the chosen node, which now leads to it, said by the same speaker), *Delete node* (Delete; what led to it now ends there; the start node stays), *Make it the start*, *Check the conversation* (F7), *Write as a screenplay…* (Ctrl+Shift+W, below), Undo and Redo, Save (Ctrl+S) and Close (asking to save) |
 
 Typing into a field is one undo step; so is each drag. *Check the conversation*, and
 saving, say in the status bar what would go wrong: a way that leads to a node that is not
 there, two nodes with one name, a start that is not a node, a node nothing leads to.
 Project Doctor ([editor.md](editor.md)) lists the same for every conversation of the
 project.
+
+### Screenplay
+
+Writers often think in scripts, not boxes. *Write as a screenplay…* opens the
+conversation as text beside the graph, to write in and apply:
+
+```
+== start
+Elder: Welcome, traveller.
+Elder: Will you help us?
+[if not flag helped]
+* Yes [if has sword] -> yes
+* Not yet
+
+== yes
+The elder smiles.
+Elder: Thank you!
+[give potion 2] [set helped] [start quest wolves: The wolves]
+-> start
+```
+
+| Written | Means |
+|---|---|
+| `== name` | A passage starts: its first line is the node *name* (letters, digits and _) |
+| `Elder: words` | A line the speaker says: a node, named after the passage (its second line `start_2`, its third `start_3`), leading on to the line after it. New speakers are added |
+| words alone | Words nobody says (narration). Words that could be read as something else are written after `:` (`: Note: the gate is shut`) |
+| `* words -> passage` | A choice of the line before, leading there; with no `->`, it ends the conversation. `[if …]` notes before the arrow are its conditions |
+| `-> passage` | The line before goes on there, not to the next line |
+| `[if has potion]`, `[if not flag met]`, `[if quest slime done]`, `[if quest slime active]` | Conditions of the line before (`not` turns one round) |
+| `[give potion 2]`, `[take potion]`, `[set met]`, `[clear met]`, `[start quest slime: Its title]`, `[complete quest slime]`, `[portrait art/elder_glad.png]` | Effects of the line before, and its portrait here |
+| `// words` | A note for the writer, not read |
+
+*Apply to the graph* replaces the conversation as one undo step: lines of the same name
+keep their places in the graph, new ones are laid out a row per passage, and the
+speakers keep their looks; a mistake is said under the button (*Line 4: there are two
+lines called start*) and changes nothing. *Read the graph again* writes the graph out
+afresh. Written from the graph, the start comes first, lines that lead on to the one
+named after them stay in their passage, every other node is a passage of its own, and the
+text reads back as exactly the same conversation (`conversation_to_screenplay()`,
+`screenplay_to_conversation()`, `StoryEditor::apply_screenplay()`).
 
 ## 3. Playing one
 
