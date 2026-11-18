@@ -22,13 +22,13 @@
 | C. World building | 4 | 7 | 3 |
 | D. Rendering and the look | 3 | 10 | 2 (+1 later) |
 | E. No-code logic | 3 | 5 | 3 (+1 later) |
-| F. Genre kits | 2 | 1 | 3 |
+| F. Genre kits | 3 | 0 | 3 |
 | G. Story | 4 | 2 | 1 (+1 later) |
 | H. Characters | 2 | 3 | 0 |
 | I. Physics | 1 | 3 | 1 |
 | J. Audio | 2 | 4 | 0 (+1 later) |
 | K. UI | 3 | 4 | 0 |
-| **All** | **31** | **52** | **19** (+6 later) |
+| **All** | **32** | **51** | **19** (+6 later) |
 
 The strongest areas match or pass their references: the RPG kit and window skins (RPG
 Maker), auto-tiles and tile variants (RPG Maker, LDtk), no-code Rules with tags, *it*,
@@ -141,7 +141,7 @@ action kits (GameMaker), audio mixing (zones, reverb), and team features.
 | F2 | RPG | RPG Maker | **Done**: party, levels and growth, skills, items, equipment, status effects, turn-based battles, encounters, enemies on the map |
 | F3 | Tactics | SRPG Studio | **Not yet** |
 | F4 | Action-adventure | GameMaker | **Not yet** |
-| F5 | Platformer | GameMaker | **Partial**: jumping with coyote time, an early press and variable height, moving platforms that carry the player, ladders, solid half tiles, a template; no slopes |
+| F5 | Platformer | GameMaker | **Done**: jumping with coyote time, an early press and variable height, moving platforms that carry the player, ladders, solid half tiles and slopes, a template |
 | F6 | Adventure | Adventure Game Studio | **Not yet** (interactables and inventory cover part) |
 
 ## G. Story
@@ -171,7 +171,7 @@ action kits (GameMaker), audio mixing (zones, reverb), and team features.
 
 | ID | Feature | Best today | Sparxel |
 |---|---|---|---|
-| I1 | Collision | Tiled, Godot | **Partial**: solid tiles, half tiles, bodies; no sprite-alpha shapes or slopes |
+| I1 | Collision | Tiled, Godot | **Partial**: solid tiles, half tiles, slopes, bodies; no sprite-alpha shapes |
 | I2 | Collision layers | Godot | **Not yet** |
 | I3 | Character controllers | Godot | **Partial**: top-down and side-view movers |
 | I4 | Triggers and overlaps | Construct | **Partial**: trigger areas, touches, *is tagged*; no raycasts |

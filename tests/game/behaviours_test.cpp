@@ -786,3 +786,50 @@ TEST_CASE("Ladders: climbed with up and down, never fallen from, leapt off with 
     CHECK_FALSE(jumping->climbing);
     CHECK(f.at(f.hero).y == 4.0);
 }
+
+TEST_CASE("Slopes: walked up and down, the feet on the surface, onto the ground above") {
+    Fixture f;
+    f.w->add<game::Jumping>(f.hero);
+    game::TopDownMover* mover = f.w->get<game::TopDownMover>(f.hero);
+    mover->hitbox_height = 1.0;
+    // The ground's top at y = 4; a slope rising right in column 3 (from y 4 to 3), then
+    // higher ground (top y = 3) in columns 4 and 5.
+    const world::Entity map = f.place("ground", 0.0, 0.0);
+    scene2d::Tilemap* tiles = f.w->add<scene2d::Tilemap>(map);
+    tiles->solid = true;
+    tiles->tiles = ",,,,,\n,,,,,\n,,,,,\n,,,1,0,0\n0,0,0,0,0,0";
+    tiles->shapes = "1 slope_right";
+    const auto run = [&](int steps, std::initializer_list<input::Key> keys) {
+        for (int i = 0; i < steps; ++i) {
+            f.state.begin_step();
+            for (const input::Key k : {input::Key::Left, input::Key::Right}) {
+                bool down = false;
+                for (const input::Key held : keys) {
+                    down = down || held == k;
+                }
+                f.state.set(input::Binding::key(k), down);
+            }
+            game::move_characters(*f.w, f.state, 1.0 / 60.0, 16);
+        }
+    };
+    CHECK(scene2d::slope_floor(*f.w, 3.25, 3.0, 4.0, 16).value_or(0.0) == doctest::Approx(3.75));
+    f.at(f.hero).x = 1.0;
+    f.at(f.hero).y = 4.0;
+    run(5, {});
+    CHECK(f.at(f.hero).y == 4.0);
+    // Right, up the slope, and on along the higher ground.
+    const game::Jumping& jumping = *f.w->get<game::Jumping>(f.hero);
+    run(60, {input::Key::Right}); // 4 tiles a second: to x = 5
+    CHECK(f.at(f.hero).x > 4.5);
+    CHECK(f.at(f.hero).y == doctest::Approx(3.0));
+    CHECK(jumping.on_ground);
+    // Back left, down the slope, never in the air on the way.
+    bool always_down = true;
+    for (int i = 0; i < 40; ++i) {
+        run(1, {input::Key::Left});
+        always_down = always_down && jumping.on_ground;
+    }
+    CHECK(always_down);
+    CHECK(f.at(f.hero).x < 2.5);
+    CHECK(f.at(f.hero).y == doctest::Approx(4.0));
+}

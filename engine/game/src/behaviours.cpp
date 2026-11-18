@@ -911,6 +911,7 @@ void move_characters(world::World& world, const input::InputState& input, double
                     jumping->on_ground = wanted > 0.0 && moved < wanted - 1e-9;
                 } else {
                     const bool on_ladder = ladder != nullptr;
+                    const bool was_on_ground = jumping->on_ground;
                     fall(*jumping,
                          JumpInput{player && (input.pressed("jump") ||
                                               (!on_ladder && input.pressed("move_up"))),
@@ -918,6 +919,51 @@ void move_characters(world::World& world, const input::InputState& input, double
                                               (!on_ladder && input.held("move_up")))},
                          seconds,
                          [&](double wanted) { return sweep_by(scene2d::Axis::Y, wanted); });
+                    // Slopes: its feet on their surface. Inside one (walking up it, or
+                    // falling onto it) it stands on the surface; walking down one, it keeps
+                    // to it rather than leaving it a step at a time.
+                    if (jumping->fall_speed >= 0.0) {
+                        const double reach = was_on_ground ? 0.25 : 0.0;
+                        // The highest surface under any of its feet (both edges and the
+                        // middle), so its box clears the step at the top of a slope.
+                        const scene2d::Box under = hitbox(*mover, transform->x, transform->y);
+                        std::optional<double> floor;
+                        for (const double x : {under.left, transform->x, under.right}) {
+                            const std::optional<double> here = scene2d::slope_floor(
+                                world, x, transform->y - 0.5, transform->y + reach, ppu);
+                            if (here && (!floor || *here < *floor)) {
+                                floor = here;
+                            }
+                        }
+                        // Up onto it always; down to it only when nothing solid holds it
+                        // (walking down a slope), never into ground it stands on.
+                        const bool lifts = floor && *floor < transform->y - 1e-9;
+                        const bool sticks = floor && !jumping->on_ground;
+                        if (lifts || sticks) {
+                            transform->y = *floor;
+                            jumping->fall_speed = 0.0;
+                            jumping->on_ground = true;
+                            jumping->air_time = 0.0;
+                            jumping->jumped = false;
+                        }
+                    }
+                    // Ground snapping: standing a moment ago, and not leaping, it is put
+                    // down onto ground less than a quarter tile below (the foot of a slope,
+                    // a pixel's step); a ledge any deeper is still a fall.
+                    if (was_on_ground && !jumping->on_ground && !jumping->jumped &&
+                        jumping->fall_speed >= 0.0) {
+                        constexpr double snap = 0.25;
+                        const scene2d::Box box = hitbox(*mover, transform->x, transform->y);
+                        const double room = scene2d::sweep_boxes(
+                            box, scene2d::Axis::Y,
+                            scene2d::sweep(world, box, scene2d::Axis::Y, snap, ppu), others);
+                        if (room < snap - 1e-9) {
+                            transform->y += room;
+                            jumping->fall_speed = 0.0;
+                            jumping->on_ground = true;
+                            jumping->air_time = 0.0;
+                        }
+                    }
                 }
             }
             if (walk != nullptr && sprite != nullptr) {

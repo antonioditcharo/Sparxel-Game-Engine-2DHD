@@ -96,8 +96,9 @@ bool TilePalette::set_tile_shape(std::int32_t tile, scene2d::TileShape shape) {
     // The others as they were, this one changed (left out when it blocks all of it).
     std::string ignored;
     std::string text;
-    constexpr std::array<std::string_view, 6> names{"full",   "none", "top",
-                                                    "bottom", "left", "right"};
+    // By TileShape, in its order.
+    constexpr std::array<std::string_view, 8> names{"full", "none",  "top",         "bottom",
+                                                    "left", "right", "slope_right", "slope_left"};
     const auto add = [&text, &names](std::int32_t number, scene2d::TileShape given) {
         if (given == scene2d::TileShape::Full) {
             return;
@@ -206,12 +207,14 @@ void TilePalette::show_tilemap(Document* document, engine::Guid entity) {
                         if (!tilemap->solid) {
                             blocks->setTitle(tr("Blocks (on a solid map)"));
                         }
-                        const std::array<std::pair<scene2d::TileShape, QString>, 6> shapes{{
+                        const std::array<std::pair<scene2d::TileShape, QString>, 8> shapes{{
                             {scene2d::TileShape::Full, tr("All of it")},
                             {scene2d::TileShape::Top, tr("The top half")},
                             {scene2d::TileShape::Bottom, tr("The bottom half")},
                             {scene2d::TileShape::Left, tr("The left half")},
                             {scene2d::TileShape::Right, tr("The right half")},
+                            {scene2d::TileShape::SlopeRight, tr("A slope rising to the right")},
+                            {scene2d::TileShape::SlopeLeft, tr("A slope rising to the left")},
                             {scene2d::TileShape::None, tr("Nothing")},
                         }};
                         for (const auto& [shape, label] : shapes) {

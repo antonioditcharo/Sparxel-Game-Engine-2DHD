@@ -594,13 +594,15 @@ std::vector<std::pair<std::int32_t, TileShape>> parse_tile_shapes(std::string_vi
                                                                   std::string& error) {
     std::vector<std::pair<std::int32_t, TileShape>> out;
     error.clear();
-    constexpr std::array<std::pair<std::string_view, TileShape>, 6> names{{
+    constexpr std::array<std::pair<std::string_view, TileShape>, 8> names{{
         {"full", TileShape::Full},
         {"none", TileShape::None},
         {"top", TileShape::Top},
         {"bottom", TileShape::Bottom},
         {"left", TileShape::Left},
         {"right", TileShape::Right},
+        {"slope_right", TileShape::SlopeRight},
+        {"slope_left", TileShape::SlopeLeft},
     }};
     std::size_t at = 0;
     while (at <= text.size()) {
@@ -648,6 +650,8 @@ std::optional<Box> tile_shape_box(TileShape shape, double tile) noexcept {
     const double half = tile / 2.0;
     switch (shape) {
     case TileShape::None:
+    case TileShape::SlopeRight: // stood on by their surface, not boxes
+    case TileShape::SlopeLeft:
         return std::nullopt;
     case TileShape::Top:
         return Box{0.0, 0.0, tile, half};
@@ -661,6 +665,75 @@ std::optional<Box> tile_shape_box(TileShape shape, double tile) noexcept {
         break;
     }
     return Box{0.0, 0.0, tile, tile};
+}
+
+std::optional<double> slope_floor(const world::World& world, double x, double top, double bottom,
+                                  std::uint32_t ppu) {
+    std::optional<double> best;
+    const reflect::TypeInfo* type = world.registry().find_type<Tilemap>();
+    if (type == nullptr || !std::isfinite(x) || !std::isfinite(top) || !std::isfinite(bottom)) {
+        return best;
+    }
+    world.each(*type, [&](world::Entity entity, reflect::ObjectRef ref) {
+        const Tilemap* tilemap = ref.as<Tilemap>();
+        const Transform2D* transform = world.get<Transform2D>(entity);
+        if (tilemap == nullptr || transform == nullptr || !tilemap->solid ||
+            tilemap->shapes.find("slope") == std::string::npos) {
+            return;
+        }
+        std::string error;
+        const TileGrid* grid = tilemap->grid(error);
+        if (grid == nullptr || grid->width == 0) {
+            return;
+        }
+        const std::uint32_t units = std::max<std::uint32_t>(ppu, 1);
+        const std::uint32_t pixels = tilemap->tile_size == 0 ? units : tilemap->tile_size;
+        const double tile = static_cast<double>(pixels) / static_cast<double>(units);
+        const double local_x = x - transform->x;
+        const double column = std::floor(local_x / tile);
+        if (column < 0.0 || column >= static_cast<double>(grid->width)) {
+            return;
+        }
+        std::string ignored;
+        const std::vector<std::pair<std::int32_t, TileShape>> shapes =
+            parse_tile_shapes(tilemap->shapes, ignored);
+        // The rows the span crosses, on the map (clamped before counting in whole numbers).
+        const double rows = static_cast<double>(grid->height);
+        const auto first_row = static_cast<std::int64_t>(
+            std::clamp(std::floor((top - transform->y) / tile), 0.0, rows));
+        const auto last_row = static_cast<std::int64_t>(
+            std::clamp(std::floor((bottom - transform->y) / tile), -1.0, rows - 1.0));
+        for (std::int64_t row = first_row; row <= last_row; ++row) {
+            const std::int32_t t =
+                grid->at(static_cast<std::uint32_t>(column), static_cast<std::uint32_t>(row));
+            if (t < 0) {
+                continue;
+            }
+            TileShape shape = TileShape::Full;
+            for (const auto& [number, given] : shapes) {
+                if (number == t) {
+                    shape = given;
+                }
+            }
+            if (shape != TileShape::SlopeRight && shape != TileShape::SlopeLeft) {
+                continue;
+            }
+            // Across the tile, 0 to 1; its surface falls from the high side to the low.
+            const double across = std::clamp((local_x / tile) - column, 0.0, 1.0);
+            const double rise = shape == TileShape::SlopeRight ? across : 1.0 - across;
+            // On whole pixels, as everything is drawn: the slope climbs a pixel at a time,
+            // and its top meets the tile beside it exactly.
+            const double pixel = 1.0 / static_cast<double>(units);
+            const double surface =
+                std::round((transform->y + ((static_cast<double>(row) + 1.0 - rise) * tile)) /
+                           pixel) *
+                pixel;
+            if (surface >= top - 1e-9 && surface <= bottom + 1e-9 && (!best || surface < *best)) {
+                best = surface;
+            }
+        }
+    });
+    return best;
 }
 
 double sweep(const world::World& world, const Box& box, Axis axis, double distance,

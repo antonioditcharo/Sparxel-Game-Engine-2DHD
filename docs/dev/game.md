@@ -225,6 +225,12 @@ saves work as before, since it is still that mover.
   Letting go of jump while rising caps its speed at what rises `short_jump_height`, so
   how long jump is held sets the height, as in most platformers since Super Mario Bros.
   (Tested step by step; the platformer template's hero holds jump to reach its ledges.)
+- **Slopes** (tile shapes `slope_right` and `slope_left`, scene2d.md): walking into one,
+  its feet rise onto the surface under its middle or either edge, whichever is highest;
+  walking down one, it keeps to the surface rather than falling off it a step at a time.
+  Falling onto one, it lands on the surface. Walking off a ledge or a slope's foot onto
+  ground just below (a quarter of a tile at most) it steps down rather than leaving the
+  ground, so it can still jump.
 - **The hitbox** is the mover's: make it as tall as the character (the platformer
   template uses 1 tile), since it bumps its head too.
 
@@ -678,6 +684,7 @@ named by path (`maps/cave.dscene`) or GUID.
 | Bodies, triggers, interaction | Boxes touching versus overlapping; sweeping against boxes in every direction; a villager stopping the hero at its edge, and not when disabled; a doorway reporting a mover already inside, a mover walking in and out once each, exits in GUID order, and everyone leaving when disabled; the reach in each facing, the nearest of two, disabled ones and the mover itself skipped |
 | Talking and doorways | In the runtime: Interact facing the elder runs its "interacted" Rule after the Interact input Rule, and the next Interact closes what the elder said; walking left runs the doorway's "entered" Rule with `who` = "hero" at exactly 4.2 tiles, and "exited" after leaving it |
 | Falling and jumping | `fall()` on its own: pressed against the floor it is on the ground; a jump rises between 2.8 and 3 tiles and lands in 44 to 48 steps (0.77 s); held, it does not jump again in the air; a ceiling a tile up stops the rise and it falls back; it falls no faster than 20 tiles a second; gravity that is not a number moves nothing. In a world: a hero with Jumping falls onto a solid floor and stands on it; Down does nothing; Right walks 2 tiles in half a second facing right; Space and Up jump it off the floor and it lands again; it lands on a Solid Body's top and falls back to the floor walking off it; disabled, it neither walks nor jumps but still falls |
+| Slopes | A hero walking right up a slope onto the ground a tile up, standing on it, and back down onto the floor, on the ground at every step |
 | Facing and walking | Every facing rule; exact frames of the cycle, back and forth and starting over, at 6 frames per second; the standing frame; clamped settings; the runtime turning the hero left and animating it |
 | Problems | A Rules asset naming a missing object is reported at its block and left out, and the game still runs; a missing start scene stops it |
 | Drawing (GPU) | Exact pixels: the hero centred, and after walking one tile the rock drawn 8 pixels to the left |

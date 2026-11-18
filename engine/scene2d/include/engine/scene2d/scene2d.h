@@ -345,7 +345,19 @@ struct Box {
 enum class Axis : std::uint8_t { X, Y };
 
 /// How much of its square a solid tile blocks.
-enum class TileShape : std::uint8_t { Full, None, Top, Bottom, Left, Right };
+enum class TileShape : std::uint8_t {
+    Full,
+    None,
+    Top,
+    Bottom,
+    Left,
+    Right,
+    /// A slope rising to the right (low on the left, the tile's top on the right) or to
+    /// the left. It blocks nothing as a box; side-view characters stand on its surface
+    /// (slope_floor()).
+    SlopeRight,
+    SlopeLeft,
+};
 
 /// The shapes a Tilemap's `shapes` text gives, by tile number: "12 top, 13 bottom" (pairs
 /// separated by commas, each a tile number then a shape; any case). Pairs that cannot be
@@ -355,6 +367,12 @@ parse_tile_shapes(std::string_view text, std::string& error);
 /// The part of a `tile`-sized square (0, 0 at its top-left) that `shape` blocks; nothing
 /// for None.
 [[nodiscard]] std::optional<Box> tile_shape_box(TileShape shape, double tile) noexcept;
+
+/// The highest slope surface (TileShape::SlopeRight or SlopeLeft on a solid map) under the
+/// point x, between `top` and `bottom` (map units, y down): where feet there would stand.
+/// Nothing if no slope is there.
+[[nodiscard]] std::optional<double> slope_floor(const world::World& world, double x, double top,
+                                                double bottom, std::uint32_t ppu);
 
 /// True if the boxes share more than an edge (or a rounding error of one).
 [[nodiscard]] bool overlaps(const Box& a, const Box& b) noexcept;

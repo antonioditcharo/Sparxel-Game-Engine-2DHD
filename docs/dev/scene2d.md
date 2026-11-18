@@ -179,13 +179,21 @@ nothing extra to write ([reflection.md](reflection.md)).
   boxes are swept against as `sweep_boxes()` does.
 - **Tile shapes:** a solid map's advanced *Tile shapes* names tiles that block only part
   of their square, by their number in the tileset: `12 top, 13 bottom, 7 none` (shapes
-  `full`, `none`, `top`, `bottom`, `left`, `right`, any case). A top half is a ledge to
+  `full`, `none`, `top`, `bottom`, `left`, `right`, `slope_right`, `slope_left`, any
+  case). A top half is a ledge to
   walk under, a bottom half a low wall seen from the side, `none` a tile painted on the
   wall map that blocks nothing (a doorway, a flower). Tiles not named block all of their
   square. In the editor, right-click a tile in the Tiles palette: *Blocks ▸ All of it /
   The top half / … / Nothing*, one undo step (the text keeps only the tiles that differ
   from *All of it*). Unreadable pairs are skipped (`parse_tile_shapes()`,
   `tile_shape_box()`).
+- **Slopes:** `slope_right` rises from the tile's bottom-left corner to its top-right,
+  `slope_left` the other way (*Blocks ▸ A slope rising to the right / left*). They block
+  nothing as boxes, so a character walks into them sideways; `slope_floor()` gives the
+  surface under a point within a span of heights (the highest there, rounded to whole
+  pixels so feet do not shimmer), and a side-view character with Jumping stands on it
+  (game.md, *Jumping*). Put a full tile beside a slope's top, where it meets the ground
+  above.
 
 ### Auto-tiles
 
@@ -351,6 +359,7 @@ the others run anywhere:
 | Editor metadata | Display names, units, categories, flags, actions and events |
 | Tilemap text | Parsing, ragged rows, Windows line ends, round trips, every kind of bad cell, the size limits, and the component's cache |
 | Animation | Exact frames over 24 steps with looping; a one-shot animation finishing once at 0.3 s; Stop; negative and NaN times ignored |
+| Slopes | `slope_floor()` a quarter of the way up a tile; in a world, walking up onto the ground above and back down, on the ground every step |
 | Solid tiles | Exact stops in all four directions; touching; rounding either side of an edge; walking out of a wall but not through the next; beside the map; maps not solid, offset, with larger tiles, or broken |
 | Diorama (GPU) | Ground under the point looked at, lit from above to the exact shade; sky beyond the map; a sprite standing above the point with the ground in front, shaded as it faces the camera; still facing it a quarter turn later; fog; block faces counted; broken maps and missing images counted |
 | Diorama camera and light | `brightness()` for faces up, sideways and down, with any length of normal; the eye's position from pitch and distance; the point at the centre; north up the screen; pitch kept below 90 degrees |
@@ -370,8 +379,8 @@ the others run anywhere:
 
 ## 9. Next increments
 
-1. **Slopes** as tile shapes (half tiles are done: §4), and collisions between characters,
-   with the physics module.
+1. **Collisions between characters**, with the physics module (half tiles and slopes are
+   done: §4).
 2. **Auto-tiles, further**: animated terrains (water from 3 blocks side by side), and
    rules for 2D layers in the LDtk style (grass edges by neighbour patterns, random
    variants).
