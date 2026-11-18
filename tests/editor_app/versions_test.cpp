@@ -1,5 +1,5 @@
-// Versions with Git from the editor: started, saved, listed. Needs the git program; without
-// it the test says so and passes.
+// Versions with Git from the editor: started, saved, listed (needs the git program; without
+// it the test says so and passes). And asset packs, exported and brought in.
 
 #include "engine/foundation/guid.h"
 
@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 
+#include "editor/core/new_project.h"
 #include "editor/core/versions.h"
 #include "main_window.h"
 
@@ -93,4 +94,39 @@ TEST_CASE("Versions: a project kept with Git, saved, changed and saved again") {
     }
     std::error_code ignored;
     fs::remove_all(path, ignored);
+}
+
+TEST_CASE("Asset packs from the window: exported from one project, brought into another") {
+    const fs::path base =
+        fs::temp_directory_path() / ("sparxel-packs-app-" + Guid::generate().to_string());
+    const fs::path village = base / "village";
+    const fs::path other = base / "other";
+    const fs::path pack = base / "elder.sparxelpack";
+    std::string error;
+    REQUIRE(editor::create_project(village, "Village", error, editor::ProjectTemplate::Rpg));
+    REQUIRE(editor::create_project(other, "Other", error));
+    {
+        editor::MainWindow window(SPARXEL_PLAYER);
+        REQUIRE(window.open_project(village));
+        REQUIRE(window.export_asset_pack({QStringLiteral("logic")},
+                                         QString::fromStdU16String(pack.u16string()),
+                                         QStringLiteral("The elder")));
+        CHECK(fs::exists(pack / "pack.json"));
+        REQUIRE(window.open_project(other));
+        REQUIRE(window.import_asset_pack(QString::fromStdU16String(pack.u16string())));
+        // Open again with the logic and its conversation, which it checks.
+        REQUIRE(window.document() != nullptr);
+        bool listed = false;
+        for (const editor::LogicFile& file : window.document()->logic()) {
+            listed = listed || file.path == "logic/village.drules";
+        }
+        CHECK(listed);
+        CHECK(fs::exists(other / "assets" / "talk" / "elder.dtalk"));
+        // Again: nothing new, and said so.
+        CHECK(window.import_asset_pack(QString::fromStdU16String(pack.u16string())));
+        CHECK_FALSE(
+            window.import_asset_pack(QString::fromStdU16String((base / "none").u16string())));
+    }
+    std::error_code ignored;
+    fs::remove_all(base, ignored);
 }

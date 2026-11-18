@@ -2,6 +2,7 @@
 # user interface, so it builds and is tested without Qt.
 
 add_library(editor_core STATIC
+    src/asset_packs.cpp
     src/asset_tools.cpp
     src/doctor.cpp
     src/document.cpp

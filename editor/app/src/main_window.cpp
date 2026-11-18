@@ -53,6 +53,7 @@
 
 #include "asset_browser.h"
 #include "doctor_panel.h"
+#include "editor/core/asset_packs.h"
 #include "editor/core/asset_tools.h"
 #include "editor/core/new_project.h"
 #include "editor/core/snapshots.h"
@@ -930,6 +931,55 @@ bool MainWindow::rename_asset(const QString& asset, const QString& name) {
     return true;
 }
 
+bool MainWindow::export_asset_pack(const QStringList& chosen, const QString& pack,
+                                   const QString& name) {
+    if (document_ == nullptr || (document_->dirty() && !save())) {
+        return false;
+    }
+    std::vector<std::string> files;
+    for (const QString& one : chosen) {
+        files.push_back(utf8_of(one));
+    }
+    std::string error;
+    const std::optional<std::vector<std::string>> written =
+        export_pack(document_->folder(), files, path_of(pack), utf8_of(name.trimmed()), error);
+    if (!written) {
+        report(tr("No pack written: %1").arg(text_of(error)));
+        return false;
+    }
+    statusBar()->showMessage(tr("The pack \"%1\" holds %2 file(s), with everything they use.")
+                                 .arg(name)
+                                 .arg(written->size()),
+                             8000);
+    return true;
+}
+
+bool MainWindow::import_asset_pack(const QString& pack) {
+    if (document_ == nullptr || (document_->dirty() && !save())) {
+        return false;
+    }
+    const fs::path folder = document_->folder();
+    const QString scene = text_of(document_->scene_path());
+    std::string error;
+    const std::optional<PackImport> brought = import_pack(folder, path_of(pack), error);
+    if (!brought) {
+        report(text_of(error));
+        return false;
+    }
+    if (!open_project(folder)) {
+        return false;
+    }
+    if (!scene.isEmpty() && text_of(document_->scene_path()) != scene) {
+        open_scene(scene);
+    }
+    statusBar()->showMessage(tr("Brought in \"%1\": %2 new file(s), %3 already here.")
+                                 .arg(text_of(brought->name))
+                                 .arg(brought->added.size())
+                                 .arg(brought->already.size()),
+                             8000);
+    return true;
+}
+
 bool MainWindow::play_here(bool sound) {
     if (document_ == nullptr || (document_->dirty() && !save())) {
         return false;
@@ -1411,7 +1461,32 @@ void MainWindow::build_actions() {
             return;
         }
         const QString file_path = asset_model_->filePath(index);
+        // Packing a file or a folder, with everything it uses, for another project.
+        const auto offer_pack = [this](QMenu& menu, const QString& relative) {
+            menu.addAction(tr("Export as an asset pack…"), this, [this, relative] {
+                bool named = false;
+                const QString name = QInputDialog::getText(
+                    this, tr("Asset pack"), tr("The pack's name:"), QLineEdit::Normal,
+                    QFileInfo(relative).completeBaseName(), &named);
+                if (!named || name.trimmed().isEmpty()) {
+                    return;
+                }
+                const QString where =
+                    QFileDialog::getExistingDirectory(this, tr("Where to put the pack"));
+                if (!where.isEmpty()) {
+                    export_asset_pack({relative},
+                                      where + '/' + name.trimmed() + QStringLiteral(".sparxelpack"),
+                                      name);
+                }
+            });
+        };
         if (asset_model_->isDir(index)) {
+            std::error_code ignored;
+            const fs::path assets = fs::weakly_canonical(document_->folder() / "assets", ignored);
+            const fs::path chosen = fs::weakly_canonical(path_of(file_path), ignored);
+            QMenu menu(this);
+            offer_pack(menu, text_of(chosen.lexically_proximate(assets).generic_string()));
+            menu.exec(asset_tree_->viewport()->mapToGlobal(at));
             return;
         }
         const bool aseprite =
@@ -1432,6 +1507,7 @@ void MainWindow::build_actions() {
                 rename_asset(relative, name);
             }
         });
+        offer_pack(menu, relative);
         if (aseprite) {
             menu.addSeparator();
             menu.addAction(tr("Import again from Aseprite"), this,
@@ -1471,6 +1547,15 @@ void MainWindow::build_actions() {
     snap_take->setObjectName(QStringLiteral("take_snapshot"));
     QAction* snap_list = file->addAction(tr("Snapshots…"), this, [this] { show_snapshots(); });
     snap_list->setObjectName(QStringLiteral("snapshots"));
+    QAction* bring_in = file->addAction(tr("Bring in an asset &pack…"), this, [this] {
+        const QString pack = QFileDialog::getExistingDirectory(
+            this, tr("Choose an asset pack (a folder ending .sparxelpack)"));
+        if (!pack.isEmpty()) {
+            import_asset_pack(pack);
+        }
+    });
+    bring_in->setObjectName(QStringLiteral("import_asset_pack"));
+    bring_in->setToolTip(tr("Assets packed in another project, with everything they use"));
     QAction* versions_action =
         file->addAction(tr("&Versions (Git)…"), this, [this] { show_versions(); });
     versions_action->setObjectName(QStringLiteral("versions"));

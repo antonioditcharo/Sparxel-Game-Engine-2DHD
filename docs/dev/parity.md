@@ -17,7 +17,7 @@
 
 | Area | Done | Partial | Not yet |
 |---|---|---|---|
-| A. Project and workflow | 4 | 7 | 1 (+1 later) |
+| A. Project and workflow | 5 | 7 | 0 (+1 later) |
 | B. Pixel art | 4 | 7 | 3 (+1 later) |
 | C. World building | 4 | 7 | 3 |
 | D. Rendering and the look | 4 | 10 | 1 (+1 later) |
@@ -28,7 +28,7 @@
 | I. Physics | 3 | 2 | 0 |
 | J. Audio | 2 | 4 | 0 (+1 later) |
 | K. UI | 3 | 4 | 0 |
-| **All** | **39** | **50** | **13** (+6 later) |
+| **All** | **40** | **50** | **12** (+6 later) |
 
 The strongest areas match or pass their references: the RPG kit and window skins (RPG
 Maker), auto-tiles and tile variants (RPG Maker, LDtk), no-code Rules with tags, *it*,
@@ -53,7 +53,7 @@ action kits (GameMaker), audio mixing (zones, reverb), and team features.
 | A9 | Team features | Unity | **Partial**: versions shared with Git from the editor, files that are text, sorted and merge-friendly; no live editing together, locks or review |
 | A10 | Project Doctor | none as broad | **Done**: missing assets, broken references, logic errors, the style guide's palette, the font |
 | A11 | Style guide | none built in | **Partial**: project palette (new sprites, checked), PPU, font; no outline rules |
-| A12 | Asset packs | Unity packages | **Not yet** (prefabs and folders can be copied) |
+| A12 | Asset packs | Unity packages | **Done**: export files or folders with everything they use, bring a pack into another project with its GUIDs, same files kept and conflicts refused |
 | A13, A14 | Marketplace, cloud sync | | Later (post 1.0 in the plan) |
 
 ## B. Pixel art (Sprite Studio)

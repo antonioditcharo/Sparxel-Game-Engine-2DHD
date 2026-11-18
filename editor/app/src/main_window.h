@@ -175,6 +175,13 @@ public:
     /// Saves, then renames the asset at `asset` (with its companions) to `name`, updating
     /// what names it, and opens the project again. False, saying why, if it cannot.
     bool rename_asset(const QString& asset, const QString& name);
+    /// Saves, then writes the assets `chosen` (files or folders, relative to assets/) with
+    /// everything they use as an asset pack in the folder `pack` (editor/core/asset_packs.h).
+    /// False, saying why, if it cannot.
+    bool export_asset_pack(const QStringList& chosen, const QString& pack, const QString& name);
+    /// Saves, then brings the asset pack in the folder `pack` into the project, and opens the
+    /// project again. False, saying why, if it cannot.
+    bool import_asset_pack(const QString& pack);
     /// Puts entity under `parent` (or at the top, for an invalid one), as the outliner's
     /// right-click menu does. False, saying why, if it cannot.
     bool put_under(engine::Guid entity, engine::Guid parent);
