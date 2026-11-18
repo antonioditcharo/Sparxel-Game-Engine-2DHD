@@ -232,6 +232,12 @@ public:
     /// FLAC or MP3), a Sound Source repeating it there. One undo step. Returns its GUID,
     /// or an invalid one, with `error` in plain language, if the asset is neither.
     engine::Guid place_asset(std::string_view asset_path, double x, double y, std::string& error);
+    /// Places a character sheet (a picture of 3 frames across and 4 rows: down, left, right,
+    /// up, as the character generator makes) at map point (x, y): a Sprite cut into its
+    /// frames, standing, facing down, with a Top-down Mover, a Walk Animation and a Walker
+    /// that stands (change its walking to wander, patrol or follow). One undo step. An
+    /// invalid GUID, with `error`, if it is not a picture in assets/.
+    engine::Guid place_character(std::string_view picture, double x, double y, std::string& error);
     /// Makes a prefab of `entity` and what is under it: assets/prefabs/<name>.dprefab, the
     /// entity's place left at 0, 0. The entity becomes a copy of it (a Prefab link), as one
     /// undo step; the file stays. Refused, with `error`, for a name taken or not a plain file

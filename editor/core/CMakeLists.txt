@@ -4,6 +4,7 @@
 add_library(editor_core STATIC
     src/asset_packs.cpp
     src/asset_tools.cpp
+    src/characters.cpp
     src/doctor.cpp
     src/document.cpp
     src/logic_edit.cpp

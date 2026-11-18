@@ -18,7 +18,7 @@
 | Area | Done | Partial | Not yet |
 |---|---|---|---|
 | A. Project and workflow | 5 | 7 | 0 (+1 later) |
-| B. Pixel art | 4 | 7 | 3 (+1 later) |
+| B. Pixel art | 4 | 8 | 2 (+1 later) |
 | C. World building | 4 | 7 | 3 |
 | D. Rendering and the look | 4 | 10 | 1 (+1 later) |
 | E. No-code logic | 5 | 6 | 0 (+1 later) |
@@ -28,7 +28,7 @@
 | I. Physics | 3 | 2 | 0 |
 | J. Audio | 2 | 4 | 0 (+1 later) |
 | K. UI | 3 | 4 | 0 |
-| **All** | **42** | **51** | **9** (+6 later) |
+| **All** | **42** | **52** | **8** (+6 later) |
 
 The strongest areas match or pass their references: the RPG kit and window skins (RPG
 Maker), auto-tiles and tile variants (RPG Maker, LDtk), no-code Rules with tags, *it*,
@@ -72,7 +72,7 @@ action kits (GameMaker), audio mixing (zones, reverb), and team features.
 | B10 | Slices and 9-slice | Aseprite | **Partial**: 9-slice drawing (Screen Pictures, box frames); slices not authored in Sprite Studio |
 | B11 | Atlas packing | Unity, GameMaker | **Not yet** (one sheet per sprite) |
 | B12 | Import | Aseprite → engines | **Done**: PNG, sheets, `.aseprite` with tags and live reload |
-| B13 | Character generator | RPG Maker | **Not yet** |
+| B13 | Character generator | RPG Maker | **Partial**: four-direction walking sheets from hair, headwear and colours, previewed and placed ready to walk; few parts yet (no faces, outfits or accessories to pick) |
 | B14 | 3D-to-pixel baker | | Later |
 | B15 | Tile authoring and auto-tile rules | LDtk, Tiled | **Partial**: RPG Maker-style 2 × 3 blocks expanded to 48 shapes, tile variants; no Wang or rule templates |
 

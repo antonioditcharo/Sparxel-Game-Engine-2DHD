@@ -243,6 +243,7 @@ add_executable(editor_core_tests
     test_main.cpp
     editor/asset_packs_test.cpp
     editor/asset_tools_test.cpp
+    editor/characters_test.cpp
     editor/document_test.cpp
     editor/snapshots_test.cpp
     editor/sprite_test.cpp

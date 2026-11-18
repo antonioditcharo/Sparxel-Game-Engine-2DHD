@@ -1429,6 +1429,42 @@ TEST_CASE("File > New script opens the Script editor: checked as typed, objects 
     CHECK(e.window.open_script(QStringLiteral("scripts/boss.luau")) == script);
 }
 
+TEST_CASE("File > New character draws a walking character and places it, selected") {
+    Editor e;
+    editor::CharacterLook look;
+    look.hair = editor::CharacterLook::Hair::Long;
+    look.top = {200, 60, 60};
+    const engine::Guid guid = e.window.create_character(QStringLiteral("baker"), look);
+    REQUIRE(guid.is_valid());
+    CHECK(fs::exists(e.sample.path / "assets" / "art" / "baker.png"));
+    REQUIRE(e.window.document() != nullptr);
+    const engine::world::World& w = e.window.document()->world();
+    const engine::world::Entity baker = w.find(guid);
+    CHECK(w.name(baker) == "baker");
+    CHECK(w.get<engine::game::WalkAnimation>(baker) != nullptr);
+    CHECK(w.get<engine::scene2d::Sprite>(baker)->frame_width == 16);
+    CHECK(e.window.selection() == guid);
+    // The same name again, or one that is not usable: refused.
+    CHECK_FALSE(e.window.create_character(QStringLiteral("baker"), look).is_valid());
+    CHECK_FALSE(e.window.create_character(QStringLiteral("the baker!"), look).is_valid());
+    // The generator's window shows the preview and makes one from its fields.
+    bool previewed = false;
+    QTimer::singleShot(0, [&] {
+        for (QWidget* top : QApplication::topLevelWidgets()) {
+            if (top->objectName() == QStringLiteral("character_generator")) {
+                const auto* preview = top->findChild<QLabel*>(QStringLiteral("character_preview"));
+                previewed = preview != nullptr && !preview->pixmap().isNull() &&
+                            preview->pixmap().width() == 48 * 4;
+                top->findChild<QLineEdit*>(QStringLiteral("character_name"))
+                    ->setText(QStringLiteral("miller"));
+                qobject_cast<QDialog*>(top)->accept();
+            }
+        }
+    });
+    e.window.show_character_generator();
+    CHECK(previewed);
+}
+
 TEST_CASE("The Logic view gives a Sequence values to take, as a custom block") {
     const Editor e;
     editor::LogicPanel* panel = e.window.logic_panel();

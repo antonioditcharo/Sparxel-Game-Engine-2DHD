@@ -9,6 +9,8 @@
 #include <QCheckBox>
 #include <QClipboard>
 #include <QCloseEvent>
+#include <QColorDialog>
+#include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDockWidget>
@@ -46,6 +48,7 @@
 #include <algorithm>
 #include <array>
 #include <fstream>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -1477,6 +1480,10 @@ void MainWindow::build_actions() {
         }
     });
     script_action->setObjectName(QStringLiteral("new_script"));
+    QAction* character_action =
+        file->addAction(tr("New c&haracter…"), this, [this] { show_character_generator(); });
+    character_action->setObjectName(QStringLiteral("new_character"));
+    character_action->setToolTip(tr("A walking character from hair, clothes and colours"));
     script_action->setToolTip(tr("A Luau script, for what the blocks do not say"));
     QAction* table_action = file->addAction(tr("New &table…"), this, [this] {
         bool named = false;
@@ -2273,6 +2280,142 @@ void MainWindow::redo() {
         logic_->rebuild();
         project_->refresh();
     }
+}
+
+engine::Guid MainWindow::create_character(const QString& name, const CharacterLook& look) {
+    if (document_ == nullptr) {
+        return {};
+    }
+    const QString trimmed = name.trimmed();
+    const bool plain =
+        !trimmed.isEmpty() && std::all_of(trimmed.begin(), trimmed.end(), [](QChar c) {
+            return c.isLetterOrNumber() || c == QLatin1Char('_') || c == QLatin1Char('-');
+        });
+    if (!plain) {
+        report(tr("A character needs a name of letters, digits, _ and -, such as \"villager\"."));
+        return {};
+    }
+    const QString relative = QStringLiteral("art/%1.png").arg(trimmed);
+    const fs::path file = document_->folder() / "assets" / path_of(relative);
+    std::error_code ignored;
+    if (fs::exists(file, ignored)) {
+        report(tr("There is a picture called %1 already.").arg(relative));
+        return {};
+    }
+    fs::create_directories(file.parent_path(), ignored);
+    const std::vector<std::uint8_t> png = engine::assets::encode_png(character_sheet(look));
+    {
+        std::ofstream out(file, std::ios::binary);
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast): bytes as chars
+        out.write(reinterpret_cast<const char*>(png.data()),
+                  static_cast<std::streamsize>(png.size()));
+        if (png.empty() || !out.good()) {
+            report(tr("The character could not be drawn."));
+            return {};
+        }
+    }
+    reload_assets();
+    std::string error;
+    const engine::Guid guid = document_->place_character(
+        utf8_of(relative), std::round(view_->camera_x()), std::round(view_->camera_y()), error);
+    if (!guid.is_valid()) {
+        report(tr("The character could not be placed: %1").arg(text_of(error)));
+        return {};
+    }
+    changed(true);
+    rebuild_outliner();
+    select(guid);
+    view_->refresh();
+    statusBar()->showMessage(
+        tr("%1 stands where the camera looks; give its Walker a way to walk.").arg(trimmed), 8000);
+    return guid;
+}
+
+void MainWindow::show_character_generator() {
+    if (document_ == nullptr) {
+        return;
+    }
+    QDialog dialog(this);
+    dialog.setObjectName(QStringLiteral("character_generator"));
+    dialog.setWindowTitle(tr("New character"));
+    auto* columns = new QHBoxLayout(&dialog);
+    auto* form = new QFormLayout();
+    columns->addLayout(form);
+    auto look = std::make_shared<CharacterLook>();
+    auto* name = new QLineEdit(tr("villager"), &dialog);
+    name->setObjectName(QStringLiteral("character_name"));
+    form->addRow(tr("Name"), name);
+    auto* hair = new QComboBox(&dialog);
+    hair->addItems({tr("Short"), tr("Long"), tr("Spiky"), tr("None")});
+    form->addRow(tr("Hair"), hair);
+    auto* headwear = new QComboBox(&dialog);
+    headwear->addItems({tr("None"), tr("Hood"), tr("Hat")});
+    form->addRow(tr("On the head"), headwear);
+    auto* preview = new QLabel(&dialog);
+    preview->setObjectName(QStringLiteral("character_preview"));
+    preview->setMinimumSize(48 * 4, 64 * 4);
+    const auto redraw = [look, preview] {
+        const engine::assets::Image sheet = character_sheet(*look);
+        const QImage image(sheet.rgba.data(), static_cast<int>(sheet.width),
+                           static_cast<int>(sheet.height), QImage::Format_RGBA8888);
+        preview->setPixmap(
+            QPixmap::fromImage(image.copy())
+                .scaled(static_cast<int>(sheet.width) * 4, static_cast<int>(sheet.height) * 4));
+    };
+    connect(hair, qOverload<int>(&QComboBox::currentIndexChanged), &dialog, [look, redraw](int i) {
+        look->hair = static_cast<CharacterLook::Hair>(i);
+        redraw();
+    });
+    connect(headwear, qOverload<int>(&QComboBox::currentIndexChanged), &dialog,
+            [look, redraw](int i) {
+                look->headwear = static_cast<CharacterLook::Headwear>(i);
+                redraw();
+            });
+    // A colour button for each part, its face the colour.
+    const auto colour = [&](const QString& label, CharacterLook::Rgb CharacterLook::*part) {
+        auto* button = new QPushButton(&dialog);
+        const auto paint = [button, look, part] {
+            const CharacterLook::Rgb& c = (*look).*part;
+            button->setStyleSheet(
+                QStringLiteral("background: rgb(%1, %2, %3)").arg(c[0]).arg(c[1]).arg(c[2]));
+        };
+        paint();
+        connect(button, &QPushButton::clicked, &dialog, [this, look, part, paint, redraw, label] {
+            const CharacterLook::Rgb& c = (*look).*part;
+            const QColor chosen = QColorDialog::getColor(QColor(c[0], c[1], c[2]), this, label);
+            if (chosen.isValid()) {
+                (*look).*part = {static_cast<std::uint8_t>(chosen.red()),
+                                 static_cast<std::uint8_t>(chosen.green()),
+                                 static_cast<std::uint8_t>(chosen.blue())};
+                paint();
+                redraw();
+            }
+        });
+        form->addRow(label, button);
+    };
+    colour(tr("Skin"), &CharacterLook::skin);
+    colour(tr("Hair colour"), &CharacterLook::hair_color);
+    colour(tr("Top"), &CharacterLook::top);
+    colour(tr("Trousers"), &CharacterLook::bottom);
+    colour(tr("Shoes"), &CharacterLook::shoes);
+    colour(tr("Hood or hat"), &CharacterLook::headwear_color);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    buttons->button(QDialogButtonBox::Ok)->setText(tr("Create"));
+    form->addRow(buttons);
+    auto* right = new QVBoxLayout();
+    right->addWidget(
+        new QLabel(tr("Down, left, right and up; a step, standing, a step:"), &dialog));
+    right->addWidget(preview);
+    right->addStretch();
+    columns->addLayout(right);
+    redraw();
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, [this, &dialog, name, look] {
+        if (create_character(name->text(), *look).is_valid()) {
+            dialog.accept();
+        }
+    });
+    dialog.exec();
 }
 
 engine::Guid MainWindow::new_entity() {

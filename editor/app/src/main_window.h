@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "editor/core/asset_tools.h"
+#include "editor/core/characters.h"
 #include "editor/core/doctor.h"
 #include "editor/core/document.h"
 #include "editor/core/new_project.h"
@@ -247,6 +248,12 @@ public:
     void undo();
     void redo();
     engine::Guid new_entity();
+    /// Draws a character of `look` (editor/core/characters.h) as art/<name>.png and places
+    /// it where the camera looks, standing, ready to walk; selected. An invalid GUID, saying
+    /// why, for a name that is not usable or taken.
+    engine::Guid create_character(const QString& name, const CharacterLook& look);
+    /// File > New character: the generator, its choices and colours, with a preview.
+    void show_character_generator();
     void delete_selection();
     /// Saves, then starts the player on the project. Returns false, showing why, if it
     /// could not start.

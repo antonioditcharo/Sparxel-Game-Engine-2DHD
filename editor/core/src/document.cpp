@@ -1829,6 +1829,55 @@ Guid Document::place_asset(std::string_view asset_path, double x, double y, std:
     return guid;
 }
 
+Guid Document::place_character(std::string_view picture, double x, double y, std::string& error) {
+    Impl& d = *impl_;
+    const engine::assets::AssetRecord* record = d.assets->find(picture);
+    if (record == nullptr || !picture.ends_with(".png")) {
+        error = "There is no picture " + std::string(picture) + " in assets/.";
+        return Guid{};
+    }
+    if (!std::isfinite(x) || !std::isfinite(y)) {
+        error = "That point is not on the map.";
+        return Guid{};
+    }
+    // The frame: a third of the picture across, a quarter down.
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    if (const std::optional<std::vector<std::uint8_t>> bytes = d.assets->read(record->guid)) {
+        std::string ignored;
+        if (const std::optional<engine::assets::Image> image =
+                engine::assets::decode_png(*bytes, ignored)) {
+            width = image->width / 3;
+            height = image->height / 4;
+        }
+    }
+    if (width == 0 || height == 0) {
+        error = std::string(picture) + " is too small to be a character sheet.";
+        return Guid{};
+    }
+    const double ppu = std::max(1U, d.settings.ppu);
+    serialize::Json before = d.snapshot();
+    const world::Entity e = d.world->create(fs::path(picture).stem().string());
+    if (auto* transform = d.world->add<scene2d::Transform2D>(e)) {
+        transform->x = std::round(x * ppu) / ppu;
+        transform->y = std::round(y * ppu) / ppu;
+    }
+    if (auto* sprite = d.world->add<scene2d::Sprite>(e)) {
+        sprite->image = record->guid.to_string();
+        sprite->frame_width = width;
+        sprite->frame_height = height;
+        sprite->frame = 1; // standing, facing down
+    }
+    d.world->add<game::TopDownMover>(e);
+    d.world->add<game::WalkAnimation>(e);
+    if (auto* walker = d.world->add<game::Walker>(e)) {
+        walker->mode = game::WalkMode::Stand;
+    }
+    const Guid guid = d.world->guid(e);
+    d.record("Place " + d.name_of(guid), std::move(before));
+    return guid;
+}
+
 bool Document::delete_entity(Guid entity) {
     Impl& d = *impl_;
     const world::Entity e = d.find(entity);
