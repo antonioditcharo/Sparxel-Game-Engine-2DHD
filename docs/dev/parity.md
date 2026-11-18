@@ -111,7 +111,7 @@ action kits (GameMaker), audio mixing (zones, reverb), and team features.
 | D10 | Camera rigs | Unity Cinemachine | **Partial**: follow, dead zone, look-ahead, shake, smoothing, limits; no rails or cutscene cameras |
 | D11 | Parallax and skyboxes | GameMaker | **Partial**: parallax pictures in Classic 2D, scrolling at any speed and repeating; no pixel skyboxes for the Diorama style |
 | D12 | Pixel particles | GameMaker | **Done**: fire, smoke, rain, snow, dust, magic, sparks |
-| D13 | Material effects | GameMaker shaders | **Partial**: palette swap, tint; no scroll, flash, dissolve or outline |
+| D13 | Material effects | GameMaker shaders | **Partial**: palette swap, tint, flash, outline and dissolve in both styles; no scrolling textures or custom shaders |
 | D14 | Quality tiers | Unity | **Not yet** |
 | D15, D16 | Shader graph, palette-locked lighting | | Later |
 | D17 | Baked lighting | Unity | **Not yet** |

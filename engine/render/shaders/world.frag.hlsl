@@ -78,11 +78,52 @@ struct Input
     float3 world : TEXCOORD3;
     float4 surface : TEXCOORD4;
     float3 albedo : TEXCOORD5;
+    float4 flash : TEXCOORD6;
+    float4 outline : TEXCOORD7;
+    float4 frame : TEXCOORD8;
+    float4 params : TEXCOORD9;
 };
+
+// The texel at `uv`, clear outside the source (an outlined quad reaches a texel beyond it).
+float4 texel_at(float2 uv, float4 frame)
+{
+    if (uv.x < frame.x || uv.y < frame.y || uv.x > frame.z || uv.y > frame.w)
+    {
+        return float4(0.0, 0.0, 0.0, 0.0);
+    }
+    return world_texture.SampleLevel(world_sampler, uv, 0.0);
+}
+
+// A number from 0 to 1 for a texel, the same every frame (as the sprite shader's).
+float scatter(float2 cell)
+{
+    return frac(sin(dot(cell, float2(12.9898, 78.233))) * 43758.5453);
+}
 
 float4 main(Input input) : SV_Target0
 {
-    const float4 texel = world_texture.Sample(world_sampler, input.uv);
+    const float2 texel_size = input.params.yz;
+    if (input.params.x > 0.0 && scatter(floor(input.uv / texel_size)) < input.params.x)
+    {
+        discard;
+    }
+    // Only an outlined quad reaches past its source: elsewhere texels are sampled as
+    // they are.
+    const bool bounded = input.outline.a > 0.0;
+    float4 texel = bounded ? texel_at(input.uv, input.frame)
+                           : world_texture.Sample(world_sampler, input.uv);
+    if (input.outline.a > 0.0 && texel.a < 0.5)
+    {
+        const float4 f = input.frame;
+        const float near = max(max(texel_at(input.uv + float2(texel_size.x, 0.0), f).a,
+                                   texel_at(input.uv - float2(texel_size.x, 0.0), f).a),
+                               max(texel_at(input.uv + float2(0.0, texel_size.y), f).a,
+                                   texel_at(input.uv - float2(0.0, texel_size.y), f).a));
+        if (near >= 0.5)
+        {
+            texel = float4(input.outline.rgb, input.outline.a);
+        }
+    }
     const bool blended = fog_range.w > 0.5;
     const float alpha = blended ? texel.a * input.color.a : 1.0;
     if ((blended && alpha < 0.002) || (!blended && texel.a < 0.5))
@@ -115,6 +156,7 @@ float4 main(Input input) : SV_Target0
         }
     }
     float3 rgb = texel.rgb * light;
+    rgb = lerp(rgb, input.flash.rgb, input.flash.a);
     if (fog_range.z > 0.5)
     {
         const float amount = saturate((input.distance - fog_range.x) * fog_range.y);

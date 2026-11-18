@@ -5075,7 +5075,7 @@ TEST_CASE("Hit boxes in a running game: Rules hear a hit as it lands, once, and 
                    serialize::logic_to_json(rules));
     }
     const auto runtime = project.open(no_graphics(nullptr));
-    for (int i = 0; i < 5; ++i) {
+    for (int i = 0; i < 30; ++i) { // the slime dissolves away for 0.4 s
         runtime->step();
     }
     const std::vector<std::string>& log = runtime->log();

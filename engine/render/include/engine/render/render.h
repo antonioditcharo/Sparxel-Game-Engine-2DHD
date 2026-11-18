@@ -201,6 +201,20 @@ private:
     friend class Window;
 };
 
+/// Effects on a sprite's own pixels, the same in both renderers: a flash of colour (a hit),
+/// an outline round its opaque texels, and dissolving away.
+struct SpriteEffects {
+    /// Mixed over its colours by the alpha: 255 shows only the flash colour; 0 none.
+    Color flash{255, 255, 255, 0};
+    /// Drawn on the clear texels beside opaque ones (alpha a half or more), a texel wide,
+    /// round the source only: the quad grows a texel each way for it. Alpha 0: none.
+    Color outline{0, 0, 0, 0};
+    /// 0 whole, 1 gone: its texels vanish in a scattered order fixed by where they are.
+    float dissolve = 0.0F;
+
+    [[nodiscard]] bool outlined() const noexcept { return outline.a > 0; }
+};
+
 /// Draws textured, tinted rectangles in batches.
 ///
 /// Coordinates are pixels of the target: (0, 0) is the top-left corner and y grows
@@ -234,12 +248,12 @@ public:
     /// Queues a sprite: the `source` pixels of `texture`, drawn to `destination`, multiplied
     /// by `tint`. Does nothing outside begin() and end().
     void draw(const Texture& texture, Rect source, Rect destination,
-              Color tint = {255, 255, 255, 255});
+              Color tint = {255, 255, 255, 255}, const SpriteEffects& effects = {});
     /// Queues a sprite drawn into any four-sided shape, for pictures turned, scaled or
     /// flipped: `corners` are where the source's top-left, top-right, bottom-right and
     /// bottom-left go.
     void draw(const Texture& texture, Rect source, const std::array<Point, 4>& corners,
-              Color tint = {255, 255, 255, 255});
+              Color tint = {255, 255, 255, 255}, const SpriteEffects& effects = {});
     /// Sends the frame to the GPU. Returns false, with the device's last_error() set, if it
     /// could not.
     bool end();
@@ -374,8 +388,10 @@ public:
     /// A quad whose colour's alpha is below 1, or whose texture is translucent(), is
     /// see-through: drawn after everything else, blended over what is behind it, farthest
     /// first. Otherwise texels are either drawn or cut out (alpha below a half).
+    /// `effects` as the SpriteRenderer draws them; the flash after the light, before fog.
     void draw(const Texture& texture, const std::array<Vec3, 4>& corners, Rect source,
-              std::array<float, 4> color = {1.0F, 1.0F, 1.0F, 1.0F}, const Surface& surface = {});
+              std::array<float, 4> color = {1.0F, 1.0F, 1.0F, 1.0F}, const Surface& surface = {},
+              const SpriteEffects& effects = {});
     /// Queues a soft round shadow over the quad with these corners (as draw() takes
     /// them): what is already there is darkened by up to `darkness` (0 to 1) in the
     /// middle, fading out to the rim. Shadows are drawn after every quad, and only where

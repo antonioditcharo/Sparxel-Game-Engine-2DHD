@@ -108,6 +108,28 @@ void release(SDL_GPUDevice* device, SDL_GPUShader* shader) {
     }
 }
 
+/// A sprite's effects as its vertices carry them: the flash (rgba), the outline (rgba),
+/// the source's texture coordinates (left, top, right, bottom: nothing outside them is
+/// drawn), and the dissolve and the size of a texel.
+struct Effects {
+    std::array<float, 4> flash;
+    std::array<float, 4> outline;
+    std::array<float, 4> frame;
+    std::array<float, 4> params;
+};
+static_assert(sizeof(Effects) == 64);
+
+/// SpriteEffects for vertices, for the source `u0`..`v1` of a texture `tex_w` by `tex_h`.
+Effects effects_for(const SpriteEffects& fx, float u0, float v0, float u1, float v1, float tex_w,
+                    float tex_h) {
+    const auto unit = [](std::uint8_t c) { return static_cast<float>(c) / 255.0F; };
+    const float dissolve = std::isfinite(fx.dissolve) ? std::clamp(fx.dissolve, 0.0F, 1.0F) : 0.0F;
+    return Effects{{unit(fx.flash.r), unit(fx.flash.g), unit(fx.flash.b), unit(fx.flash.a)},
+                   {unit(fx.outline.r), unit(fx.outline.g), unit(fx.outline.b), unit(fx.outline.a)},
+                   {u0, v0, u1, v1},
+                   {dissolve, 1.0F / tex_w, 1.0F / tex_h, 0.0F}};
+}
+
 /// One corner of a sprite, as the vertex shader reads it.
 struct Vertex {
     float x;
@@ -118,8 +140,9 @@ struct Vertex {
     float g;
     float b;
     float a;
+    Effects fx;
 };
-static_assert(sizeof(Vertex) == 32);
+static_assert(sizeof(Vertex) == 96);
 
 } // namespace
 
@@ -536,10 +559,15 @@ std::unique_ptr<SpriteRenderer> SpriteRenderer::create(Device& device) {
         buffer.slot = 0;
         buffer.pitch = sizeof(Vertex);
         buffer.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
-        SDL_GPUVertexAttribute attributes[3]{};
+        SDL_GPUVertexAttribute attributes[7]{};
         attributes[0] = {0, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2, 0};
         attributes[1] = {1, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2, 8};
         attributes[2] = {2, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4, 16};
+        // The effects.
+        attributes[3] = {3, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4, 32};
+        attributes[4] = {4, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4, 48};
+        attributes[5] = {5, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4, 64};
+        attributes[6] = {6, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4, 80};
 
         SDL_GPUColorTargetDescription color{};
         color.format = pixel_format;
@@ -557,7 +585,7 @@ std::unique_ptr<SpriteRenderer> SpriteRenderer::create(Device& device) {
         info.vertex_input_state.vertex_buffer_descriptions = &buffer;
         info.vertex_input_state.num_vertex_buffers = 1;
         info.vertex_input_state.vertex_attributes = attributes;
-        info.vertex_input_state.num_vertex_attributes = 3;
+        info.vertex_input_state.num_vertex_attributes = 7;
         info.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
         info.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
         info.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_NONE;
@@ -626,35 +654,80 @@ void SpriteRenderer::begin_over(RenderTarget& target) {
     native_->keep = true;
 }
 
-void SpriteRenderer::draw(const Texture& texture, Rect source, Rect destination, Color tint) {
+void SpriteRenderer::draw(const Texture& texture, Rect source, Rect destination, Color tint,
+                          const SpriteEffects& effects) {
     const float x0 = destination.x;
     const float y0 = destination.y;
     const float x1 = destination.x + destination.w;
     const float y1 = destination.y + destination.h;
-    draw(texture, source, {Point{x0, y0}, Point{x1, y0}, Point{x1, y1}, Point{x0, y1}}, tint);
+    draw(texture, source, {Point{x0, y0}, Point{x1, y0}, Point{x1, y1}, Point{x0, y1}}, tint,
+         effects);
 }
 
+namespace {
+
+/// `corners` (a source's top-left, top-right, bottom-right and bottom-left) grown by one of
+/// the source's texels each way, for an outline round it.
+template <typename P>
+std::array<P, 4> grown(const std::array<P, 4>& corners, Rect source) {
+    const auto& [tl, tr, br, bl] = corners;
+    const float across = source.w > 0.0F ? 1.0F / source.w : 0.0F;
+    const float down = source.h > 0.0F ? 1.0F / source.h : 0.0F;
+    // One texel along the top edge and down the left edge.
+    P x = tr;
+    P y = bl;
+    x.x = (tr.x - tl.x) * across;
+    x.y = (tr.y - tl.y) * across;
+    y.x = (bl.x - tl.x) * down;
+    y.y = (bl.y - tl.y) * down;
+    if constexpr (requires { x.z; }) {
+        x.z = (tr.z - tl.z) * across;
+        y.z = (bl.z - tl.z) * down;
+    }
+    const auto move = [](P p, const P& a, float sa, const P& b, float sb) {
+        p.x += (a.x * sa) + (b.x * sb);
+        p.y += (a.y * sa) + (b.y * sb);
+        if constexpr (requires { p.z; }) {
+            p.z += (a.z * sa) + (b.z * sb);
+        }
+        return p;
+    };
+    return {move(tl, x, -1.0F, y, -1.0F), move(tr, x, 1.0F, y, -1.0F), move(br, x, 1.0F, y, 1.0F),
+            move(bl, x, -1.0F, y, 1.0F)};
+}
+
+} // namespace
+
 void SpriteRenderer::draw(const Texture& texture, Rect source, const std::array<Point, 4>& corners,
-                          Color tint) {
+                          Color tint, const SpriteEffects& effects) {
     if (native_->target == nullptr) {
         return;
     }
     const auto tex_w = static_cast<float>(texture.width());
     const auto tex_h = static_cast<float>(texture.height());
-    const float u0 = source.x / tex_w;
-    const float v0 = source.y / tex_h;
-    const float u1 = (source.x + source.w) / tex_w;
-    const float v1 = (source.y + source.h) / tex_h;
+    const float f0 = source.x / tex_w;
+    const float g0 = source.y / tex_h;
+    const float f1 = (source.x + source.w) / tex_w;
+    const float g1 = (source.y + source.h) / tex_h;
+    const Effects fx = effects_for(effects, f0, g0, f1, g1, tex_w, tex_h);
+    // Outlined: a texel more each way, drawn from beyond the source (clear there).
+    const bool grow = effects.outlined();
+    const float margin_u = grow ? 1.0F / tex_w : 0.0F;
+    const float margin_v = grow ? 1.0F / tex_h : 0.0F;
+    const float u0 = f0 - margin_u;
+    const float v0 = g0 - margin_v;
+    const float u1 = f1 + margin_u;
+    const float v1 = g1 + margin_v;
     const float r = static_cast<float>(tint.r) / 255.0F;
     const float g = static_cast<float>(tint.g) / 255.0F;
     const float b = static_cast<float>(tint.b) / 255.0F;
     const float a = static_cast<float>(tint.a) / 255.0F;
-    const auto& [tl, tr, br, bl] = corners;
+    const auto [tl, tr, br, bl] = grow ? grown(corners, source) : corners;
     // Two triangles: top-left, top-right, bottom-left; top-right, bottom-right, bottom-left.
     const Vertex vertices[6] = {
-        {tl.x, tl.y, u0, v0, r, g, b, a}, {tr.x, tr.y, u1, v0, r, g, b, a},
-        {bl.x, bl.y, u0, v1, r, g, b, a}, {tr.x, tr.y, u1, v0, r, g, b, a},
-        {br.x, br.y, u1, v1, r, g, b, a}, {bl.x, bl.y, u0, v1, r, g, b, a},
+        {tl.x, tl.y, u0, v0, r, g, b, a, fx}, {tr.x, tr.y, u1, v0, r, g, b, a, fx},
+        {bl.x, bl.y, u0, v1, r, g, b, a, fx}, {tr.x, tr.y, u1, v0, r, g, b, a, fx},
+        {br.x, br.y, u1, v1, r, g, b, a, fx}, {bl.x, bl.y, u0, v1, r, g, b, a, fx},
     };
     native_->vertices.insert(native_->vertices.end(), std::begin(vertices), std::end(vertices));
     native_->textures.push_back(&texture);
@@ -875,6 +948,7 @@ struct WorldVertex {
     float albedo_r;
     float albedo_g;
     float albedo_b;
+    Effects fx;
 };
 
 } // namespace
@@ -1010,12 +1084,17 @@ std::unique_ptr<WorldRenderer> WorldRenderer::create(Device& device) {
         buffer.slot = 0;
         buffer.pitch = sizeof(WorldVertex);
         buffer.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
-        SDL_GPUVertexAttribute attributes[5]{};
+        SDL_GPUVertexAttribute attributes[9]{};
         attributes[0] = {0, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, 0};
         attributes[1] = {1, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2, 12};
         attributes[2] = {2, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4, 20};
         attributes[3] = {3, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4, 36};
         attributes[4] = {4, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, 52};
+        // The effects.
+        attributes[5] = {5, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4, 64};
+        attributes[6] = {6, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4, 80};
+        attributes[7] = {7, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4, 96};
+        attributes[8] = {8, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4, 112};
 
         SDL_GPUColorTargetDescription color{};
         color.format = pixel_format;
@@ -1026,7 +1105,7 @@ std::unique_ptr<WorldRenderer> WorldRenderer::create(Device& device) {
         info.vertex_input_state.vertex_buffer_descriptions = &buffer;
         info.vertex_input_state.num_vertex_buffers = 1;
         info.vertex_input_state.vertex_attributes = attributes;
-        info.vertex_input_state.num_vertex_attributes = 5;
+        info.vertex_input_state.num_vertex_attributes = 9;
         info.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
         info.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
         info.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_NONE;
@@ -1259,8 +1338,8 @@ namespace {
 /// A shadow's corner: its darkness travels in the colour's red (shadow.frag.hlsl).
 WorldVertex shadow_corner(const Vec3& p, float u, float v, float darkness) {
     const float d = std::isfinite(darkness) ? std::clamp(darkness, 0.0F, 1.0F) : 0.0F;
-    return WorldVertex{p.x,  p.y,  p.z,  u,    v,    d,    d,    d,
-                       1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 1.0F, 1.0F};
+    return WorldVertex{p.x,  p.y,  p.z,  u,    v,    d,    d,    d,        1.0F,
+                       0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 1.0F, 1.0F, Effects{}};
 }
 
 } // namespace
@@ -1301,8 +1380,9 @@ void WorldRenderer::draw_shadow(const Texture& shape, const std::array<Vec3, 4>&
     native_->shadow_shapes.push_back(&shape);
 }
 
-void WorldRenderer::draw(const Texture& texture, const std::array<Vec3, 4>& corners, Rect source,
-                         std::array<float, 4> color, const Surface& surface) {
+void WorldRenderer::draw(const Texture& texture, const std::array<Vec3, 4>& given, Rect source,
+                         std::array<float, 4> color, const Surface& surface,
+                         const SpriteEffects& effects) {
     if (native_->target == nullptr) {
         return;
     }
@@ -1312,10 +1392,20 @@ void WorldRenderer::draw(const Texture& texture, const std::array<Vec3, 4>& corn
     // neighbouring texel, so the next tile of an atlas bleeds in along tile seams. A
     // hundredth of a texel inside the edges cannot show, and keeps sampling in the source.
     constexpr float inset = 0.01F;
-    const float u0 = (source.x + inset) / tex_w;
-    const float v0 = (source.y + inset) / tex_h;
-    const float u1 = (source.x + source.w - inset) / tex_w;
-    const float v1 = (source.y + source.h - inset) / tex_h;
+    const float f0 = (source.x + inset) / tex_w;
+    const float g0 = (source.y + inset) / tex_h;
+    const float f1 = (source.x + source.w - inset) / tex_w;
+    const float g1 = (source.y + source.h - inset) / tex_h;
+    const Effects fx = effects_for(effects, f0, g0, f1, g1, tex_w, tex_h);
+    // Outlined: a texel more each way, drawn from beyond the source (clear there).
+    const bool grow = effects.outlined();
+    const float margin_u = grow ? 1.0F / tex_w : 0.0F;
+    const float margin_v = grow ? 1.0F / tex_h : 0.0F;
+    const float u0 = f0 - margin_u;
+    const float v0 = g0 - margin_v;
+    const float u1 = f1 + margin_u;
+    const float v1 = g1 + margin_v;
+    const std::array<Vec3, 4> corners = grow ? grown(given, source) : given;
     const auto corner = [&](const Vec3& p, float u, float v) {
         return WorldVertex{p.x,
                            p.y,
@@ -1332,7 +1422,8 @@ void WorldRenderer::draw(const Texture& texture, const std::array<Vec3, 4>& corn
                            surface.wrap,
                            surface.albedo[0],
                            surface.albedo[1],
-                           surface.albedo[2]};
+                           surface.albedo[2],
+                           fx};
     };
     const WorldVertex tl = corner(corners[0], u0, v0);
     const WorldVertex tr = corner(corners[1], u1, v0);

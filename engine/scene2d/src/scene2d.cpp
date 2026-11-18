@@ -88,6 +88,19 @@ void register_types(reflect::Registry& registry) {
         .display_name("Scale down")
         .tooltip("Stretches the picture up and down: 2 is twice as tall. Below 0 it is "
                  "upside down.");
+    sprite.property<&Sprite::flash>("flash").range(0.0, 1.0).step(0.1).tooltip(
+        "Its colours turned towards the flash colour: 1 is all flash colour, as a hit makes.");
+    sprite.property<&Sprite::flash_color>("flash_color")
+        .flags(advanced)
+        .display_name("Flash colour")
+        .tooltip("The colour it flashes, #rrggbb.");
+    sprite.property<&Sprite::outline>("outline").tooltip(
+        "A line round its pixels in this colour (#rrggbb, or #rrggbbaa to see through it); "
+        "empty for none.");
+    sprite.property<&Sprite::dissolve>("dissolve")
+        .range(0.0, 1.0)
+        .step(0.1)
+        .tooltip("Vanishing pixel by pixel: 0 is whole, 1 gone.");
 
     auto animation = registry.add_type<SpriteAnimation>("sprite_animation")
                          .display_name("Animation")
@@ -1148,7 +1161,47 @@ std::string hex_of(const std::array<std::uint8_t, 3>& rgb) {
     return out;
 }
 
+/// "#rrggbb" or "#rrggbbaa", as a colour; nothing otherwise.
+std::optional<render::Color> hex_rgba(std::string_view text) {
+    if (!text.empty() && text.front() == '#') {
+        text.remove_prefix(1);
+    }
+    if (text.size() != 6 && text.size() != 8) {
+        return std::nullopt;
+    }
+    const std::optional<std::array<std::uint8_t, 3>> rgb = hex_rgb(text.substr(0, 6));
+    unsigned alpha = 255;
+    if (text.size() == 8) {
+        const char* first = text.data() + 6;
+        const auto [end, failed] = std::from_chars(first, first + 2, alpha, 16);
+        if (failed != std::errc{} || end != first + 2) {
+            return std::nullopt;
+        }
+    }
+    if (!rgb) {
+        return std::nullopt;
+    }
+    return render::Color{(*rgb)[0], (*rgb)[1], (*rgb)[2], static_cast<std::uint8_t>(alpha)};
+}
+
 } // namespace
+
+render::SpriteEffects sprite_effects(const Sprite& sprite) {
+    const auto amount = [](double v) {
+        return std::isfinite(v) ? static_cast<float>(std::clamp(v, 0.0, 1.0)) : 0.0F;
+    };
+    render::SpriteEffects fx;
+    const float flash = amount(sprite.flash);
+    if (flash > 0.0F) {
+        fx.flash = hex_rgba(sprite.flash_color).value_or(render::Color{255, 255, 255, 255});
+        fx.flash.a = static_cast<std::uint8_t>(std::lround(flash * 255.0F));
+    }
+    if (!sprite.outline.empty()) {
+        fx.outline = hex_rgba(sprite.outline).value_or(render::Color{0, 0, 0, 0});
+    }
+    fx.dissolve = amount(sprite.dissolve);
+    return fx;
+}
 
 std::vector<ColorSwap> parse_recolor(std::string_view text) {
     std::vector<ColorSwap> swaps;
@@ -1437,6 +1490,7 @@ struct Item {
     render::Rect source;
     std::array<render::Point, 4> corners; ///< On the target, as SpriteRenderer::draw() takes them.
     render::Color tint;
+    render::SpriteEffects effects;
 };
 
 /// The part of `texture` that frame `frame` of a `width` x `height` grid covers. A size of
@@ -1752,6 +1806,7 @@ DrawStats draw_world(const world::World& world, TextureCache& textures,
                 }
                 item.tint =
                     render::Color{sprite->tint_r, sprite->tint_g, sprite->tint_b, sprite->tint_a};
+                item.effects = sprite_effects(*sprite);
                 // Repeated to fill the view: copies a whole picture apart, as many as cover it
                 // (an upright picture only; at most 64 a side).
                 const bool across = parallax != nullptr && parallax->repeat_x;
@@ -1811,7 +1866,7 @@ DrawStats draw_world(const world::World& world, TextureCache& textures,
 
     sprites.begin(target, clear);
     for (const Item& item : items) {
-        sprites.draw(*item.texture, item.source, item.corners, item.tint);
+        sprites.draw(*item.texture, item.source, item.corners, item.tint, item.effects);
     }
     sprites.end();
     stats.drawn = items.size();
@@ -2360,20 +2415,21 @@ DrawStats draw_diorama(const world::World& world, TextureCache& textures,
                                       render::Vec3{base.x - half_w, y, base.z + half_d}},
                                      dark);
             }
-            renderer.draw(*texture, {at(card[0]), at(card[1]), at(card[2]), at(card[3])}, source,
-                          lit(sprite_light, render::Color{sprite->tint_r, sprite->tint_g,
-                                                          sprite->tint_b, sprite->tint_a}),
-                          [&] {
-                              // Billboards take point lights from all round, softly, and in their
-                              // tint.
-                              render::Surface s = surface(sprite_normal, 1.0F);
-                              s.casts_shadow =
-                                  false; // an edge-on card from the sun: its own shadow
-                              s.albedo = {static_cast<float>(sprite->tint_r) / 255.0F,
-                                          static_cast<float>(sprite->tint_g) / 255.0F,
-                                          static_cast<float>(sprite->tint_b) / 255.0F};
-                              return s;
-                          }());
+            renderer.draw(
+                *texture, {at(card[0]), at(card[1]), at(card[2]), at(card[3])}, source,
+                lit(sprite_light,
+                    render::Color{sprite->tint_r, sprite->tint_g, sprite->tint_b, sprite->tint_a}),
+                [&] {
+                    // Billboards take point lights from all round, softly, and in their
+                    // tint.
+                    render::Surface s = surface(sprite_normal, 1.0F);
+                    s.casts_shadow = false; // an edge-on card from the sun: its own shadow
+                    s.albedo = {static_cast<float>(sprite->tint_r) / 255.0F,
+                                static_cast<float>(sprite->tint_g) / 255.0F,
+                                static_cast<float>(sprite->tint_b) / 255.0F};
+                    return s;
+                }(),
+                sprite_effects(*sprite));
             ++stats.drawn;
         }
     });

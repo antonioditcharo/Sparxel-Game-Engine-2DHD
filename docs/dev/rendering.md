@@ -54,6 +54,17 @@ std::vector<std::uint8_t> pixels = target->read_pixels();            // waits fo
   source's top-left, top-right, bottom-right and bottom-left go, instead of a rectangle.
   Nothing is culled, so a flipped picture (its corners in the other order) is drawn too.
   The rectangle form is the same two triangles.
+- **Effects** (`SpriteEffects`, the last argument of `draw()`, in both renderers, §7):
+  a **flash** colour mixed over the sprite's colours by its alpha (255 is all flash: a
+  hit's white); an **outline** drawn on the clear texels beside opaque ones (alpha a half
+  or more, the four neighbours, not diagonals), a texel wide; and **dissolve**, from 0
+  (whole) to 1 (gone), each texel vanishing once a number scattered by where it is
+  (the same every frame) falls below it. The outline needs room round the picture, so an
+  outlined quad grows a texel each way and is drawn from a texel beyond its source,
+  clipped to the source: a sprite sheet's next frame never shows in it. Each vertex
+  carries the effects (the flash, the outline, the source's bounds, and the dissolve with
+  the texel's size), so sprites with different effects still batch together. Pictures
+  with none draw exactly as before (every older test still passes pixel for pixel).
 - **Alpha blending,** with sprites drawn in the order given, so later ones are on top.
 - **Clearing or keeping:** `begin(target, colour)` clears the target first;
   `begin_over(target)` keeps what it holds, to draw over a finished frame, such as text
@@ -101,7 +112,13 @@ std::vector<std::uint8_t> pixels = target->read_pixels();            // waits fo
 ## 6. Testing without a graphics card
 
 - The tests render headless and compare pixels exactly, except one blend that allows a
-  single step of rounding.
+  single step of rounding. Effects: a full flash turns red white and a half one pink,
+  clear texels staying clear; the outline lies left of and above a square but not on its
+  diagonal or two texels off, and round a picture opaque to its edges a texel beyond it
+  without taking the sheet's next texel; dissolve 1 draws nothing, a half leaves between
+  a quarter and three quarters of 144 texels, the same count twice, and NaN all of them.
+  In 3D, a full flash is white under half light, the outline is a texel beyond the quad,
+  and dissolve 1 leaves the background.
 - **Mesa's lavapipe**, a Vulkan driver that runs on the CPU, is enough. On Ubuntu:
   `sudo apt-get install mesa-vulkan-drivers`.
 - Without any GPU the render tests are **skipped with a message**. With

@@ -64,7 +64,19 @@ struct Sprite {
     /// number flips it.
     double scale_x = 1.0;
     double scale_y = 1.0;
+    /// Effects on its pixels (render::SpriteEffects), in both styles: a flash of
+    /// `flash_color`, from 0 (none) to 1 (all of it), as a hit makes; an outline round its
+    /// opaque pixels ("#000000", or with an alpha "#00000080"; empty for none); and
+    /// dissolving away, from 0 (whole) to 1 (gone).
+    double flash = 0.0;
+    std::string flash_color = "#ffffff";
+    std::string outline;
+    double dissolve = 0.0;
 };
+
+/// The render::SpriteEffects `sprite` asks for. Colours that are not "#rrggbb" or
+/// "#rrggbbaa" are none (a flash then white); amounts are clamped to 0 to 1, NaN as 0.
+[[nodiscard]] render::SpriteEffects sprite_effects(const Sprite& sprite);
 
 /// Where the corners of `sprite`'s picture go relative to its position, for a frame
 /// `width` x `height` (in any unit; the result is in the same one), x to the right and y

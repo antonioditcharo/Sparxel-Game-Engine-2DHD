@@ -866,15 +866,19 @@ TEST_CASE("Health: hits hurt by tag, keep it safe a moment, knock it back, and d
     CHECK_FALSE(hurts[0].defeated);
     CHECK(hp->health == 1.0);
     CHECK(hp->safe == doctest::Approx(0.8));
+    CHECK(hp->flash_time == doctest::Approx(0.12));
     CHECK(game::apply_hits(*f.w, by_slime).empty()); // safe
     // While pushed the keys do not move it.
     f.walk(1, {input::Key::Left});
     CHECK(f.at(f.hero).x == 3.0);
     bool blinked = false;
-    for (int i = 0; i < 9; ++i) {
+    game::update_health(*f.w, 1.0 / 60.0, 16);
+    CHECK(look->flash == doctest::Approx((0.12 - (1.0 / 60.0)) / 0.12));
+    for (int i = 1; i < 9; ++i) {
         game::update_health(*f.w, 1.0 / 60.0, 16);
         blinked = blinked || look->tint_a < 255;
     }
+    CHECK(look->flash == 0.0); // over in 0.12 s
     CHECK(f.at(f.hero).x == doctest::Approx(4.0));
     CHECK(f.at(f.hero).y == 3.0);
     CHECK(hp->push_time == 0.0);
@@ -894,8 +898,13 @@ TEST_CASE("Health: hits hurt by tag, keep it safe a moment, knock it back, and d
     CHECK(last[0].defeated);
     CHECK(hp->health == 0.0);
     CHECK(hp->defeated);
-    game::update_health(*f.w, 1.0 / 60.0, 16);
+    // It dissolves away over 0.4 s, then is hidden, whole again.
+    game::update_health(*f.w, 0.2, 16);
+    CHECK(look->visible);
+    CHECK(look->dissolve == doctest::Approx(0.5));
+    game::update_health(*f.w, 0.2, 16);
     CHECK_FALSE(look->visible);
+    CHECK(look->dissolve == 0.0);
     CHECK(hp->push_time == 0.0); // no knockback for the defeated
     const double x = f.at(f.hero).x;
     f.walk(10, {input::Key::Right});

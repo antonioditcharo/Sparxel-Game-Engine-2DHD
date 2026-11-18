@@ -22,8 +22,9 @@ namespace engine::game {
 /// "Health": what hit boxes take away. A hit box of another object on this one's hurt box
 /// hurts it by that object's `damage` (1 for an object with no Health: spikes, a
 /// fireball), unless it is safe from the last hurt or the attacker is not one it is hurt
-/// by. Hurt, it blinks while safe and is knocked away from the attacker; at 0 it is
-/// defeated: hidden (if `hide_when_defeated`), it stops moving and no longer hits or is hit.
+/// by. Hurt, it flashes white, blinks while safe and is knocked away from the attacker; at
+/// 0 it is defeated: it dissolves away and is hidden (if `hide_when_defeated`), stops
+/// moving, and no longer hits or is hit.
 struct Health {
     double health = 3.0;
     double max_health = 3.0;
@@ -40,6 +41,8 @@ struct Health {
     double push_time = 0.0;         ///< ...for these seconds; it cannot walk meanwhile.
     std::uint8_t shown_alpha = 255; ///< Its sprite's alpha before blinking.
     bool hid = false;               ///< Its sprite was hidden on being defeated.
+    double flash_time = 0.0;        ///< Seconds of the hurt's flash still to show.
+    double fading = 0.0;            ///< Seconds it has been dissolving, defeated.
 
     /// Takes `amount` (above 0) and defeats it at 0; nothing if already defeated. Returns
     /// whether this defeated it.

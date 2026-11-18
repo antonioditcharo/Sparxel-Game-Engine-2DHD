@@ -1,8 +1,8 @@
 // World vertex shader: transforms 3D positions by the view-projection matrix, and passes on
 // what the pixel shader lights with: the world position, the surface (normal and wrap) and
-// its albedo. The matrix arrives as four rows and is applied with dot products, so its
-// layout means the same thing in SPIR-V and DXIL. Uniforms are in (b, space1), as SDL GPU
-// requires for vertex shaders.
+// its albedo; and the sprite's effects (render::SpriteEffects). The matrix arrives as four
+// rows and is applied with dot products, so its layout means the same thing in SPIR-V and
+// DXIL. Uniforms are in (b, space1), as SDL GPU requires for vertex shaders.
 
 cbuffer Camera : register(b0, space1)
 {
@@ -20,6 +20,10 @@ struct Input
     float4 color : TEXCOORD2;    // ambient and sun light times tint
     float4 surface : TEXCOORD3;  // xyz: normal (zero: no point lights), w: wrap
     float3 albedo : TEXCOORD4;   // what point lights multiply
+    float4 flash : TEXCOORD5;    // rgb, and how much
+    float4 outline : TEXCOORD6;  // rgb, and its alpha (0: none)
+    float4 frame : TEXCOORD7;    // the source's texture coordinates: left, top, right, bottom
+    float4 params : TEXCOORD8;   // x: dissolve, yz: one texel
 };
 
 struct Output
@@ -30,6 +34,10 @@ struct Output
     float3 world : TEXCOORD3;
     float4 surface : TEXCOORD4;
     float3 albedo : TEXCOORD5;
+    float4 flash : TEXCOORD6;
+    float4 outline : TEXCOORD7;
+    float4 frame : TEXCOORD8;
+    float4 params : TEXCOORD9;
     float4 position : SV_Position;
 };
 
@@ -44,5 +52,9 @@ Output main(Input input)
     output.world = input.position;
     output.surface = input.surface;
     output.albedo = input.albedo;
+    output.flash = input.flash;
+    output.outline = input.outline;
+    output.frame = input.frame;
+    output.params = input.params;
     return output;
 }

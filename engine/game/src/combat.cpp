@@ -19,6 +19,10 @@ constexpr double push_seconds = 0.15;
 constexpr double knock_hop = 0.5;
 /// The blink: shown, then faint, each this long.
 constexpr double blink_seconds = 0.08;
+/// A hurt's white flash, fading out over this long.
+constexpr double flash_seconds = 0.12;
+/// The defeated dissolve away over this long, then are hidden.
+constexpr double fade_seconds = 0.4;
 
 bool finite_positive(double value) {
     return std::isfinite(value) && value > 0.0;
@@ -101,6 +105,8 @@ void register_combat(reflect::Registry& registry) {
     health.property<&Health::push_time>("push_time").flags(reflect::property_flag::hidden);
     health.property<&Health::shown_alpha>("shown_alpha").flags(reflect::property_flag::hidden);
     health.property<&Health::hid>("hid").flags(reflect::property_flag::hidden);
+    health.property<&Health::flash_time>("flash_time").flags(reflect::property_flag::hidden);
+    health.property<&Health::fading>("fading").flags(reflect::property_flag::hidden);
     health.action<&Health::hurt>("take_health", {"amount"})
         .text("Hurt it by {amount}")
         .tooltip("Takes health away, as a hit would (but without knockback).");
@@ -173,6 +179,7 @@ std::vector<Hurt> apply_hits(world::World& world, std::span<const scene2d::HitCo
             continue;
         }
         const Hurt hurt{contact.target, contact.attacker, amount, target->take(amount)};
+        target->flash_time = flash_seconds;
         // Safe for a while, blinking from its alpha now.
         if (finite_positive(target->invulnerable)) {
             target->safe = target->invulnerable;
@@ -244,7 +251,15 @@ void update_health(world::World& world, double seconds, std::uint32_t ppu) {
             return;
         }
         scene2d::Sprite* sprite = world.get<scene2d::Sprite>(entity);
-        // Defeated: hidden (once, so logic may show it again), still, blinking no more.
+        // The hurt's flash, fading.
+        if (health->flash_time > 0.0) {
+            health->flash_time = std::max(0.0, health->flash_time - seconds);
+            if (sprite != nullptr) {
+                sprite->flash = health->flash_time / flash_seconds;
+            }
+        }
+        // Defeated: dissolving, then hidden (once, so logic may show it again); still,
+        // blinking no more.
         if (health->defeated) {
             if (health->safe > 0.0 && sprite != nullptr) {
                 sprite->tint_a = health->shown_alpha;
@@ -252,10 +267,23 @@ void update_health(world::World& world, double seconds, std::uint32_t ppu) {
             health->safe = 0.0;
             health->push_time = 0.0;
             if (health->hide_when_defeated && !health->hid && sprite != nullptr) {
-                sprite->visible = false;
-                health->hid = true;
+                health->fading += seconds;
+                sprite->dissolve = std::min(1.0, health->fading / fade_seconds);
+                if (health->fading >= fade_seconds - 1e-9) {
+                    sprite->visible = false;
+                    sprite->dissolve = 0.0;
+                    health->hid = true;
+                    health->fading = 0.0;
+                }
             }
             return;
+        }
+        if (health->fading > 0.0) {
+            // Revived while dissolving: whole again.
+            health->fading = 0.0;
+            if (sprite != nullptr) {
+                sprite->dissolve = 0.0;
+            }
         }
         if (health->hid) {
             // Revived after being hidden: shown again.

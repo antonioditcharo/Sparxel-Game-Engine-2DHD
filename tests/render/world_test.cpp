@@ -176,6 +176,43 @@ TEST_CASE("Transparent texels are cut out, colours multiply, and fog fades with 
     CHECK(fogged(5.0F, 5.0F) == red); // an empty range is no fog
 }
 
+TEST_CASE("Sprite effects in 3D: a flash after the light, an outline, and dissolving") {
+    render::Device* device = gpu();
+    if (device == nullptr) {
+        return;
+    }
+    const auto target = device->create_render_target(16, 16);
+    const auto world = render::WorldRenderer::create(*device);
+    REQUIRE(target != nullptr);
+    REQUIRE(world != nullptr);
+    const auto red_texture = solid(*device, red);
+    const Mat4 camera = Mat4::orthographic(-8, 8, -8, 8, 1, 20) *
+                        Mat4::look_at(Vec3{0, 0, 10}, Vec3{0, 0, 0}, Vec3{0, 1, 0});
+    const Vec3 eye{0, 0, 10};
+    const auto drawn = [&](const render::SpriteEffects& fx, std::array<float, 4> color) {
+        world->begin(*target, background, camera, eye);
+        world->draw(*red_texture, facing(-2, -2, 2, 2, 0), Rect{0, 0, 1, 1}, color, {}, fx);
+        REQUIRE(world->end());
+        return target->read_pixels();
+    };
+    // Half lit, then flashed white all the way: white, whatever the light.
+    render::SpriteEffects fx;
+    fx.flash = Color{255, 255, 255, 255};
+    CHECK(pixel(drawn(fx, {0.5F, 0.5F, 0.5F, 1.0F}), 16, 8, 8) == Color{255, 255, 255, 255});
+    // An outline: one texel (4 units here) beyond the quad.
+    fx = render::SpriteEffects{};
+    fx.outline = blue;
+    const std::vector<std::uint8_t> outlined = drawn(fx, {1.0F, 1.0F, 1.0F, 1.0F});
+    CHECK(pixel(outlined, 16, 8, 8) == red);
+    CHECK(pixel(outlined, 16, 3, 8) == blue);
+    CHECK(pixel(outlined, 16, 8, 3) == blue);
+    CHECK(pixel(outlined, 16, 1, 8) == background);
+    // Dissolved: gone.
+    fx = render::SpriteEffects{};
+    fx.dissolve = 1.0F;
+    CHECK(pixel(drawn(fx, {1.0F, 1.0F, 1.0F, 1.0F}), 16, 8, 8) == background);
+}
+
 TEST_CASE("Perspective makes far things smaller") {
     render::Device* device = gpu();
     if (device == nullptr) {

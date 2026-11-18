@@ -7,6 +7,7 @@
 #include <doctest/doctest.h>
 
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <ostream>
 #include <string>
@@ -144,6 +145,97 @@ TEST_CASE("Source rectangles, tints, alpha blending and draw order") {
     CHECK(blended.g >= 63);
     CHECK(blended.g <= 64);
     CHECK(blended.b == 0);
+}
+
+TEST_CASE("Sprite effects: a flash, an outline round the opaque texels, and dissolving") {
+    render::Device* device = gpu();
+    if (device == nullptr) {
+        return;
+    }
+    const auto target = device->create_render_target(12, 12);
+    const auto sprites = render::SpriteRenderer::create(*device);
+    REQUIRE(target != nullptr);
+    REQUIRE(sprites != nullptr);
+    // 4 x 4, clear but for a red square of 2 x 2 in the middle.
+    std::vector<std::uint8_t> rgba(std::size_t{4} * 4 * 4, 0);
+    for (const std::size_t texel : {5U, 6U, 9U, 10U}) {
+        rgba[texel * 4] = 255;
+        rgba[(texel * 4) + 3] = 255;
+    }
+    const auto holed = device->create_texture(4, 4, rgba);
+    const std::vector<std::uint8_t> red_square(std::size_t{2} * 2 * 4, 255);
+    const auto solid = device->create_texture(2, 2, red_square); // white, tinted below
+    REQUIRE(holed != nullptr);
+    REQUIRE(solid != nullptr);
+    const Color black{0, 0, 0, 255};
+    const auto drawn = [&](const render::Texture& texture, Rect source, Rect to,
+                           const render::SpriteEffects& fx) {
+        sprites->begin(*target, black);
+        sprites->draw(texture, source, to, Color{255, 255, 255, 255}, fx);
+        REQUIRE(sprites->end());
+        return target->read_pixels();
+    };
+    // Two pixels a texel: the red square at (4..8, 4..8) when drawn at (2, 2).
+    const Rect whole{0, 0, 4, 4};
+    const Rect at{2, 2, 8, 8};
+
+    // A flash: all white, half white; clear texels stay clear.
+    render::SpriteEffects fx;
+    fx.flash = Color{255, 255, 255, 255};
+    std::vector<std::uint8_t> pixels = drawn(*holed, whole, at, fx);
+    CHECK(pixel(pixels, 12, 7, 7) == Color{255, 255, 255, 255});
+    CHECK(pixel(pixels, 12, 3, 3) == black);
+    fx.flash.a = 128;
+    pixels = drawn(*holed, whole, at, fx);
+    const Color half = pixel(pixels, 12, 7, 7);
+    CHECK(half.r == 255);
+    CHECK(half.g >= 127);
+    CHECK(half.g <= 129);
+
+    // An outline: on the clear texels beside the square (not its corners' diagonals).
+    fx = render::SpriteEffects{};
+    fx.outline = Color{0, 0, 255, 255};
+    pixels = drawn(*holed, whole, at, fx);
+    CHECK(pixel(pixels, 12, 7, 7) == Color{255, 0, 0, 255});
+    CHECK(pixel(pixels, 12, 3, 5) == Color{0, 0, 255, 255}); // left of it
+    CHECK(pixel(pixels, 12, 5, 3) == Color{0, 0, 255, 255}); // above it
+    CHECK(pixel(pixels, 12, 3, 3) == black);                 // diagonal
+    CHECK(pixel(pixels, 12, 1, 5) == black);                 // two texels away
+    // Opaque to its edges: the outline goes a texel beyond the picture, and never takes
+    // the next texel of the sheet.
+    pixels = drawn(*holed, Rect{1, 1, 1, 2}, Rect{4, 4, 2, 4}, fx);
+    CHECK(pixel(pixels, 12, 5, 5) == Color{255, 0, 0, 255});
+    CHECK(pixel(pixels, 12, 3, 5) == Color{0, 0, 255, 255}); // a texel left: beyond it
+    CHECK(pixel(pixels, 12, 6, 5) == Color{0, 0, 255, 255}); // the sheet's next is not drawn
+    CHECK(pixel(pixels, 12, 5, 2) == Color{0, 0, 255, 255}); // above
+    CHECK(pixel(pixels, 12, 1, 5) == black);
+
+    // Dissolving: whole at 0, gone at 1, about half at a half, the same each frame.
+    fx = render::SpriteEffects{};
+    fx.dissolve = 1.0F;
+    pixels = drawn(*solid, Rect{0, 0, 2, 2}, Rect{4, 4, 4, 4}, fx);
+    CHECK(pixel(pixels, 12, 5, 5) == black);
+    std::vector<std::uint8_t> noise(std::size_t{12} * 12 * 4, 255);
+    const auto wide = device->create_texture(12, 12, noise);
+    REQUIRE(wide != nullptr);
+    fx.dissolve = 0.5F;
+    const auto count = [&] {
+        const std::vector<std::uint8_t> shown =
+            drawn(*wide, Rect{0, 0, 12, 12}, Rect{0, 0, 12, 12}, fx);
+        int left = 0;
+        for (std::uint32_t y = 0; y < 12; ++y) {
+            for (std::uint32_t x = 0; x < 12; ++x) {
+                left += pixel(shown, 12, x, y) == Color{255, 255, 255, 255} ? 1 : 0;
+            }
+        }
+        return left;
+    };
+    const int first = count();
+    CHECK(first > 36);
+    CHECK(first < 108);
+    CHECK(count() == first);
+    fx.dissolve = std::numeric_limits<float>::quiet_NaN(); // as 0
+    CHECK(count() == 144);
 }
 
 TEST_CASE("begin_over() draws over what the target holds") {

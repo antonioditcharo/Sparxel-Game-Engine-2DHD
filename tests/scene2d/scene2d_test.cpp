@@ -1740,6 +1740,54 @@ TEST_CASE("Palette swaps: colours read, swapped once, and drawn recoloured") {
     CHECK(textures.get(f.red_image, "#ff0000>#00ff00") != nullptr);
 }
 
+TEST_CASE("Sprite effects: a sprite's flash, outline and dissolve, read and drawn") {
+    const scene2d::Sprite plain;
+    render::SpriteEffects fx = scene2d::sprite_effects(plain);
+    CHECK(fx.flash.a == 0);
+    CHECK_FALSE(fx.outlined());
+    CHECK(fx.dissolve == 0.0F);
+    scene2d::Sprite hit;
+    hit.flash = 0.5;
+    hit.flash_color = "#ff8000";
+    hit.outline = "#00000080";
+    hit.dissolve = 2.0;
+    fx = scene2d::sprite_effects(hit);
+    CHECK(fx.flash == Color{255, 128, 0, 128});
+    CHECK(fx.outline == Color{0, 0, 0, 128});
+    CHECK(fx.dissolve == 1.0F);
+    hit.flash_color = "orange"; // not a colour: white
+    hit.outline = "#12";        // not a colour: none
+    hit.dissolve = std::numeric_limits<double>::quiet_NaN();
+    hit.flash = -1.0;
+    fx = scene2d::sprite_effects(hit);
+    CHECK(fx.flash.a == 0);
+    CHECK_FALSE(fx.outlined());
+    CHECK(fx.dissolve == 0.0F);
+    hit.flash = 1.0;
+    CHECK(scene2d::sprite_effects(hit).flash == Color{255, 255, 255, 255});
+
+    render::Device* device = gpu();
+    if (device == nullptr) {
+        return;
+    }
+    const Fixture f;
+    const auto target = device->create_render_target(8, 8);
+    const auto sprites = render::SpriteRenderer::create(*device);
+    REQUIRE(target != nullptr);
+    REQUIRE(sprites != nullptr);
+    scene2d::TextureCache textures(*device, f.db);
+    const scene2d::Camera2D camera{0.0, 0.0, 2, 1};
+    const auto w = f.make_world();
+    const world::Entity flashing = Fixture::place(*w, "Struck", 0.0, 0.0, f.red_image);
+    const world::Entity gone = Fixture::place(*w, "Gone", 1.5, 0.0, f.red_image);
+    w->get<scene2d::Sprite>(flashing)->flash = 1.0;
+    w->get<scene2d::Sprite>(gone)->dissolve = 1.0;
+    scene2d::draw_world(*w, textures, *sprites, *target, camera, f.background);
+    const std::vector<std::uint8_t> pixels = target->read_pixels();
+    CHECK(pixel(pixels, 8, 4, 3) == Color{255, 255, 255, 255}); // all flash
+    CHECK(pixel(pixels, 8, 6, 3) == f.background);              // dissolved away
+}
+
 TEST_CASE("Classic 2D lights brighten what is drawn, in their colour, fading at the radius") {
     render::Device* device = gpu();
     if (device == nullptr) {

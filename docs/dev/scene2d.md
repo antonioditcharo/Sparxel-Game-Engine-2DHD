@@ -36,7 +36,7 @@ nothing extra to write ([reflection.md](reflection.md)).
 | Component | Properties | Shown as |
 |---|---|---|
 | `Transform2D` ("transform_2d") | `x`, `y` in **tiles** (world units), `layer` (advanced) | "Position" |
-| `Sprite` ("sprite") | `image` (an asset GUID), `visible`, `recolor` (*Recolour*: a palette swap), `rotation` (degrees), `scale_x` and `scale_y` (*Scale across*, *Scale down*); advanced: `pivot_x`, `pivot_y`, tint red, green, blue, and opacity; `frame_width`, `frame_height` and `frame` for sprite sheets; events *hit* and *hits* (each with [who]: hit and hurt boxes, §3) | "Sprite" |
+| `Sprite` ("sprite") | `image` (an asset GUID), `visible`, `recolor` (*Recolour*: a palette swap), `rotation` (degrees), `scale_x` and `scale_y` (*Scale across*, *Scale down*), `flash`, `outline`, `dissolve` (§2, effects); advanced: `flash_color`, `pivot_x`, `pivot_y`, tint red, green, blue, and opacity; `frame_width`, `frame_height` and `frame` for sprite sheets; events *hit* and *hits* (each with [who]: hit and hurt boxes, §3) | "Sprite" |
 | `SpriteAnimation` ("sprite_animation") | `tag` (a tag of the sheet, such as *walk*: §3), `first_frame`, `frame_count`, `frames_per_second`, `loop`, `playing`; actions *Play*, *Play the animation {name}* (a tag) and *Stop*; events *finished* and *frame_event* (its [name]) | "Animation" |
 | `Tilemap` ("tilemap") | `tileset` (an asset GUID), `tiles`, `visible`, `solid`; advanced: `tile_size`, `shapes` (*Tile shapes*) | "Tilemap" |
 | `Parallax` ("parallax") | `scroll_x`, `scroll_y` (*Scroll across*, *Scroll down*: 0 fixed on the screen, 1 with the map, 0.5 at half speed), `repeat_x`, `repeat_y` | "Parallax" |
@@ -67,9 +67,17 @@ nothing extra to write ([reflection.md](reflection.md)).
   colours both ways works. The texture cache makes each recolouring once, keyed by the
   picture and the text, and forgets it when the picture changes, so recoloured sprites are
   as fast as plain ones; the game, the Diorama style and the editor's view all draw it.
-  Logic can change `recolor` like any property (a hurt flash, a team colour).
+  Logic can change `recolor` like any property (a team colour).
   (`parse_recolor()`, `recolor_text()`, `recolor_image()`, `image_colors()`,
   `TextureCache::get(image, recolor)`.)
+- **Effects** (`plan/02` D13), drawn by both styles and the editor's view
+  (`sprite_effects()`, [rendering.md](rendering.md) §3): *Flash* (`flash`, 0 to 1) turns
+  its colours towards *Flash colour* (`flash_color`, white), as a hit does (Health flashes
+  it: game.md); *Outline* (`outline`) draws a line a picture pixel wide round its opaque
+  pixels, in `#rrggbb` or see-through `#rrggbbaa`, empty for none; *Dissolve*
+  (`dissolve`, 0 to 1) takes its pixels away in a scattered order, as a defeated enemy
+  vanishes. Colours that cannot be read are none (a flash then white); amounts are
+  clamped, NaN as 0. Logic changes them like any property.
 
 ## 3. Sprite sheets and animation
 
@@ -362,6 +370,7 @@ the others run anywhere:
 | Editor metadata | Display names, units, categories, flags, actions and events |
 | Tilemap text | Parsing, ragged rows, Windows line ends, round trips, every kind of bad cell, the size limits, and the component's cache |
 | Animation | Exact frames over 24 steps with looping; a one-shot animation finishing once at 0.3 s; Stop; negative and NaN times ignored |
+| Sprite effects | `sprite_effects()` from the fields, with a flash colour, a see-through outline, a dissolve clamped to 1, and unreadable colours, NaN and below-0 amounts as none; drawn (GPU), a full flash white and a dissolved sprite gone |
 | Slopes | `slope_floor()` a quarter of the way up a tile; in a world, walking up onto the ground above and back down, on the ground every step |
 | Solid tiles | Exact stops in all four directions; touching; rounding either side of an edge; walking out of a wall but not through the next; beside the map; maps not solid, offset, with larger tiles, or broken |
 | Diorama (GPU) | Ground under the point looked at, lit from above to the exact shade; sky beyond the map; a sprite standing above the point with the ground in front, shaded as it faces the camera; still facing it a quarter turn later; fog; block faces counted; broken maps and missing images counted |

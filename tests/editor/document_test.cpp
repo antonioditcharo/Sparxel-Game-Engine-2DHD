@@ -1414,6 +1414,9 @@ TEST_CASE("A new action game: the sword beats a slime that chases, and the hero 
     }
     CHECK(slashed);
     CHECK(w.get<game::Health>(slime)->defeated);
+    for (int i = 0; i < 30; ++i) { // dissolving away
+        runtime->step();
+    }
     CHECK_FALSE(w.get<scene2d::Sprite>(slime)->visible);
     CHECK(runtime->inventory().count_of("slime_gel") == 1);
     CAPTURE(lowest);
