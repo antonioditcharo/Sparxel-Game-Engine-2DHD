@@ -17,7 +17,7 @@
 
 | Area | Done | Partial | Not yet |
 |---|---|---|---|
-| A. Project and workflow | 3 | 6 | 3 (+1 later) |
+| A. Project and workflow | 4 | 7 | 1 (+1 later) |
 | B. Pixel art | 4 | 7 | 3 (+1 later) |
 | C. World building | 4 | 7 | 3 |
 | D. Rendering and the look | 4 | 10 | 1 (+1 later) |
@@ -28,7 +28,7 @@
 | I. Physics | 3 | 2 | 0 |
 | J. Audio | 2 | 4 | 0 (+1 later) |
 | K. UI | 3 | 4 | 0 |
-| **All** | **38** | **49** | **15** (+6 later) |
+| **All** | **39** | **50** | **13** (+6 later) |
 
 The strongest areas match or pass their references: the RPG kit and window skins (RPG
 Maker), auto-tiles and tile variants (RPG Maker, LDtk), no-code Rules with tags, *it*,
@@ -49,8 +49,8 @@ action kits (GameMaker), audio mixing (zones, reverb), and team features.
 | A5 | Undo and redo everywhere | Godot | **Partial**: one history for scenes, logic and settings, Sprite Studio and the Story editor each their own; no visual history list |
 | A6 | Autosave and crash recovery | Unity | **Done**: unsaved work kept every minute and offered back after a crash |
 | A7 | Snapshots | GameMaker's backups | **Done**: named restore points with pictures (as copies, not Git) |
-| A8 | Git integration | Godot (plugin) | **Not yet** |
-| A9 | Team features | Unity | **Not yet** (the files are text, sorted, merge-friendly) |
+| A8 | Git integration | Godot (plugin) | **Done**: start keeping versions, what changed, save a version with words, the history; a .gitignore for the editor's working files |
+| A9 | Team features | Unity | **Partial**: versions shared with Git from the editor, files that are text, sorted and merge-friendly; no live editing together, locks or review |
 | A10 | Project Doctor | none as broad | **Done**: missing assets, broken references, logic errors, the style guide's palette, the font |
 | A11 | Style guide | none built in | **Partial**: project palette (new sprites, checked), PPU, font; no outline rules |
 | A12 | Asset packs | Unity packages | **Not yet** (prefabs and folders can be copied) |

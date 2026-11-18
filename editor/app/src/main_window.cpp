@@ -36,6 +36,7 @@
 #include <QSettings>
 #include <QSpinBox>
 #include <QStackedWidget>
+#include <QStandardPaths>
 #include <QStatusBar>
 #include <QTimer>
 #include <QToolBar>
@@ -44,6 +45,7 @@
 #include <QVBoxLayout>
 #include <algorithm>
 #include <array>
+#include <fstream>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -549,6 +551,205 @@ bool MainWindow::restore_snapshot(const QString& id) {
     statusBar()->showMessage(
         tr("Back to the snapshot \"%1\". The project as it was is a snapshot too.").arg(id), 10000);
     return opened;
+}
+
+bool MainWindow::git_found() {
+    return !QStandardPaths::findExecutable(QStringLiteral("git")).isEmpty();
+}
+
+bool MainWindow::git(const QStringList& args, QString* out, QString* error) const {
+    const QString program = QStandardPaths::findExecutable(QStringLiteral("git"));
+    if (program.isEmpty() || document_ == nullptr) {
+        if (error != nullptr) {
+            *error = program.isEmpty() ? tr("Git is not installed: get it from git-scm.com.")
+                                       : tr("No project is open.");
+        }
+        return false;
+    }
+    QProcess process;
+    process.setWorkingDirectory(path_text(document_->folder()));
+    process.start(program, args);
+    if (!process.waitForFinished(60000)) {
+        if (error != nullptr) {
+            *error = tr("Git did not answer.");
+        }
+        process.kill();
+        return false;
+    }
+    if (out != nullptr) {
+        *out = QString::fromUtf8(process.readAllStandardOutput());
+    }
+    if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
+        if (error != nullptr) {
+            *error = QString::fromUtf8(process.readAllStandardError()).trimmed();
+        }
+        return false;
+    }
+    return true;
+}
+
+bool MainWindow::keeps_versions() const {
+    QString top;
+    if (!git({QStringLiteral("rev-parse"), QStringLiteral("--show-toplevel")}, &top, nullptr)) {
+        return false;
+    }
+    // This project's own repository, not one it happens to sit in.
+    return document_ != nullptr &&
+           QFileInfo(top.trimmed()).canonicalFilePath() ==
+               QFileInfo(path_text(document_->folder())).canonicalFilePath();
+}
+
+bool MainWindow::start_versions() {
+    if (document_ == nullptr) {
+        return false;
+    }
+    QString error;
+    if (!keeps_versions() && !git({QStringLiteral("init")}, nullptr, &error)) {
+        statusBar()->showMessage(tr("Versions could not be started: %1").arg(error), 10000);
+        return false;
+    }
+    const fs::path ignore = document_->folder() / ".gitignore";
+    std::error_code failed;
+    if (!fs::exists(ignore, failed)) {
+        std::ofstream out(ignore, std::ios::binary);
+        out << project_gitignore();
+    }
+    statusBar()->showMessage(tr("The project's versions are kept with Git now."), 6000);
+    return true;
+}
+
+bool MainWindow::save_version(const QString& message) {
+    if (document_ == nullptr || message.trimmed().isEmpty()) {
+        statusBar()->showMessage(tr("Say in a few words what changed."), 6000);
+        return false;
+    }
+    if (!save()) {
+        return false;
+    }
+    if (version_changes().empty()) {
+        statusBar()->showMessage(tr("Nothing changed since the last version."), 6000);
+        return false;
+    }
+    QString error;
+    // Someone who never told Git their name still saves versions, as "Sparxel".
+    QStringList identity;
+    QString name;
+    if (!git({QStringLiteral("config"), QStringLiteral("user.name")}, &name, nullptr) ||
+        name.trimmed().isEmpty()) {
+        identity = {QStringLiteral("-c"), QStringLiteral("user.name=Sparxel"), QStringLiteral("-c"),
+                    QStringLiteral("user.email=sparxel@localhost")};
+    }
+    if (!git({QStringLiteral("add"), QStringLiteral("--all")}, nullptr, &error) ||
+        !git(identity + QStringList{QStringLiteral("commit"), QStringLiteral("--quiet"),
+                                    QStringLiteral("--message"), message.trimmed()},
+             nullptr, &error)) {
+        statusBar()->showMessage(tr("The version was not saved: %1").arg(error), 10000);
+        return false;
+    }
+    statusBar()->showMessage(tr("Version saved: %1").arg(message.trimmed()), 6000);
+    return true;
+}
+
+std::vector<VersionChange> MainWindow::version_changes() const {
+    QString out;
+    if (!git({QStringLiteral("status"), QStringLiteral("--porcelain=v1"), QStringLiteral("-z"),
+              QStringLiteral("--untracked-files=all")},
+             &out, nullptr)) {
+        return {};
+    }
+    return parse_git_status(utf8_of(out));
+}
+
+std::vector<Version> MainWindow::versions() const {
+    QString out;
+    if (!git({QStringLiteral("log"), QStringLiteral("-n"), QStringLiteral("100"),
+              QString::fromUtf8(git_log_format.data(),
+                                static_cast<qsizetype>(git_log_format.size()))},
+             &out, nullptr)) {
+        return {}; // none yet, or no repository
+    }
+    return parse_git_log(utf8_of(out));
+}
+
+void MainWindow::show_versions() {
+    if (document_ == nullptr) {
+        return;
+    }
+    QDialog dialog(this);
+    dialog.setObjectName(QStringLiteral("versions_dialog"));
+    dialog.setWindowTitle(tr("Versions"));
+    dialog.resize(620, 520);
+    auto* column = new QVBoxLayout(&dialog);
+    auto* about = new QLabel(&dialog);
+    about->setWordWrap(true);
+    column->addWidget(about);
+    auto* start = new QPushButton(tr("Start keeping versions with Git"), &dialog);
+    start->setObjectName(QStringLiteral("start_versions"));
+    column->addWidget(start);
+    column->addWidget(new QLabel(tr("Changed since the last version:"), &dialog));
+    auto* changes = new QListWidget(&dialog);
+    changes->setObjectName(QStringLiteral("version_changes"));
+    column->addWidget(changes, 1);
+    auto* row = new QHBoxLayout();
+    auto* message = new QLineEdit(&dialog);
+    message->setObjectName(QStringLiteral("version_message"));
+    message->setPlaceholderText(tr("What changed, in a few words: the cave, and a bat"));
+    auto* keep = new QPushButton(tr("Save a version"), &dialog);
+    keep->setObjectName(QStringLiteral("save_version"));
+    row->addWidget(message, 1);
+    row->addWidget(keep);
+    column->addLayout(row);
+    column->addWidget(new QLabel(tr("History, the newest first:"), &dialog));
+    auto* history = new QListWidget(&dialog);
+    history->setObjectName(QStringLiteral("version_history"));
+    column->addWidget(history, 1);
+    auto* close_button = new QPushButton(tr("Close"), &dialog);
+    column->addWidget(close_button, 0, Qt::AlignRight);
+    const auto fill = [this, about, start, changes, history, message, keep] {
+        const bool found = git_found();
+        const bool kept = found && keeps_versions();
+        about->setText(!found ? tr("Git keeps every version of a project, to go back to or to "
+                                   "share with a team. It is not installed: get it from "
+                                   "git-scm.com, then open this again.")
+                       : kept ? tr("Every version saved here is kept by Git, in the project's "
+                                   "folder, to share with others or go back to.")
+                              : tr("Git can keep every version of this project, to share with "
+                                   "a team or go back to. The editor's own working files are "
+                                   "left out."));
+        start->setVisible(found && !kept);
+        message->setEnabled(kept);
+        keep->setEnabled(kept);
+        changes->clear();
+        history->clear();
+        if (!kept) {
+            return;
+        }
+        for (const VersionChange& change : version_changes()) {
+            new QListWidgetItem(
+                QStringLiteral("%1   %2").arg(text_of(std::string(change_word(change.kind))),
+                                              text_of(change.path)),
+                changes);
+        }
+        for (const Version& version : versions()) {
+            new QListWidgetItem(QStringLiteral("%1   %2   (%3, %4)")
+                                    .arg(text_of(version.id), text_of(version.message),
+                                         text_of(version.author), text_of(version.when)),
+                                history);
+        }
+    };
+    fill();
+    connect(start, &QPushButton::clicked, &dialog, [this, fill] {
+        start_versions();
+        fill();
+    });
+    connect(keep, &QPushButton::clicked, &dialog, [this, fill, message] {
+        if (save_version(message->text())) {
+            message->clear();
+        }
+        fill();
+    });
+    connect(close_button, &QPushButton::clicked, &dialog, &QDialog::reject);
+    dialog.exec();
 }
 
 void MainWindow::show_snapshots() {
@@ -1270,6 +1471,11 @@ void MainWindow::build_actions() {
     snap_take->setObjectName(QStringLiteral("take_snapshot"));
     QAction* snap_list = file->addAction(tr("Snapshots…"), this, [this] { show_snapshots(); });
     snap_list->setObjectName(QStringLiteral("snapshots"));
+    QAction* versions_action =
+        file->addAction(tr("&Versions (Git)…"), this, [this] { show_versions(); });
+    versions_action->setObjectName(QStringLiteral("versions"));
+    versions_action->setToolTip(tr("Every version of the project kept with Git: what changed, "
+                                   "saving a version, and the history"));
     QAction* close = file->addAction(tr("&Close project"), this, [this] { close_project(); });
     close->setObjectName(QStringLiteral("close_project"));
     close->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+W")));

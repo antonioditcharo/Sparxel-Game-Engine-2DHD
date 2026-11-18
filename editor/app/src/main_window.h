@@ -18,6 +18,7 @@
 #include "editor/core/doctor.h"
 #include "editor/core/document.h"
 #include "editor/core/new_project.h"
+#include "editor/core/versions.h"
 #include "search.h"
 
 class QAction;
@@ -150,6 +151,23 @@ public:
     bool restore_snapshot(const QString& id);
     /// File > Snapshots: the project's snapshots with their pictures, to go back to or delete.
     void show_snapshots();
+
+    // ----- Versions with Git (editor/core/versions.h) -----
+    /// Whether the git program was found.
+    [[nodiscard]] static bool git_found();
+    /// Whether the open project's versions are kept with Git.
+    [[nodiscard]] bool keeps_versions() const;
+    /// Starts keeping the project's versions with Git, and a .gitignore keeping the
+    /// editor's working files out. False, saying why in the status bar, if it cannot.
+    bool start_versions();
+    /// Saves the project, then a version of it described by `message`. False, saying why,
+    /// if nothing changed or it could not.
+    bool save_version(const QString& message);
+    /// What changed since the last version; the versions, the newest first (the last 100).
+    [[nodiscard]] std::vector<VersionChange> version_changes() const;
+    [[nodiscard]] std::vector<Version> versions() const;
+    /// File > Versions: what changed, saving a version, and the history.
+    void show_versions();
     /// Lists in the Assets panel only names with every word of `text`, in order.
     void search_assets(const QString& text);
     /// Shows (and returns) what uses the asset at `asset`, relative to assets/.
@@ -230,6 +248,9 @@ protected:
     void changeEvent(QEvent* event) override;
 
 private:
+    /// Runs git with `args` in the project's folder; its output in `out`. False, with what
+    /// git said in `error`, if it failed or is not installed.
+    bool git(const QStringList& args, QString* out, QString* error) const;
     /// Shows the document's scene everywhere, after another was opened.
     void show_scene();
     /// After undo or redo: keeps selected what is still there.
