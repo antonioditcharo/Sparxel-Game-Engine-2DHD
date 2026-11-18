@@ -2,6 +2,7 @@
 
 #include "engine/game/combat.h"
 #include "engine/game/hud.h"
+#include "engine/game/links.h"
 #include "engine/game/logic_world.h"
 #include "engine/game/particles.h"
 
@@ -329,6 +330,15 @@ void register_behaviours(reflect::Registry& registry) {
         .display_name("Blocks only")
         .tooltip("Tags of the characters it stops, such as player; empty stops everyone.");
 
+    registry.add_type<Links>("links")
+        .display_name("Links")
+        .category("Events")
+        .tooltip("What happens to other objects when this one's events happen, with no Rule "
+                 "to write: a line each, such as entered -> gate.open.")
+        .property<&Links::links>("links")
+        .tooltip("A line each: event -> object.action, or with a value after it: interacted "
+                 "-> elder.say Welcome!, defeated -> door.enabled no.");
+
     auto trigger = registry.add_type<Trigger>("trigger")
                        .display_name("Trigger Area")
                        .category("Events")
@@ -595,7 +605,7 @@ bool register_behaviour_components(world::World& world) {
                        world.register_component<MovingPlatform>() &&
                        world.register_component<Ladder>();
     const bool hud = register_hud_components(world);
-    const bool combat = register_combat_components(world);
+    const bool combat = register_combat_components(world) && world.register_component<Links>();
     return mover && walker && particles && prefab && encounter && walk && body && trigger &&
            interactable && simulated && sound && jumping && enemy && hud && combat;
 }

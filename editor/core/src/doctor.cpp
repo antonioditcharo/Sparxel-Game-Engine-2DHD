@@ -199,9 +199,19 @@ std::vector<Finding> examine(const Document& document) {
     }
 
     // Every scene: the open one as it is now, the others as saved.
+    // Links: told as the game would tell them.
+    const auto check_scene_links = [&](const world::World& scene, const std::string& path) {
+        for (const serialize::Issue& issue : document.check_links(scene)) {
+            Finding f;
+            f.message = path + ": " + issue.path + ": " + issue.message;
+            f.scene = path;
+            found.push_back(std::move(f));
+        }
+    };
     for (const std::string& path : document.scenes()) {
         if (path == document.scene_path()) {
             check_scene(document.world(), path, assets, found, used);
+            check_scene_links(document.world(), path);
             continue;
         }
         world::World scratch(document.registry());
@@ -224,6 +234,7 @@ std::vector<Finding> examine(const Document& document) {
             continue;
         }
         check_scene(scratch, path, assets, found, used);
+        check_scene_links(scratch, path);
     }
 
     // Logic: every problem the compiler finds, on its block.

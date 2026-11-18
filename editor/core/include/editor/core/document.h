@@ -530,6 +530,11 @@ public:
     /// What stops the logic file at `path` from running, checked by the compiler against
     /// the registry and the scene, each problem on its block. Empty if it compiles.
     [[nodiscard]] std::vector<engine::logic::Diagnostic> check_logic(std::string_view path) const;
+    /// What is wrong with the Links (engine::game::links.h) of the entities of `scene` (the
+    /// open scene, or another read into a world), each with the entity, as the game would
+    /// say when it starts. Empty if nothing.
+    [[nodiscard]] std::vector<engine::serialize::Issue>
+    check_links(const engine::world::World& scene) const;
 
     [[nodiscard]] bool can_undo() const noexcept;
     [[nodiscard]] bool can_redo() const noexcept;

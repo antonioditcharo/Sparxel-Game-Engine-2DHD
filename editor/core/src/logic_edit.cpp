@@ -3,6 +3,7 @@
 
 #include "engine/foundation/text.h"
 #include "engine/game/behaviours.h"
+#include "engine/game/links.h"
 #include "engine/game/logic_world.h"
 
 #include <algorithm>
@@ -2535,6 +2536,24 @@ std::vector<logic::Diagnostic> Document::check_logic(std::string_view path) cons
         return types_of(look, object);
     };
     return logic::compile(file->asset, d.registry, objects).errors;
+}
+
+std::vector<engine::serialize::Issue>
+Document::check_links(const engine::world::World& scene) const {
+    const Impl& d = *impl_;
+    const Lookup look{d.registry, *d.world, &d.elsewhere};
+    const logic::ObjectTypes objects = [&look](std::string_view object) {
+        return types_of(look, object);
+    };
+    std::vector<engine::serialize::Issue> issues;
+    logic::LogicAsset rules;
+    rules.name = "links";
+    std::uint64_t block = 1;
+    engine::game::add_link_rules(scene, objects, rules, block, issues);
+    for (const logic::Diagnostic& error : logic::compile(rules, d.registry, objects).errors) {
+        issues.push_back(engine::serialize::Issue{"links", error.message});
+    }
+    return issues;
 }
 
 } // namespace editor

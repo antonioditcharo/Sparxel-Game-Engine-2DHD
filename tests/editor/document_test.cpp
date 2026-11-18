@@ -8,6 +8,7 @@
 #include "engine/game/behaviours.h"
 #include "engine/game/combat.h"
 #include "engine/game/hud.h"
+#include "engine/game/links.h"
 #include "engine/game/localization.h"
 #include "engine/game/logic_world.h"
 #include "engine/game/runtime.h"
@@ -3177,6 +3178,32 @@ TEST_CASE("Project Doctor finds missing files, broken logic, unreachable scenes 
     CHECK(std::any_of(found.begin(), found.end(), [](const editor::Finding& f) {
         return f.severity == Severity::Warning && f.scene == "maps/attic.dscene";
     }));
+}
+
+TEST_CASE("Project Doctor tells what is wrong with an object's links") {
+    const Sample sample;
+    const std::unique_ptr<editor::Document> doc = sample.open();
+    world::World& w = doc->world();
+    const world::Entity elder = w.find_named("elder").at(0);
+    REQUIRE(w.get<game::Interactable>(elder) != nullptr);
+    w.add<game::Links>(elder)->links = "interacted -> hero.speed 6\n" // fine
+                                       "interacted -> hero.fly\n"     // no such action
+                                       "touched -> hero.speed 2\n";   // no such event
+    const std::vector<editor::Finding> found = editor::examine(*doc);
+    std::vector<std::string> said;
+    for (const editor::Finding& f : found) {
+        if (f.message.find("links of elder") != std::string::npos) {
+            CHECK(f.severity == editor::Finding::Severity::Problem);
+            CHECK(f.scene == "maps/village.dscene");
+            said.push_back(f.message);
+        }
+    }
+    CHECK(said == std::vector<std::string>{
+                      "maps/village.dscene: links of elder: \"interacted -> hero.fly\": hero "
+                      "cannot fly.",
+                      "maps/village.dscene: links of elder: \"touched -> hero.speed\": elder has "
+                      "no event called touched."});
+    CHECK(doc->check_links(w).size() == 2);
 }
 
 TEST_CASE("Raising and lowering tiles builds Diorama terrain, a stroke one undo step") {

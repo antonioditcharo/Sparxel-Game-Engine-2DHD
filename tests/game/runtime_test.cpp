@@ -6,6 +6,7 @@
 #include "engine/game/combat.h"
 #include "engine/game/conversation.h"
 #include "engine/game/hud.h"
+#include "engine/game/links.h"
 #include "engine/game/localization.h"
 #include "engine/game/logic_world.h"
 #include "engine/game/runtime.h"
@@ -5027,6 +5028,128 @@ TEST_CASE("Screen Layouts: children's elements in a column, a row or a grid") {
     CHECK(pixel(pixels, 64, 50, 4) == render::Color{0, 255, 0, 255});
     CHECK(pixel(pixels, 64, 50, 11) == render::Color{0, 0, 255, 255});
     CHECK_FALSE(pixel(pixels, 64, 50, 32) == render::Color{0, 255, 0, 255}); // not its own
+}
+
+TEST_CASE("Links: a lever's events open a gate and say so; broken links are reported") {
+    const Project project;
+    {
+        reflect::Registry registry;
+        game::register_types(registry);
+        world::World w(registry);
+        REQUIRE(scene2d::register_components(w));
+        REQUIRE(game::register_behaviour_components(w));
+        const world::Entity hero = w.create("hero");
+        w.add<scene2d::Transform2D>(hero);
+        w.add<game::TopDownMover>(hero);
+        const world::Entity gate = w.create("gate");
+        w.add<scene2d::Transform2D>(gate)->x = 3.0;
+        w.add<game::Body>(gate);
+        const world::Entity lever = w.create("lever");
+        w.add<scene2d::Transform2D>(lever)->y = 1.0;
+        w.add<game::Interactable>(lever);
+        w.add<game::Links>(lever)->links =
+            "interacted -> gate.enabled no\ninteracted -> dialogue.say The gate opens.";
+        write_json(project.folder.path / "assets/maps/gate.dscene", serialize::scene_to_json(w));
+        // Another scene's links become Rules too, and its mistakes are told.
+        world::World cave(registry);
+        REQUIRE(scene2d::register_components(cave));
+        REQUIRE(game::register_behaviour_components(cave));
+        const world::Entity plate = cave.create("plate");
+        cave.add<scene2d::Transform2D>(plate);
+        cave.add<game::Links>(plate)->links =
+            "entered -> gate.fly\nentered -> gate.enabled maybe\nentered gate";
+        const world::Entity bell = cave.create("bell");
+        cave.add<scene2d::Transform2D>(bell);
+        cave.add<game::Links>(bell)->links = "entered -> gate.enabled yes";
+        write_json(project.folder.path / "assets/maps/cave.dscene", serialize::scene_to_json(cave));
+        std::vector<serialize::Issue> issues;
+        std::optional<game::ProjectSettings> settings =
+            game::read_project(project.folder.path, issues);
+        REQUIRE(settings.has_value());
+        if (!settings) {
+            return;
+        }
+        settings->start_scene = "maps/gate.dscene";
+        write_json(project.folder.path / game::project_file, game::project_to_json(*settings));
+    }
+    std::vector<serialize::Issue> issues;
+    game::RuntimeOptions options = no_graphics(nullptr);
+    options.save_folder = project.folder.path / "saves";
+    const std::unique_ptr<game::Runtime> runtime =
+        game::Runtime::open(project.folder.path, options, issues);
+    REQUIRE(runtime != nullptr);
+    // The plate's text cannot be read (its third line); the bell has no "entered" (it is
+    // not a Trigger Area): both told by name, and the lever's links work all the same.
+    std::vector<std::string> told;
+    for (const serialize::Issue& issue : issues) {
+        if (issue.path == "links of plate" || issue.path == "links of bell") {
+            told.push_back(issue.path + ": " + issue.message);
+        }
+    }
+    REQUIRE(told.size() == 2);
+    CHECK(told[0].starts_with("links of plate: Line 3: a link reads"));
+    CHECK(told[1] ==
+          "links of bell: \"entered -> gate.enabled\": bell has no event called entered.");
+    CHECK(issues.size() == 2);
+    const world::World& w = runtime->world();
+    const world::Entity lever = w.find_named("lever").at(0);
+    const std::array<reflect::Value, 1> by{reflect::Value{std::string("hero")}};
+    REQUIRE(game::emit(runtime->vm(), w, lever, "interacted", by));
+    runtime->step();
+    CHECK_FALSE(w.get<game::Body>(w.find_named("gate").at(0))->enabled);
+    REQUIRE(runtime->dialogue().current() != nullptr);
+    CHECK(*runtime->dialogue().current() == "The gate opens.");
+}
+
+TEST_CASE("Links that name what cannot be done, or give the wrong value, are told") {
+    const Project project;
+    {
+        reflect::Registry registry;
+        game::register_types(registry);
+        world::World w(registry);
+        REQUIRE(scene2d::register_components(w));
+        REQUIRE(game::register_behaviour_components(w));
+        const world::Entity gate = w.create("gate");
+        w.add<scene2d::Transform2D>(gate);
+        w.add<game::Body>(gate);
+        const world::Entity plate = w.create("plate");
+        w.add<scene2d::Transform2D>(plate);
+        w.add<game::Trigger>(plate);
+        w.add<game::Links>(plate)->links =
+            "entered -> gate.fly\nentered -> gate.enabled maybe\nexited -> gate.enabled yes";
+        write_json(project.folder.path / "assets/maps/gate.dscene", serialize::scene_to_json(w));
+        std::vector<serialize::Issue> issues;
+        std::optional<game::ProjectSettings> settings =
+            game::read_project(project.folder.path, issues);
+        REQUIRE(settings.has_value());
+        if (!settings) {
+            return;
+        }
+        settings->start_scene = "maps/gate.dscene";
+        write_json(project.folder.path / game::project_file, game::project_to_json(*settings));
+    }
+    std::vector<serialize::Issue> issues;
+    game::RuntimeOptions options = no_graphics(nullptr);
+    options.save_folder = project.folder.path / "saves";
+    const std::unique_ptr<game::Runtime> runtime =
+        game::Runtime::open(project.folder.path, options, issues);
+    REQUIRE(runtime != nullptr);
+    std::vector<std::string> told;
+    for (const serialize::Issue& issue : issues) {
+        if (issue.path == "links of plate") {
+            told.push_back(issue.message);
+        }
+    }
+    CHECK(told == std::vector<std::string>{
+                      "\"entered -> gate.fly\": gate cannot fly.",
+                      "\"entered -> gate.enabled\" needs Yes/No after it, not \"maybe\"."});
+    // The good one works: leaving the plate turns the gate back on.
+    const world::World& w = runtime->world();
+    w.get<game::Body>(w.find_named("gate").at(0))->enabled = false;
+    const std::array<reflect::Value, 1> by{reflect::Value{std::string("hero")}};
+    REQUIRE(game::emit(runtime->vm(), w, w.find_named("plate").at(0), "exited", by));
+    runtime->step();
+    CHECK(w.get<game::Body>(w.find_named("gate").at(0))->enabled);
 }
 
 TEST_CASE("Rules ask whether one object can see another past walls, and how far apart") {

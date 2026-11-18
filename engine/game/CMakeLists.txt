@@ -14,6 +14,7 @@ add_library(engine_game STATIC
     src/dialogue.cpp
     src/hud.cpp
     src/inventory.cpp
+    src/links.cpp
     src/localization.cpp
     src/logic_world.cpp
     src/menus.cpp

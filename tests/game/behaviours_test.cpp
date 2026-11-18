@@ -2,6 +2,7 @@
 // interaction, driven by an input state the test sets directly.
 
 #include "engine/game/combat.h"
+#include "engine/game/links.h"
 #include "engine/game/runtime.h"
 
 #include <doctest/doctest.h>
@@ -12,6 +13,7 @@
 #include <initializer_list>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -1088,7 +1090,7 @@ TEST_CASE("Collision layers by tag: bodies that block some, areas that notice so
 }
 
 TEST_CASE("Reduced flashing: a hurt neither flashes nor blinks") {
-    Fixture f;
+    const Fixture f;
     f.w->add<scene2d::Sprite>(f.hero);
     f.w->add<game::Health>(f.hero);
     const scene2d::Sprite& look = *f.w->get<scene2d::Sprite>(f.hero);
@@ -1102,4 +1104,27 @@ TEST_CASE("Reduced flashing: a hurt neither flashes nor blinks") {
     }
     CHECK_FALSE(changed);
     CHECK(f.w->get<game::Health>(f.hero)->health == 2.0); // hurt all the same
+}
+
+TEST_CASE("Links read as event, object, what it does, and a value") {
+    std::string error;
+    const std::optional<std::vector<game::Link>> links =
+        game::parse_links("// the lever\n"
+                          "interacted -> gate.enabled no\n"
+                          "\n"
+                          "  interacted ->dialogue.say  The gate opens.  \n"
+                          "entered -> hero.revive",
+                          error);
+    REQUIRE(links.has_value());
+    CHECK(links.value_or(std::vector<game::Link>{}) ==
+          std::vector<game::Link>{{"interacted", "gate", "enabled", "no"},
+                                  {"interacted", "dialogue", "say", "The gate opens."},
+                                  {"entered", "hero", "revive", ""}});
+    CHECK(game::parse_links("", error).value_or(std::vector<game::Link>{1}).empty());
+    for (const char* bad : {"interacted gate.open", "interacted -> gate", "-> gate.open",
+                            "on enter -> gate.open", "entered -> .open"}) {
+        CAPTURE(bad);
+        CHECK_FALSE(game::parse_links(std::string("// fine\n") + bad, error).has_value());
+        CHECK(error.starts_with("Line 2: a link reads"));
+    }
 }

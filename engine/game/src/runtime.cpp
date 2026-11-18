@@ -4,6 +4,7 @@
 #include "engine/game/combat.h"
 #include "engine/game/debug_menu.h"
 #include "engine/game/hud.h"
+#include "engine/game/links.h"
 #include "engine/game/localization.h"
 #include "engine/game/logic_world.h"
 #include "engine/game/shop.h"
@@ -1051,7 +1052,9 @@ std::unique_ptr<Runtime> Runtime::open(const fs::path& root, const RuntimeOption
         const std::vector<std::string> tags = tags_of(*r.world, entity);
         return entity.is_valid() && std::find(tags.begin(), tags.end(), wanted) != tags.end();
     });
-    // The other scenes' entities, for logic about them.
+    // The other scenes' entities, for logic about them (kept until their links are made
+    // Rules, below).
+    std::vector<std::unique_ptr<world::World>> other_scenes;
     for (const assets::AssetRecord& record : r.assets.assets()) {
         if (!record.path.ends_with(".dscene") || record.guid == scene->guid) {
             continue;
@@ -1063,7 +1066,7 @@ std::unique_ptr<Runtime> Runtime::open(const fs::path& root, const RuntimeOption
         if (!other) {
             continue;
         }
-        world::World scratch(r.registry);
+        auto& scratch = *other_scenes.emplace_back(std::make_unique<world::World>(r.registry));
         scene2d::register_components(scratch);
         register_behaviour_components(scratch);
         for (const world::Entity entity : serialize::scene_from_json(*other, scratch).entities) {
@@ -1221,6 +1224,30 @@ std::unique_ptr<Runtime> Runtime::open(const fs::path& root, const RuntimeOption
             r.vm->clear_errors();
         }
     }
+
+    // Links, on objects of every scene: Rules of their own.
+    {
+        logic::LogicAsset links;
+        links.name = "links";
+        std::uint64_t block = 1;
+        add_link_rules(*r.world, types, links, block, issues);
+        for (const std::unique_ptr<world::World>& other : other_scenes) {
+            add_link_rules(*other, types, links, block, issues);
+        }
+        if (!links.rules.empty()) {
+            const logic::CompiledLogic compiled = logic::compile(links, r.registry, types);
+            for (const logic::Diagnostic& error : compiled.errors) {
+                issues.push_back(serialize::Issue{"links", error.message});
+            }
+            if (compiled.ok() && !r.vm->load(links.name, compiled.source)) {
+                for (const logic::ScriptError& error : r.vm->errors()) {
+                    issues.push_back(serialize::Issue{"links", error.message});
+                }
+                r.vm->clear_errors();
+            }
+        }
+    }
+    other_scenes.clear();
 
     // Graphics.
     if (options.graphics) {

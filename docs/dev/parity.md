@@ -21,14 +21,14 @@
 | B. Pixel art | 4 | 7 | 3 (+1 later) |
 | C. World building | 4 | 7 | 3 |
 | D. Rendering and the look | 4 | 10 | 1 (+1 later) |
-| E. No-code logic | 3 | 5 | 3 (+1 later) |
+| E. No-code logic | 4 | 5 | 2 (+1 later) |
 | F. Genre kits | 4 | 0 | 2 |
 | G. Story | 5 | 2 | 0 (+1 later) |
 | H. Characters | 3 | 2 | 0 |
 | I. Physics | 3 | 2 | 0 |
 | J. Audio | 2 | 4 | 0 (+1 later) |
 | K. UI | 3 | 4 | 0 |
-| **All** | **40** | **50** | **12** (+6 later) |
+| **All** | **41** | **50** | **11** (+6 later) |
 
 The strongest areas match or pass their references: the RPG kit and window skins (RPG
 Maker), auto-tiles and tile variants (RPG Maker, LDtk), no-code Rules with tags, *it*,
@@ -121,7 +121,7 @@ action kits (GameMaker), audio mixing (zones, reverb), and team features.
 | ID | Feature | Best today | Sparxel |
 |---|---|---|---|
 | E1 | Behaviors library | GDevelop | **Done**: movers, walkers, jumping, physics bodies, triggers, interactables, animation, enemies on the map, sound sources |
-| E2 | Links | Fortnite UEFN devices | **Not yet** (Rules do it) |
+| E2 | Links | Fortnite UEFN devices | **Done**: an object's events wired to other objects' actions and properties, a line each, made Rules as the game starts and checked by the Project Doctor |
 | E3 | Rules | GDevelop, Construct | **Done**: When / If / Do / Otherwise, tags (*any object tagged…*), *it*, *For each*, *who* |
 | E4 | Sequences | RPG Maker events | **Partial**: steps with waits, ifs and repeats; no timeline view |
 | E5 | Brains | Unity Behavior | **Partial**: state machines written as logic; no graph editor |

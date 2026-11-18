@@ -468,6 +468,32 @@ GUIDs never change, so the editor will write them into logic assets. Names are f
 people, and for logic written by hand while they are unique. The runtime also binds the
 `input` object, for conditions such as *"Interact is held"*.
 
+### Links: events wired to actions, with no Rule
+
+**Links** (`links`, links.h; `plan/02` E2, as Fortnite's devices are wired) are written on
+an object: what happens to other objects when its events happen, a line each.
+
+```
+interacted -> gate.enabled no
+interacted -> dialogue.say The gate opens.
+entered -> lamp.play_tag on
+```
+
+A line is the object's own event, `->`, another object (or a game object such as
+`dialogue`, `camera`, `inventory`) with `.` and an action or a property, then what it is
+given: the action's first value (others keep their defaults), or what the property
+becomes. The text is turned into what is wanted: a number, *yes* or *no* (*true*,
+*false*, *on*, *off*), one of a choice's names, or words. Blank lines and lines starting
+`//` are passed over.
+
+As the game starts, every link of every scene becomes a Rule (on the object, by its GUID)
+in one more script, *links*, so links run exactly as Rules do, in their order, and are
+checked as Rules are. A line that cannot be read stops that object's links (its line said);
+an event the object does not have, a target that cannot do what is named, or a value of the
+wrong kind leave out that line only, each said with the object's name (*links of plate:
+"entered -> gate.fly": gate cannot fly.*), and the Project Doctor says the same in the
+editor. (`parse_links()`, `add_link_rules()`; `Document::check_links()`.)
+
 ### Tags: one Rule for many objects
 
 A **Tags** component gives an object words that group it with others: *enemy, flying*
@@ -727,6 +753,7 @@ named by path (`maps/cave.dscene`) or GUID.
 | Falling and jumping | `fall()` on its own: pressed against the floor it is on the ground; a jump rises between 2.8 and 3 tiles and lands in 44 to 48 steps (0.77 s); held, it does not jump again in the air; a ceiling a tile up stops the rise and it falls back; it falls no faster than 20 tiles a second; gravity that is not a number moves nothing. In a world: a hero with Jumping falls onto a solid floor and stands on it; Down does nothing; Right walks 2 tiles in half a second facing right; Space and Up jump it off the floor and it lands again; it lands on a Solid Body's top and falls back to the floor walking off it; disabled, it neither walks nor jumps but still falls |
 | Slopes | A hero walking right up a slope onto the ground a tile up, standing on it, and back down onto the floor, on the ground at every step |
 | Health and combat | A rock that is not an enemy hurts nothing; a slime tagged enemy takes 2, makes the hero safe (a second hit does nothing) and pushes it exactly a tile away in 0.15 s, the keys not moving it meanwhile, then walking again; it blinks, and its alpha is as it was after; the flash starts at the hurt and is gone 0.12 s later; the next hit defeats it: half dissolved after 0.2 s, hidden and whole after 0.4, no knockback, not walking, and a defeated hero hurts nothing; revived, it is shown at full health; spikes with no Health take 1; healing stops at the most; NaN and negative hurts change nothing; tag lists. Knockback stops exactly at a wall. In a running game, one hit on a slime with 1 health: "hit" and "hits" once, "hurt" before "defeated", and the slime hidden |
+| Links | Read: three links with a comment, spaces and a blank line, one with no value; an empty text; five lines that are not links, each said with its line. In a running game: a lever's two links, when it is interacted with, turn the gate's body off and show *The gate opens.*; another scene's plate whose third line cannot be read, and a bell with no *entered* event, each told by name and nothing else told; a plate's link to an action the gate does not have and one with *maybe* for a yes or no, told exactly, while its good link turns the gate back on when left |
 | Reduced flashing | A hurt with flashes off changes neither the flash nor the alpha for a second, and hurts all the same |
 | Seeing and distance in Rules | A guard does not see the hero past a wall but sees a thief in the open below, and no one sees an object that is not there; the distance to the hero is 5, and to no one -1 |
 | Collision layers by tag | `body_blocks()` for a tag it names (any case), one it does not, and no tags; walking right for a second, the player stops at a fence that blocks only players while a slime walks through; a slime's way goes straight through it and the hero's round; a trap only for enemies notices a standing Walker tagged enemy and not the hero, and with no tags the Walker leaves and the hero enters |
