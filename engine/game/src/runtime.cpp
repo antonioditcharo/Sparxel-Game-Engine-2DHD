@@ -134,10 +134,14 @@ namespace {
 
 /// The look a project's frames get: tilt-shift imitates a lens photographing a miniature,
 /// so it belongs to the Diorama style; flat Classic 2D keeps the rest of the look.
-render::Look effective_look(const ProjectSettings& settings, const LightingObject& lighting) {
+render::Look effective_look(const ProjectSettings& settings, const LightingObject& lighting,
+                            int graphics) {
     render::Look look = settings.look;
-    if (settings.style != RenderStyle::Diorama) {
+    if (settings.style != RenderStyle::Diorama || graphics < 1) {
         look.tilt_shift = false;
+    }
+    if (graphics < 2) {
+        look.bloom = 0.0F; // the player chose lighter graphics
     }
     // The light's colour (day and night, or logic's), in either style.
     const auto channel = [](double v) {
@@ -677,8 +681,9 @@ ui::RichText themed_rich(const std::string& message, const UiTheme& theme) {
 }
 
 /// The actions the player may rebind on the Options page.
-constexpr std::array<std::string_view, 7> rebindable{
-    "move_up", "move_down", "move_left", "move_right", "interact", "cancel", "menu"};
+constexpr std::array<std::string_view, 9> rebindable{"move_up",    "move_down", "move_left",
+                                                     "move_right", "interact",  "cancel",
+                                                     "menu",       "jump",      "attack"};
 
 std::vector<input::Binding> keyboard_bindings(const input::InputMap& map, std::string_view action) {
     std::vector<input::Binding> out;
@@ -731,6 +736,8 @@ serialize::Json options_to_json(const GameMenu::Options& options, const input::I
     json["sounds"] = options.sounds;
     json["text_speed"] = options.text_speed;
     json["language"] = options.language;
+    json["graphics"] = options.graphics >= 2 ? "high" : options.graphics == 1 ? "medium" : "low";
+    json["flashing"] = options.reduced_flashing ? "reduced" : "on";
     serialize::Json keys = serialize::Json::object();
     for (const std::string_view action : rebindable) {
         serialize::Json codes = serialize::Json::array();
@@ -760,6 +767,18 @@ void options_from_json(const serialize::Json& json, GameMenu::Options& options,
     if (const auto language = json.find("language");
         language != json.end() && language->is_string()) {
         options.language = language->get<std::string>();
+    }
+    if (const auto graphics = json.find("graphics");
+        graphics != json.end() && graphics->is_string()) {
+        const std::string tier = graphics->get<std::string>();
+        options.graphics = tier == "low"      ? 0
+                           : tier == "medium" ? 1
+                           : tier == "high"   ? 2
+                                              : options.graphics;
+    }
+    if (const auto flashing = json.find("flashing");
+        flashing != json.end() && flashing->is_string()) {
+        options.reduced_flashing = flashing->get<std::string>() == "reduced";
     }
     const auto keys = json.find("keys");
     if (keys == json.end() || !keys->is_object()) {
@@ -1223,7 +1242,8 @@ std::unique_ptr<Runtime> Runtime::open(const fs::path& root, const RuntimeOption
         if (r.settings.style == RenderStyle::Diorama) {
             r.world_renderer = render::WorldRenderer::create(*r.device);
         }
-        const bool post = !effective_look(r.settings, r.lighting).neutral();
+        const bool post =
+            !effective_look(r.settings, r.lighting, r.menu.options().graphics).neutral();
         if (post) {
             r.scene = r.device->create_render_target(r.settings.width, r.settings.height);
             r.post = render::PostProcessor::create(*r.device);
@@ -1875,7 +1895,7 @@ void Runtime::step() {
             }
         }
     }
-    update_health(*r.world, dt, r.settings.ppu);
+    update_health(*r.world, dt, r.settings.ppu, !r.menu.options().reduced_flashing);
     update_particles(*r.world, dt);
     ++r.steps;
 
@@ -2016,7 +2036,12 @@ bool Runtime::draw() {
     // logic told it to follow or look at, shaken; else the origin.
     scene2d::Camera2D camera;
     camera.ppu = r.settings.ppu;
-    const std::array<double, 2> view_at = camera_view(r.camera, *r.world, r.steps);
+    // Reduced flashing: no shaking.
+    CameraObject steady = r.camera;
+    if (r.menu.options().reduced_flashing) {
+        steady.shake_left = 0.0;
+    }
+    const std::array<double, 2> view_at = camera_view(steady, *r.world, r.steps);
     camera.x = view_at[0];
     camera.y = view_at[1];
     const double aspect = static_cast<double>(r.target->width()) /
@@ -2049,7 +2074,8 @@ bool Runtime::draw() {
         }
     }
     // A look that comes to need processing while playing (night falls): its pass, now.
-    if (r.post == nullptr && !effective_look(r.settings, r.lighting).neutral()) {
+    if (r.post == nullptr &&
+        !effective_look(r.settings, r.lighting, r.menu.options().graphics).neutral()) {
         r.scene = r.device->create_render_target(r.settings.width, r.settings.height);
         r.post = render::PostProcessor::create(*r.device);
         if (r.scene == nullptr || r.post == nullptr) {
@@ -2065,8 +2091,14 @@ bool Runtime::draw() {
     if (r.settings.style == RenderStyle::Diorama) {
         orbit.x = camera.x;
         orbit.y = camera.y;
+        scene2d::DioramaLight light = diorama_light(r.settings, r.lighting);
+        if (r.menu.options().graphics < 2) {
+            // Lighter graphics: no shadow map from the sun; round shadows under characters.
+            light.block_shadow = 0.0F;
+            light.shadows = scene2d::ShadowShape::Round;
+        }
         scene2d::draw_diorama(*r.world, *r.textures, *r.world_renderer, world_target, orbit,
-                              r.settings.background, diorama_light(r.settings, r.lighting));
+                              r.settings.background, light);
         particles.diorama = true;
         particles.view_projection =
             scene2d::diorama_view_projection(orbit, static_cast<float>(aspect));
@@ -2078,13 +2110,15 @@ bool Runtime::draw() {
     static_cast<void>(draw_particles(*r.world, *r.sprites, *r.white, world_target, particles));
     // The look, applied to the world only: the message box is drawn after, crisp.
     if (r.post != nullptr &&
-        !r.post->apply(*r.scene, *r.target, effective_look(r.settings, r.lighting))) {
+        !r.post->apply(*r.scene, *r.target,
+                       effective_look(r.settings, r.lighting, r.menu.options().graphics))) {
         return false;
     }
     // Classic 2D's lights, over the look's result: the frame night has darkened, which
     // they brighten in their own colour.
     if (r.settings.style != RenderStyle::Diorama) {
-        const render::Look shown = effective_look(r.settings, r.lighting);
+        const render::Look shown =
+            effective_look(r.settings, r.lighting, r.menu.options().graphics);
         scene2d::Lights2DShading shading;
         shading.strength = scene2d::lights_2d_strength(shown.tint_r, shown.tint_g, shown.tint_b);
         shading.darkening = {shown.tint_r, shown.tint_g, shown.tint_b};

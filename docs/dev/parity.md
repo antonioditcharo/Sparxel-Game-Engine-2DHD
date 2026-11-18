@@ -20,7 +20,7 @@
 | A. Project and workflow | 3 | 6 | 3 (+1 later) |
 | B. Pixel art | 4 | 7 | 3 (+1 later) |
 | C. World building | 4 | 7 | 3 |
-| D. Rendering and the look | 3 | 10 | 2 (+1 later) |
+| D. Rendering and the look | 4 | 10 | 1 (+1 later) |
 | E. No-code logic | 3 | 5 | 3 (+1 later) |
 | F. Genre kits | 4 | 0 | 2 |
 | G. Story | 4 | 2 | 1 (+1 later) |
@@ -28,7 +28,7 @@
 | I. Physics | 3 | 2 | 0 |
 | J. Audio | 2 | 4 | 0 (+1 later) |
 | K. UI | 3 | 4 | 0 |
-| **All** | **36** | **49** | **17** (+6 later) |
+| **All** | **37** | **49** | **16** (+6 later) |
 
 The strongest areas match or pass their references: the RPG kit and window skins (RPG
 Maker), auto-tiles and tile variants (RPG Maker, LDtk), no-code Rules with tags, *it*,
@@ -112,7 +112,7 @@ action kits (GameMaker), audio mixing (zones, reverb), and team features.
 | D11 | Parallax and skyboxes | GameMaker | **Partial**: parallax pictures in Classic 2D, scrolling at any speed and repeating; no pixel skyboxes for the Diorama style |
 | D12 | Pixel particles | GameMaker | **Done**: fire, smoke, rain, snow, dust, magic, sparks |
 | D13 | Material effects | GameMaker shaders | **Partial**: palette swap, tint, flash, outline and dissolve in both styles; no scrolling textures or custom shaders |
-| D14 | Quality tiers | Unity | **Not yet** |
+| D14 | Quality tiers | Unity | **Done**: the player's Graphics option, High, Medium (no bloom, no sun shadow map) and Low (no tilt-shift either), kept with their options |
 | D15, D16 | Shader graph, palette-locked lighting | | Later |
 | D17 | Baked lighting | Unity | **Not yet** |
 
@@ -198,5 +198,5 @@ action kits (GameMaker), audio mixing (zones, reverb), and team features.
 | K3 | Templates | RPG Maker | **Done**: title, pause, options, save and load, items, equipment, shop, battle, dialogue box, quest log |
 | K4 | Navigation and prompts | | **Done**: keyboard and gamepad menus, button prompts for the last device |
 | K5 | Pixel-perfect UI and bitmap fonts | | **Done**: whole-number scaling, the game's own pixel font |
-| K6 | Accessibility options | | **Partial**: text speed, volumes, key remapping; no text size or reduced flashing |
+| K6 | Accessibility options | | **Partial**: text speed, volumes, key remapping (Jump and Attack too), reduced flashing (no hurt flashes, blinking or camera shakes); no text size |
 | K7 | UI animations | RPG Maker | **Partial**: boxes open and fade, the typewriter; no tweens to author |

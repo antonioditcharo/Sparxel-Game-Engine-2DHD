@@ -1086,3 +1086,20 @@ TEST_CASE("Collision layers by tag: bodies that block some, areas that notice so
     CHECK(plain[1].entered);
     CHECK(plain[1].who == f.hero);
 }
+
+TEST_CASE("Reduced flashing: a hurt neither flashes nor blinks") {
+    Fixture f;
+    f.w->add<scene2d::Sprite>(f.hero);
+    f.w->add<game::Health>(f.hero);
+    const scene2d::Sprite& look = *f.w->get<scene2d::Sprite>(f.hero);
+    const world::Entity spikes = f.place("spikes", 1.0, 0.0);
+    const std::array<scene2d::HitContact, 1> hit{scene2d::HitContact{spikes, f.hero}};
+    REQUIRE(game::apply_hits(*f.w, hit).size() == 1);
+    bool changed = false;
+    for (int i = 0; i < 60; ++i) {
+        game::update_health(*f.w, 1.0 / 60.0, 16, false);
+        changed = changed || look.flash != 0.0 || look.tint_a != 255;
+    }
+    CHECK_FALSE(changed);
+    CHECK(f.w->get<game::Health>(f.hero)->health == 2.0); // hurt all the same
+}

@@ -107,6 +107,10 @@ std::vector<std::string> GameMenu::choices(const SaveObject& saves) const {
         out.push_back("Text speed  " + speed_name(options_.text_speed));
         out.push_back("Language  " + (options_.language.empty() ? std::string("The game's own")
                                                                 : options_.language));
+        out.push_back(std::string("Graphics  ") + (options_.graphics >= 2   ? "High"
+                                                   : options_.graphics == 1 ? "Medium"
+                                                                            : "Low"));
+        out.push_back(std::string("Flashing  ") + (options_.reduced_flashing ? "Reduced" : "On"));
         for (const auto& [action, keys] : options_.keys) {
             out.push_back(action_label(action) + "  " +
                           (waiting_ == action ? std::string("press a key...") : keys));
@@ -149,6 +153,12 @@ GameMenu::Result GameMenu::press(std::string_view action, const SaveObject& save
         } else if (cursor_ == 1) {
             options_.sounds =
                 std::clamp(std::round((options_.sounds + step) * 10.0) / 10.0, 0.0, 1.0);
+        } else if (cursor_ == 4) {
+            // High, Medium, Low, round: right goes down.
+            const int now = std::clamp(options_.graphics, 0, 2);
+            options_.graphics = action == "move_right" ? (now + 2) % 3 : (now + 1) % 3;
+        } else if (cursor_ == 5) {
+            options_.reduced_flashing = !options_.reduced_flashing;
         } else if (cursor_ == 3) {
             // The game's own, then each language of data/translations, round.
             std::vector<std::string> languages{std::string()};

@@ -3015,7 +3015,8 @@ TEST_CASE("Messages are typed out at the text speed, waiting at pauses; Interact
     CHECK(runtime->dialogue().said().front() == "Hello[pause=1] [wave]you[/wave]");
 }
 
-TEST_CASE("The Options page sets volumes and text speed, rebinds keys, and keeps them") {
+TEST_CASE("The Options page sets volumes, text speed, graphics and flashing, rebinds keys, "
+          "and keeps them") {
     const Project project;
     {
         std::vector<serialize::Issue> issues;
@@ -3042,7 +3043,12 @@ TEST_CASE("The Options page sets volumes and text speed, rebinds keys, and keeps
     press(input::Key::Down);
     press(input::Key::Down);
     press(input::Key::Right); // Text speed: Instant
-    for (int i = 0; i < 6; ++i) {
+    press(input::Key::Down);
+    press(input::Key::Down);
+    press(input::Key::Right); // Graphics: Medium
+    press(input::Key::Down);
+    press(input::Key::Right); // Flashing: Reduced
+    for (int i = 0; i < 5; ++i) {
         press(input::Key::Down); // to Interact
     }
     press(input::Key::Z);
@@ -3057,9 +3063,18 @@ TEST_CASE("The Options page sets volumes and text speed, rebinds keys, and keeps
     CHECK(options.music == doctest::Approx(0.9));
     CHECK(options.sounds == doctest::Approx(1.0));
     CHECK(options.text_speed == doctest::Approx(0.0));
-    REQUIRE(options.keys.size() == 7);
+    CHECK(options.graphics == 1);
+    CHECK(options.reduced_flashing);
+    const game::SaveObject no_saves; // the Options page shows no slots
+    const std::vector<std::string> lines = runtime->menu().choices(no_saves);
+    REQUIRE(lines.size() > 6);
+    CHECK(lines[4] == "Graphics  Medium");
+    CHECK(lines[5] == "Flashing  Reduced");
+    REQUIRE(options.keys.size() == 9);
     CHECK(options.keys[4].first == "interact");
     CHECK(options.keys[4].second == "C");
+    CHECK(options.keys[7].first == "jump");
+    CHECK(options.keys[8].first == "attack");
     CHECK_FALSE(runtime->menu().waiting_for_key());
     REQUIRE(runtime->audio() != nullptr);
     CHECK(runtime->audio()->player_volume(audio::Bus::Music) == doctest::Approx(0.9));
@@ -3074,6 +3089,8 @@ TEST_CASE("The Options page sets volumes and text speed, rebinds keys, and keeps
     const auto second = project.open(no_graphics(&again));
     CHECK(second->menu().options().music == doctest::Approx(0.9));
     CHECK(second->menu().options().keys[4].second == "C");
+    CHECK(second->menu().options().graphics == 1);
+    CHECK(second->menu().options().reduced_flashing);
     for (int i = 0; i < 4; ++i) {
         second->step();
     }
@@ -3107,7 +3124,7 @@ TEST_CASE("Rebinding a key another action has takes it; an action left with none
         press(input::Key::Down);
     }
     press(input::Key::Z); // Options
-    for (int i = 0; i < 8; ++i) {
+    for (int i = 0; i < 10; ++i) {
         press(input::Key::Down); // to Interact
     }
     press(input::Key::Z);
@@ -3121,7 +3138,7 @@ TEST_CASE("Rebinding a key another action has takes it; an action left with none
         runtime->step();
     }
     const game::GameMenu::Options& options = runtime->menu().options();
-    REQUIRE(options.keys.size() == 7);
+    REQUIRE(options.keys.size() == 9);
     CHECK(options.keys[5].first == "cancel");
     CHECK(options.keys[5].second == "C");
     const bool swapped = options.keys[4].second.find('X') != std::string::npos &&

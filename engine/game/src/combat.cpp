@@ -224,7 +224,7 @@ std::vector<Hurt> apply_hits(world::World& world, std::span<const scene2d::HitCo
     return hurts;
 }
 
-void update_health(world::World& world, double seconds, std::uint32_t ppu) {
+void update_health(world::World& world, double seconds, std::uint32_t ppu, bool flashes) {
     const reflect::TypeInfo* type = world.registry().find_type<Health>();
     if (type == nullptr || !std::isfinite(seconds) || seconds < 0.0) {
         return;
@@ -256,7 +256,7 @@ void update_health(world::World& world, double seconds, std::uint32_t ppu) {
         if (health->flash_time > 0.0) {
             health->flash_time = std::max(0.0, health->flash_time - seconds);
             if (sprite != nullptr) {
-                sprite->flash = health->flash_time / flash_seconds;
+                sprite->flash = flashes ? health->flash_time / flash_seconds : 0.0;
             }
         }
         // Defeated: dissolving, then hidden (once, so logic may show it again); still,
@@ -298,7 +298,7 @@ void update_health(world::World& world, double seconds, std::uint32_t ppu) {
             health->safe = std::max(0.0, health->safe - seconds);
             if (sprite != nullptr) {
                 const bool faint =
-                    health->safe > 0.0 &&
+                    flashes && health->safe > 0.0 &&
                     static_cast<std::int64_t>(std::floor(health->safe / blink_seconds)) % 2 == 0;
                 sprite->tint_a = faint ? static_cast<std::uint8_t>(health->shown_alpha / 4)
                                        : health->shown_alpha;

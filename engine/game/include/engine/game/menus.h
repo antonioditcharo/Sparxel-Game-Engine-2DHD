@@ -56,11 +56,19 @@ public:
         double text_speed = -1.0;
         /// A language of data/translations; empty keeps the game's own.
         std::string language;
+        /// 2 High: as the game was made. 1 Medium: no glow (bloom) and no shadows from the
+        /// sun's shadow map (soft round ones under characters instead). 0 Low: also no
+        /// tilt-shift blur. For slower computers.
+        int graphics = 2;
+        /// No flashes of colour when something is hurt, no blinking while it is safe, and
+        /// no camera shakes: for players sensitive to flashing.
+        bool reduced_flashing = false;
         /// Each action the player can rebind, with the names of its keys now.
         std::vector<std::pair<std::string, std::string>> keys;
     };
-    /// The Options page's first key line: Music, Sounds, Text speed and Language come first.
-    static constexpr std::size_t first_key_line = 4;
+    /// The Options page's first key line: Music, Sounds, Text speed, Language, Graphics and
+    /// Flashing come first.
+    static constexpr std::size_t first_key_line = 6;
     /// What a choice asks the game to do.
     struct Result {
         enum class Kind : std::uint8_t { None, NewGame, Load, Save, Quit, Resume, Options, Rebind };

@@ -77,7 +77,8 @@ std::vector<Hurt> apply_hits(world::World& world, std::span<const scene2d::HitCo
 
 /// One step of `seconds`: safety running out (the sprite blinks meanwhile, and shows again
 /// after), knockback moving each one as far as solid tiles and Solid Bodies let it, and
-/// defeated ones kept hidden.
-void update_health(world::World& world, double seconds, std::uint32_t ppu);
+/// defeated ones kept hidden. Without `flashes` (the player's reduced flashing), hurts
+/// neither flash nor blink.
+void update_health(world::World& world, double seconds, std::uint32_t ppu, bool flashes = true);
 
 } // namespace engine::game
