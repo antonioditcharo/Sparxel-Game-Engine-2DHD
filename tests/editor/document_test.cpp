@@ -13,6 +13,7 @@
 #include "engine/game/logic_world.h"
 #include "engine/game/runtime.h"
 #include "engine/game/tables.h"
+#include "engine/game/tactics.h"
 #include "engine/input/input.h"
 #include "engine/logic/ir.h"
 #include "engine/scene2d/scene2d.h"
@@ -1340,6 +1341,78 @@ TEST_CASE("A new Diorama project draws in 3D, and not as the flat one does") {
     }
     CAPTURE(green);
     CHECK(green > 6000); // of 12,000
+}
+
+TEST_CASE("A new tactics game: the battle starts with the game, played with the keys") {
+    const fs::path folder =
+        fs::temp_directory_path() / ("sparxel-new-" + Guid::generate().to_string());
+    std::string error;
+    REQUIRE(editor::create_project(folder, "Field", error, editor::ProjectTemplate::Tactics));
+    {
+        std::vector<serialize::Issue> issues;
+        const auto d = editor::Document::open(folder, issues);
+        REQUIRE(d != nullptr);
+        CHECK(issues.empty());
+        // The field, the rocks, three of the player's units, three slimes, the help line.
+        CHECK(d->entities().size() == 9);
+        const world::Entity archer = d->world().find_named("archer").at(0);
+        REQUIRE(d->world().get<game::TacticsUnit>(archer) != nullptr);
+        CHECK(d->world().get<game::TacticsUnit>(archer)->range == 2);
+        CHECK(d->world().get<game::TacticsUnit>(d->world().find_named("slime_2").at(0))->team ==
+              game::Team::Enemy);
+        CHECK(d->check_logic("logic/battle.drules").empty());
+        for (const editor::Finding& finding : editor::examine(*d)) {
+            CAPTURE(finding.message);
+            CHECK(finding.severity != editor::Finding::Severity::Problem);
+        }
+    }
+    engine::input::Recording replay;
+    const auto press = [&](std::uint64_t at, engine::input::Key key) {
+        replay.record(at, engine::input::Binding::key(key), true);
+        replay.record(at + 1, engine::input::Binding::key(key), false);
+    };
+    press(3, engine::input::Key::Z); // choose the unit under the cursor
+    press(6, engine::input::Key::X); // and put it back
+    game::RuntimeOptions options;
+    options.graphics = test_support::gpu() != nullptr;
+    options.headless = true;
+    options.replay = &replay;
+    options.audio = game::AudioMode::Headless;
+    options.save_folder = folder / "saves";
+    std::vector<serialize::Issue> issues;
+    const std::unique_ptr<game::Runtime> runtime = game::Runtime::open(folder, options, issues);
+    CHECK(issues.empty());
+    REQUIRE(runtime != nullptr);
+    // The frame, to see the moves lit blue in it.
+    const auto frame = [&] {
+        REQUIRE(runtime->draw());
+        return runtime->target()->read_pixels();
+    };
+    runtime->step();
+    runtime->step();
+    CHECK(runtime->tactics().is_player_turn());
+    CHECK(runtime->tactics().turn() == 1);
+    const std::vector<std::uint8_t> before =
+        options.graphics ? frame() : std::vector<std::uint8_t>{};
+    runtime->step();
+    runtime->step();
+    CHECK(runtime->tactics().step() == game::TacticsObject::Step::Move);
+    CHECK(runtime->tactics().moves().size() > 5);
+    if (options.graphics) {
+        // A dozen tiles or so, bluer than they were.
+        const std::vector<std::uint8_t> after = frame();
+        REQUIRE(after.size() == before.size());
+        int bluer = 0;
+        for (std::size_t i = 0; i + 3 < after.size(); i += 4) {
+            bluer += after[i + 2] > before[i + 2] + 30 ? 1 : 0;
+        }
+        CHECK(bluer > 1500);
+    }
+    for (int i = 0; i < 4; ++i) {
+        runtime->step();
+    }
+    CHECK(runtime->tactics().step() == game::TacticsObject::Step::Choose);
+    fs::remove_all(folder);
 }
 
 TEST_CASE("A new adventure: the mouse picks up the key and opens the door") {

@@ -160,6 +160,7 @@ add_executable(engine_game_tests
     game/logic_world_test.cpp
     game/runtime_test.cpp
     game/screenplay_test.cpp
+    game/tactics_test.cpp
 )
 target_link_libraries(engine_game_tests PRIVATE
     engine::game

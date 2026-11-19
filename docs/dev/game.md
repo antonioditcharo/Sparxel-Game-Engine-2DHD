@@ -414,6 +414,35 @@ across. The map's edges still stop the view (*Stay inside the map*), after all o
 Events are sent in a fixed order (exits before entries, then by trigger and mover GUID),
 so a replay always runs Rules in the same order.
 
+### Tactics
+
+Turn-based battles on the map's tiles (`plan/02` F3, as SRPG Studio and Fire Emblem play;
+tactics.h). A **Tactics Unit** (`tactics_unit`) is a unit on the tile it stands on (its
+feet on the tile's bottom edge, `tile_of()`, `stand_on()`): its *Side* (`team`, the
+player's or the enemy's), *Move* (tiles a turn, 4), *Range* (tiles away it attacks, 1:
+beside it), *HP*, *Max HP*, *Attack* and *Defence*. An attack takes the attacker's Attack
+less the defender's Defence, at least 1; at 0 HP a unit is defeated and hidden.
+
+The game object **tactics** runs the battle: *Start a tactics battle* (`start_battle`),
+*End the player's turn* (`end_turn`: every unit not yet done waits), *It is the player's
+turn*, and *The turn number*; Rules hear **"turn_started"** (with `team`, *player* or
+*enemy*), **"unit_defeated"** (with `who`), **"won"** (no enemy left) and **"lost"** (none
+of the player's left).
+
+**The player's turn**: the cursor starts on the first of the player's units; the move
+actions move it a tile, **Interact** chooses (a click on a tile moves it there and
+chooses), **Cancel** goes back. Choosing one of the player's units that has not acted
+shows where it may move (lit blue): the tiles within *Move* steps, four ways, round solid
+tiles and Solid Bodies, through its own side but not the other's, ending where no other
+unit stands (`reachable_tiles()`). Choosing one of those moves it there (its own tile
+stays); then the enemies in range (lit red, `targets_from()`) may be chosen to attack, or
+Cancel waits. When every unit of the player's has acted, **the enemies' turn** plays one
+enemy a moment (0.4 s) after another: each attacks one in range, else moves to the
+reachable tile nearest one of the player's units and attacks if it then can. Then the
+player's next turn. While a battle is on, the move actions do not walk anyone. Over the
+map are drawn the moves, the targets, the cursor and a small HP bar under each unit
+(green for the player's, red for the enemy's), in either style.
+
 ### Point and Click
 
 **Point and Click** (`point_and_click`, `plan/02` F6, as Adventure Game Studio plays) on
@@ -780,6 +809,7 @@ named by path (`maps/cave.dscene`) or GUID.
 | Falling and jumping | `fall()` on its own: pressed against the floor it is on the ground; a jump rises between 2.8 and 3 tiles and lands in 44 to 48 steps (0.77 s); held, it does not jump again in the air; a ceiling a tile up stops the rise and it falls back; it falls no faster than 20 tiles a second; gravity that is not a number moves nothing. In a world: a hero with Jumping falls onto a solid floor and stands on it; Down does nothing; Right walks 2 tiles in half a second facing right; Space and Up jump it off the floor and it lands again; it lands on a Solid Body's top and falls back to the floor walking off it; disabled, it neither walks nor jumps but still falls |
 | Slopes | A hero walking right up a slope onto the ground a tile up, standing on it, and back down onto the floor, on the ground at every step |
 | Health and combat | A rock that is not an enemy hurts nothing; a slime tagged enemy takes 2, makes the hero safe (a second hit does nothing) and pushes it exactly a tile away in 0.15 s, the keys not moving it meanwhile, then walking again; it blinks, and its alpha is as it was after; the flash starts at the hurt and is gone 0.12 s later; the next hit defeats it: half dissolved after 0.2 s, hidden and whole after 0.4, no knockback, not walking, and a defeated hero hurts nothing; revived, it is shown at full health; spikes with no Health take 1; healing stops at the most; NaN and negative hurts change nothing; tag lists. Knockback stops exactly at a wall. In a running game, one hit on a slime with 1 health: "hit" and "hits" once, "hurt" before "defeated", and the slime hidden |
+| Tactics | Tiles from positions and back; steps apart; damage, at least 1. Reach: its own tile first, not ending on its own side's unit but through it, not onto the other side's or the wall, not across the wall by the long way, not 4 steps away. Targets beside, none out of range, and with range 2. A battle by keys and a click: the player's turn first, the cursor on the knight, chosen, moved 4 right, the slime clicked and hit for 3; the enemies' turn, the slime striking back for 3; the second turn, attacking from where it stands, the slime defeated, hidden, and the battle won, with its events in order. Cancel goes back; an ogre walks 4 towards the waiting knight, then beside it and defeats it: lost |
 | Screen Buttons | A click on *Buy* tells its Rule; one on *Sell*, turned off, does nothing; neither walks the hero (Point and Click); the size of a button with no size of its own fits 30 pixels of words in 38 × 14. In the editor, a button shows in the scene view as a box wider than tall and is dragged 10 pixels across |
 | Point and Click | Clicked across the middle wall, the hero walks round its foot to the point; a chest found under a point and nothing elsewhere; clicked, the chest is walked up to within reach, turned to (facing down) and used once; the move keys end a walk; turned off, clicks do nothing. In a running game, a recorded pointer over the chest names it *old chest*, and a click walks the hero within reach and its Rule hears the hero |
 | Scripts | A script's *game_start* function logs and sets the hero's speed to 7 as the game starts, and its *elder.interacted* function logs who talked; a script that does not compile is one issue, at its file and line, and the Rules still run |

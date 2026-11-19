@@ -22,13 +22,13 @@
 | C. World building | 4 | 7 | 3 |
 | D. Rendering and the look | 4 | 10 | 1 (+1 later) |
 | E. No-code logic | 5 | 6 | 0 (+1 later) |
-| F. Genre kits | 4 | 1 | 1 |
+| F. Genre kits | 4 | 2 | 0 |
 | G. Story | 5 | 2 | 0 (+1 later) |
 | H. Characters | 3 | 2 | 0 |
 | I. Physics | 3 | 2 | 0 |
 | J. Audio | 2 | 4 | 0 (+1 later) |
 | K. UI | 3 | 4 | 0 |
-| **All** | **42** | **53** | **7** (+6 later) |
+| **All** | **42** | **54** | **6** (+6 later) |
 
 The strongest areas match or pass their references: the RPG kit and window skins (RPG
 Maker), auto-tiles and tile variants (RPG Maker, LDtk), no-code Rules with tags, *it*,
@@ -139,7 +139,7 @@ action kits (GameMaker), audio mixing (zones, reverb), and team features.
 |---|---|---|---|
 | F1 | Common: dialogue, inventory, shops, quests, saves, minimap, menus, options, credits, achievements | RPG Maker | **Done** |
 | F2 | RPG | RPG Maker | **Done**: party, levels and growth, skills, items, equipment, status effects, turn-based battles, encounters, enemies on the map |
-| F3 | Tactics | SRPG Studio | **Not yet** |
+| F3 | Tactics | SRPG Studio | **Partial**: turn-based battles on the map's tiles, moves and targets shown, keys and the mouse, enemies that close in and attack, a template; no classes, terrain bonuses, items or a battle preview |
 | F4 | Action-adventure | GameMaker | **Done**: health that hit boxes take, a blink of safety, knockback, defeat; enemies that chase on sight; an Attack action; a template with a sword, slimes and a health bar |
 | F5 | Platformer | GameMaker | **Done**: jumping with coyote time, an early press and variable height, moving platforms that carry the player, ladders, solid half tiles and slopes, a template |
 | F6 | Adventure | Adventure Game Studio | **Partial**: point and click walking and using, what the mouse is over named, the inventory, a template; no verbs or using an item on a thing |

@@ -24,6 +24,7 @@
 #include "engine/game/save.h"
 #include "engine/game/sound.h"
 #include "engine/game/tables.h"
+#include "engine/game/tactics.h"
 #include "engine/game/ui_theme.h"
 #include "engine/input/input.h"
 #include "engine/logic/vm.h"
@@ -269,6 +270,8 @@ public:
     [[nodiscard]] const InventoryObject& inventory() const noexcept;
     [[nodiscard]] const QuestObject& quests() const noexcept;
     [[nodiscard]] const PartyObject& party() const noexcept;
+    /// The tactics battle, under way or not.
+    [[nodiscard]] const TacticsObject& tactics() const noexcept;
     /// The title screen or pause menu, open or not.
     [[nodiscard]] const GameMenu& menu() const noexcept;
     [[nodiscard]] const DebugMenu& debug_menu() const noexcept;

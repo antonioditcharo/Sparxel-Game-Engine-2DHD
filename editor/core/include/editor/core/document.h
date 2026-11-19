@@ -99,9 +99,9 @@ inline constexpr std::string_view recovery_file = ".sparxel/recovery.json";
 
 /// The objects a game gives its logic besides its entities, each bound by the runtime to
 /// the registered type of the same name.
-inline constexpr std::array<std::string_view, 11> game_objects{
-    "audio", "battle",   "camera", "dialogue", "game",  "inventory",
-    "input", "lighting", "party",  "quests",   "tables"};
+inline constexpr std::array<std::string_view, 12> game_objects{
+    "audio", "battle",   "camera", "dialogue", "game",   "inventory",
+    "input", "lighting", "party",  "quests",   "tables", "tactics"};
 
 class Document {
 public:

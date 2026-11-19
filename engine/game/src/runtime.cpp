@@ -842,6 +842,7 @@ struct Runtime::Impl {
     InventoryObject inventory;
     QuestObject quests;
     TablesObject tables;
+    TacticsObject tactics;
     PartyObject party;
     BattleObject battle;
     std::optional<BattleScreen> battle_screen;
@@ -1141,7 +1142,8 @@ std::unique_ptr<Runtime> Runtime::open(const fs::path& root, const RuntimeOption
             serialize::Issue{"", "The tables object could not be made available to logic."});
     }
     for (const auto& [name, object] : {std::pair{"party", reflect::ObjectRef::of(r.party)},
-                                       std::pair{"battle", reflect::ObjectRef::of(r.battle)}}) {
+                                       std::pair{"battle", reflect::ObjectRef::of(r.battle)},
+                                       std::pair{"tactics", reflect::ObjectRef::of(r.tactics)}}) {
         if (!r.vm->bind(name, object)) {
             issues.push_back(serialize::Issue{
                 "", std::string("The ") + name + " object could not be made available to logic."});
@@ -1732,7 +1734,8 @@ void Runtime::step() {
     // So does everyone while the scene fades out and in.
     const bool talking = r.dialogue.is_open();
     const input::InputState& moves = talking || r.battle_screen || r.shop_screen || r.menu.open() ||
-                                             r.debug_menu.is_open() || r.fading != Impl::Fade::None
+                                             r.debug_menu.is_open() ||
+                                             r.fading != Impl::Fade::None || r.tactics.is_on()
                                          ? r.idle
                                          : r.state;
 
@@ -1959,6 +1962,20 @@ void Runtime::step() {
         }
         const std::array<reflect::Value, 1> payload{reflect::Value{action}};
         r.vm->emit("input", "pressed", payload);
+        // A tactics battle takes the moves, Interact and Cancel, and clicks on the map.
+        if (r.tactics.is_player_turn() && !talking) {
+            if (action == "click") {
+                if (const std::optional<std::array<double, 2>> at = pointer_point(r)) {
+                    r.tactics.click(*r.world,
+                                    Tile{static_cast<std::int64_t>(std::floor((*at)[0])),
+                                         static_cast<std::int64_t>(std::floor((*at)[1]))},
+                                    r.settings.ppu);
+                }
+            } else {
+                r.tactics.press(*r.world, action, r.settings.ppu);
+            }
+            continue;
+        }
         if (action != "interact" || talking) {
             continue;
         }
@@ -1981,6 +1998,16 @@ void Runtime::step() {
                     reflect::Value{who.empty() ? std::string() : who.back()}};
                 emit(*r.vm, *r.world, target, "interacted", by);
             }
+        }
+    }
+
+    // The tactics battle: its requests, the enemies' turn, and what Rules hear of it.
+    for (const TacticsObject::Event& event : r.tactics.update(*r.world, dt, r.settings.ppu)) {
+        if (event.name == "won" || event.name == "lost") {
+            r.vm->emit("tactics", event.name);
+        } else {
+            const std::array<reflect::Value, 1> payload{reflect::Value{event.value}};
+            r.vm->emit("tactics", event.name, payload);
         }
     }
 
@@ -3362,6 +3389,96 @@ std::string Runtime::hud_value(std::string_view name) const {
     return std::to_string(r.inventory.count_of(std::string(kind == "item" ? of : name)));
 }
 
+namespace {
+
+/// Where the map point (x, y) shows on the screen, as the frame is drawn.
+std::optional<std::array<float, 2>> map_to_screen(const Runtime::Impl& r, double x, double y) {
+    const GameView view = game_view(r);
+    const auto w = static_cast<float>(r.settings.width);
+    const auto h = static_cast<float>(r.settings.height);
+    if (r.settings.style == RenderStyle::Diorama) {
+        const render::Mat4 vp =
+            scene2d::diorama_view_projection(view.orbit, static_cast<float>(view.aspect));
+        const std::array<float, 4> clip =
+            vp.transform(render::Vec3{static_cast<float>(x), 0.0F, static_cast<float>(y)});
+        if (!(clip[3] > 0.0F)) {
+            return std::nullopt;
+        }
+        return std::array<float, 2>{((clip[0] / clip[3]) + 1.0F) * 0.5F * w,
+                                    (1.0F - (clip[1] / clip[3])) * 0.5F * h};
+    }
+    const auto ppu = static_cast<double>(std::max<std::uint32_t>(r.settings.ppu, 1));
+    return std::array<float, 2>{
+        static_cast<float>(((x - view.flat.x) * ppu) + (static_cast<double>(w) / 2.0)),
+        static_cast<float>(((y - view.flat.y) * ppu) + (static_cast<double>(h) / 2.0))};
+}
+
+/// A tactics battle under way: where the chosen unit may move (blue) and whom it may
+/// attack (red), the cursor, and each unit's HP, drawn over the world.
+void draw_tactics(Runtime::Impl& r, const render::Texture& white) {
+    if (!r.tactics.is_on()) {
+        return;
+    }
+    const render::Rect one{0.0F, 0.0F, 1.0F, 1.0F};
+    const auto tile_quad = [&](Tile t, render::Color colour, float inset) {
+        const auto x0 = static_cast<double>(t.x) + inset;
+        const auto y0 = static_cast<double>(t.y) + inset;
+        const auto x1 = static_cast<double>(t.x + 1) - inset;
+        const auto y1 = static_cast<double>(t.y + 1) - inset;
+        const auto a = map_to_screen(r, x0, y0);
+        const auto b = map_to_screen(r, x1, y0);
+        const auto c = map_to_screen(r, x1, y1);
+        const auto d = map_to_screen(r, x0, y1);
+        if (a && b && c && d) {
+            r.sprites->draw(white, one,
+                            {render::Point{(*a)[0], (*a)[1]}, render::Point{(*b)[0], (*b)[1]},
+                             render::Point{(*c)[0], (*c)[1]}, render::Point{(*d)[0], (*d)[1]}},
+                            colour);
+        }
+    };
+    for (const Tile& t : r.tactics.moves()) {
+        tile_quad(t, render::Color{80, 140, 255, 90}, 0.03F);
+    }
+    for (const Tile& t : r.tactics.targets()) {
+        tile_quad(t, render::Color{255, 70, 70, 120}, 0.03F);
+    }
+    if (r.tactics.is_player_turn()) {
+        // The cursor: the tile lit, see-through.
+        tile_quad(r.tactics.cursor(), render::Color{255, 210, 122, 110}, 0.0F);
+    }
+    // HP: a small bar under each living unit's feet.
+    if (const reflect::TypeInfo* type = r.world->registry().find_type<TacticsUnit>()) {
+        r.world->each(*type, [&](world::Entity e, reflect::ObjectRef ref) {
+            const auto* unit = ref.as<TacticsUnit>();
+            const scene2d::Transform2D* at = r.world->get<scene2d::Transform2D>(e);
+            if (unit == nullptr || at == nullptr || !unit->alive()) {
+                return;
+            }
+            const std::optional<std::array<float, 2>> feet = map_to_screen(r, at->x, at->y);
+            if (!feet) {
+                return;
+            }
+            const float width = 12.0F;
+            const float x = std::floor((*feet)[0] - (width / 2.0F));
+            const float y = std::floor((*feet)[1]);
+            const double part =
+                unit->max_hp > 0
+                    ? std::clamp(static_cast<double>(unit->hp) / static_cast<double>(unit->max_hp),
+                                 0.0, 1.0)
+                    : 0.0;
+            r.sprites->draw(white, one, render::Rect{x - 1.0F, y, width + 2.0F, 3.0F},
+                            render::Color{0, 0, 0, 200});
+            r.sprites->draw(
+                white, one,
+                render::Rect{x, y + 1.0F, std::floor(width * static_cast<float>(part)), 1.0F},
+                unit->team == Team::Player ? render::Color{90, 220, 120, 255}
+                                           : render::Color{235, 80, 80, 255});
+        });
+    }
+}
+
+} // namespace
+
 void Runtime::draw_hud() {
     Impl& r = *impl_;
     const ui::PixelFont& font = r.font_face;
@@ -3446,6 +3563,7 @@ void Runtime::draw_hud() {
         });
     }
     // Screen Buttons: a box in the menus' colours, lit under the pointer, dim when off.
+    draw_tactics(r, *r.white);
     for (const ButtonPlace& placed : button_places(r, places, fill)) {
         const render::Rect& box = placed.rect;
         const bool over = placed.button->enabled && pointing_at(r, box);
@@ -3683,6 +3801,10 @@ const InventoryObject& Runtime::inventory() const noexcept {
 
 const QuestObject& Runtime::quests() const noexcept {
     return impl_->quests;
+}
+
+const TacticsObject& Runtime::tactics() const noexcept {
+    return impl_->tactics;
 }
 
 const PartyObject& Runtime::party() const noexcept {

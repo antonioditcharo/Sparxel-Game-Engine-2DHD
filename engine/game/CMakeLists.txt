@@ -27,6 +27,7 @@ add_library(engine_game STATIC
     src/screenplay.cpp
     src/sound.cpp
     src/tables.cpp
+    src/tactics.cpp
     src/ui_theme.cpp
     src/walker.cpp
 )

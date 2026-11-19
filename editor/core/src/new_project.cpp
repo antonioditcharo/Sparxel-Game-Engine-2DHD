@@ -845,6 +845,126 @@ bool create_adventure(const fs::path& folder, std::string_view name, std::string
     return true;
 }
 
+/// The tactics field's rocks: stone round the edge and two outcrops in the middle.
+std::string field_rocks() {
+    constexpr std::uint32_t rows = 11;
+    scene2d::TileGrid grid;
+    grid.width = map_width;
+    grid.height = rows;
+    grid.cells.assign(std::size_t{map_width} * rows, -1);
+    for (std::uint32_t y = 0; y < rows; ++y) {
+        for (std::uint32_t x = 0; x < map_width; ++x) {
+            const bool edge = x == 0 || y == 0 || x + 1 == map_width || y + 1 == rows;
+            const bool rock = (x == 9 && y >= 2 && y <= 4) || (x == 10 && y >= 6 && y <= 8);
+            if (edge || rock) {
+                grid.cells[(std::size_t{y} * map_width) + x] = 2;
+            }
+        }
+    }
+    return scene2d::format_tiles(grid);
+}
+
+/// The tactics battle's logic: started with the game; the end said.
+engine::serialize::Json battle_rules() {
+    namespace logic = engine::logic;
+    namespace ir = engine::logic::ir;
+    using engine::reflect::Value;
+    const auto text = [](const char* words) { return ir::literal(Value{std::string(words)}); };
+    logic::LogicAsset rules;
+    rules.name = "battle";
+    rules.rules.push_back(logic::Rule{logic::BlockId{1},
+                                      "",
+                                      "game_start",
+                                      {},
+                                      {ir::do_action(2, "tactics", "start_battle", {})},
+                                      {}});
+    rules.rules.push_back(
+        logic::Rule{logic::BlockId{3},
+                    "tactics",
+                    "won",
+                    {},
+                    {ir::do_action(4, "dialogue", "say", {text("Victory! The field is yours.")})},
+                    {}});
+    rules.rules.push_back(logic::Rule{
+        logic::BlockId{5},
+        "tactics",
+        "lost",
+        {},
+        {ir::do_action(6, "dialogue", "say", {text("Defeat... the slimes hold the field.")})},
+        {}});
+    return serialize::logic_to_json(rules);
+}
+
+/// create_project() for a tactics game, into its folders, made already, with its tiles.
+bool create_tactics(const fs::path& folder, std::string_view name, std::string& error,
+                    const std::string& tileset_id) {
+    const fs::path assets_folder = folder / "assets";
+    std::error_code failed;
+    fs::create_directories(assets_folder / "logic", failed);
+    if (failed ||
+        !write_png(assets_folder / "art" / "knight.png", figure({90, 90, 100}, {60, 90, 200})) ||
+        !write_png(assets_folder / "art" / "guard.png", figure({200, 170, 60}, {60, 140, 80})) ||
+        !write_png(assets_folder / "art" / "archer.png", figure({150, 60, 30}, {120, 60, 140})) ||
+        !write_png(assets_folder / "art" / "slime.png", slime()) ||
+        !write_text(assets_folder / "logic" / "battle.drules",
+                    serialize::to_text(battle_rules()))) {
+        error = "The project's folder could not be written to.";
+        return false;
+    }
+    assets::AssetDatabase database(assets_folder);
+    database.refresh();
+    const auto picture = [&database](const char* path) {
+        const assets::AssetRecord* record = database.find(path);
+        return record != nullptr ? record->guid.to_string() : std::string();
+    };
+    serialize::Json entities = serialize::Json::array();
+    entities.push_back(
+        entity("field", {{"tilemap", {{"tiles", room_tiles(0, false)}, {"tileset", tileset_id}}},
+                         {"transform_2d", {{"layer", -2}, {"x", 0.0}, {"y", 0.0}}}}));
+    entities.push_back(entity(
+        "rocks", {{"tilemap", {{"tiles", field_rocks()}, {"tileset", tileset_id}, {"solid", true}}},
+                  {"transform_2d", {{"layer", -1}, {"x", 0.0}, {"y", 0.0}}}}));
+    // Each unit stands in the middle of its tile's bottom edge.
+    const auto unit = [&](const char* unit_name, const char* image, const char* team, double x,
+                          double y, serialize::Json stats) {
+        stats["team"] = team;
+        entities.push_back(entity(unit_name, {{"sprite", {{"image", picture(image)}}},
+                                              {"tactics_unit", std::move(stats)},
+                                              {"transform_2d", {{"x", x}, {"y", y}}}}));
+    };
+    unit("knight", "art/knight.png", "player", 3.5, 5.0,
+         {{"hp", 12}, {"max_hp", 12}, {"attack", 5}, {"defense", 2}, {"move", 4}});
+    unit("guard", "art/guard.png", "player", 3.5, 7.0,
+         {{"hp", 14}, {"max_hp", 14}, {"attack", 4}, {"defense", 3}, {"move", 3}});
+    unit("archer", "art/archer.png", "player", 2.5, 6.0,
+         {{"hp", 9}, {"max_hp", 9}, {"attack", 4}, {"defense", 1}, {"move", 3}, {"range", 2}});
+    unit("slime_1", "art/slime.png", "enemy", 15.5, 4.0,
+         {{"hp", 8}, {"max_hp", 8}, {"attack", 4}, {"defense", 1}, {"move", 3}});
+    unit("slime_2", "art/slime.png", "enemy", 16.5, 6.0,
+         {{"hp", 8}, {"max_hp", 8}, {"attack", 4}, {"defense", 1}, {"move", 3}});
+    unit("slime_3", "art/slime.png", "enemy", 15.5, 8.0,
+         {{"hp", 8}, {"max_hp", 8}, {"attack", 4}, {"defense", 1}, {"move", 3}});
+    entities.push_back(
+        entity("help", {{"screen_text",
+                         {{"text", "Choose a unit, where it goes, whom it attacks. Cancel: wait."},
+                          {"anchor", "bottom"},
+                          {"y", 2.0}}}}));
+    const serialize::Json scene{
+        {"format", "sparxel.scene"}, {"version", 1}, {"entities", std::move(entities)}};
+    engine::game::ProjectSettings settings;
+    settings.name = std::string(name);
+    settings.start_scene = "maps/start.dscene";
+    settings.pause_menu = true;
+    if (!write_text(assets_folder / "maps" / "start.dscene", serialize::to_text(scene)) ||
+        !write_text(folder / "project.sparxel.json",
+                    serialize::to_text(engine::game::project_to_json(settings)))) {
+        error = "The project's files could not be written.";
+        return false;
+    }
+    database.refresh();
+    return true;
+}
+
 /// The action game's hero, three 32 x 32 frames: standing, then a sword swept round it (a
 /// ring three-quarters drawn, then whole and paler). The hero stands at the bottom middle.
 assets::Image fighter() {
@@ -1116,6 +1236,9 @@ bool create_project(const fs::path& folder, std::string_view name, std::string& 
     }
     if (kind == ProjectTemplate::Adventure) {
         return create_adventure(folder, name, error, tileset_id, hero_id);
+    }
+    if (kind == ProjectTemplate::Tactics) {
+        return create_tactics(folder, name, error, tileset_id);
     }
     const bool rpg = kind == ProjectTemplate::Rpg;
     if (rpg && !write_rpg_files(folder / "assets")) {

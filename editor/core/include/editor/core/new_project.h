@@ -24,6 +24,7 @@ enum class ProjectTemplate : std::uint8_t {
     Rpg,
     Action,
     Adventure,
+    Tactics,
 };
 
 /// Makes a new project named `name` in `folder`, which must not exist yet or be empty, and
@@ -58,6 +59,10 @@ enum class ProjectTemplate : std::uint8_t {
 /// uses what it clicks; the name of what the mouse is over shows at the top; and
 /// assets/logic/room.drules, in which the key is picked up, the painting looked at, and
 /// the door opens only with the key.
+///
+/// Tactics: a turn-based battle on a field with rocks (Tactics, game.md): a knight, a
+/// guard and an archer (who shoots two tiles away) against three slimes; the battle starts
+/// with the game, and assets/logic/battle.drules says who won.
 bool create_project(const std::filesystem::path& folder, std::string_view name, std::string& error,
                     ProjectTemplate kind = ProjectTemplate::TopDown2D);
 
