@@ -3508,6 +3508,53 @@ TEST_CASE("Raising and lowering tiles builds Diorama terrain, a stroke one undo 
     CHECK(map->height_at(1, 0) == was);
 }
 
+TEST_CASE("Smooth terrain: raising moves the nearest corner, and Smooth evens it out") {
+    const Sample sample;
+    const std::unique_ptr<editor::Document> doc = sample.open();
+    Guid ground;
+    for (const world::Entity e : doc->entities()) {
+        if (!ground.is_valid() && doc->world().get<scene2d::Tilemap>(e) != nullptr) {
+            ground = doc->world().guid(e);
+        }
+    }
+    REQUIRE(ground.is_valid());
+    scene2d::Tilemap* map = doc->world().get<scene2d::Tilemap>(doc->world().find(ground));
+    REQUIRE(map != nullptr);
+    map->smooth = true;
+    map->heights.clear();
+    map->height = 0.0;
+    const auto* at = doc->world().get<scene2d::Transform2D>(doc->world().find(ground));
+    const double x0 = at->x;
+    const double y0 = at->y;
+    // Near the corner between the first four tiles, (1, 1): it rises, not a tile.
+    CHECK(doc->raise_tile(ground, x0 + 1.2, y0 + 0.9, 2.0));
+    map = doc->world().get<scene2d::Tilemap>(doc->world().find(ground));
+    CHECK(map->height_at(1, 1) == 2.0);
+    CHECK(map->height_at(0, 0) == 0.0);
+    CHECK(map->surface_at(0.5, 0.5) == doctest::Approx(1.0));
+    // The far corners of the map can be raised too.
+    std::string error;
+    const scene2d::TileGrid* grid = map->grid(error);
+    REQUIRE(grid != nullptr);
+    const double width = grid->width;
+    CHECK(doc->raise_tile(ground, x0 + width, y0, 1.0));
+    map = doc->world().get<scene2d::Tilemap>(doc->world().find(ground));
+    CHECK(map->height_at(grid->width, 0) == 1.0);
+    doc->end_merge();
+    // Smoothing the peak: the mean of 2 and its four flat neighbours, to a quarter tile.
+    CHECK(doc->smooth_terrain(ground, x0 + 1.0, y0 + 1.0));
+    map = doc->world().get<scene2d::Tilemap>(doc->world().find(ground));
+    CHECK(map->height_at(1, 1) == 0.5);
+    CHECK(doc->undo_label().starts_with("Smooth "));
+    CHECK_FALSE(doc->smooth_terrain(ground, x0 - 5.0, y0)); // off the map
+    REQUIRE(doc->undo());
+    map = doc->world().get<scene2d::Tilemap>(doc->world().find(ground));
+    CHECK(map->height_at(1, 1) == 2.0);
+    // Not smooth terrain: Smooth does nothing, and raising takes the tile.
+    map->smooth = false;
+    CHECK_FALSE(doc->smooth_terrain(ground, x0 + 1.0, y0 + 1.0));
+}
+
 TEST_CASE("Prefabs: made from an entity, placed as copies, and the copies updated") {
     const Sample sample;
     const std::unique_ptr<editor::Document> doc = sample.open();

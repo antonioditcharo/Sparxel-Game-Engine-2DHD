@@ -38,7 +38,7 @@ TilePalette::TilePalette(QWidget* parent) : QWidget(parent) {
     rows->setContentsMargins(0, 0, 0, 0);
     rows->setHorizontalSpacing(2);
     auto* group = new QButtonGroup(this);
-    const std::array<std::pair<QString, QString>, 6> tools{
+    const std::array<std::pair<QString, QString>, 7> tools{
         std::pair{tr("Pencil"), tr("Paint cell by cell along the stroke")},
         std::pair{tr("Rectangle"), tr("Drag out a rectangle: it is painted on release")},
         std::pair{tr("Fill"), tr("Click a cell: every cell of the same tile joined to it")},
@@ -49,8 +49,10 @@ TilePalette::TilePalette(QWidget* parent) : QWidget(parent) {
                   tr("Diorama: each tile the stroke passes sinks half a tile (the right button "
                      "raises it)")},
         std::pair{tr("Scatter"), tr("Paints some of the cells around the cursor, at random: "
-                                    "flowers and rocks sprinkled. Ctrl+click tiles for a mix")}};
-    for (int i = 0; i < 6; ++i) {
+                                    "flowers and rocks sprinkled. Ctrl+click tiles for a mix")},
+        std::pair{tr("Smooth"), tr("Smooth terrain: evens out each corner the stroke passes, "
+                                   "softening bumps and pits")}};
+    for (int i = 0; i < 7; ++i) {
         auto* button = new QToolButton(tools_);
         button->setText(tools.at(static_cast<std::size_t>(i)).first);
         button->setToolTip(tools.at(static_cast<std::size_t>(i)).second);
@@ -67,8 +69,8 @@ TilePalette::TilePalette(QWidget* parent) : QWidget(parent) {
     density->setValue(25);
     density->setSuffix(QStringLiteral("%"));
     density->setToolTip(tr("Scatter: how many of the cells around the cursor it paints"));
-    rows->addWidget(new QLabel(tr("Density"), tools_), 2, 0);
-    rows->addWidget(density, 2, 1, 1, 2);
+    rows->addWidget(new QLabel(tr("Density"), tools_), 3, 0);
+    rows->addWidget(density, 3, 1, 1, 2);
     connect(density, &QSpinBox::valueChanged, this, [this](int v) { Q_EMIT density_changed(v); });
     connect(group, &QButtonGroup::idClicked, this, [this](int id) {
         tool_ = id;

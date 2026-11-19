@@ -179,6 +179,11 @@ void register_types(reflect::Registry& registry) {
         .display_name("Tile heights")
         .tooltip("Each tile's own height in the Diorama style, painted with the Raise and "
                  "Lower brushes; empty cells stand at Height.");
+    tilemap.property<&Tilemap::smooth>("smooth")
+        .display_name("Smooth terrain")
+        .tooltip("In the Diorama style, heights are at the tiles' corners and the ground "
+                 "slopes between them, as hills: shape it with the Raise, Lower and Smooth "
+                 "brushes.");
     tilemap.property<&Tilemap::solid>("solid").tooltip(
         "Every tile of this map blocks movement. Paint walls on their own map.");
     tilemap.property<&Tilemap::shapes>("shapes")
@@ -489,6 +494,31 @@ std::string format_heights(const std::vector<std::vector<double>>& heights) {
         }
     }
     return out;
+}
+
+double Tilemap::surface_at(double column, double row) const {
+    if (!std::isfinite(column) || !std::isfinite(row) || column < 0.0 || row < 0.0) {
+        return std::isfinite(height) ? std::clamp(height, 0.0, 16.0) : 0.0;
+    }
+    const double cx = std::floor(column);
+    const double cy = std::floor(row);
+    const auto x = static_cast<std::uint32_t>(std::min(cx, 1e9));
+    const auto y = static_cast<std::uint32_t>(std::min(cy, 1e9));
+    if (!smooth) {
+        return height_at(x, y);
+    }
+    const double fx = column - cx;
+    const double fy = row - cy;
+    const double nw = height_at(x, y);
+    const double ne = height_at(x + 1, y);
+    const double se = height_at(x + 1, y + 1);
+    const double sw = height_at(x, y + 1);
+    // The triangle (north-west, north-east, south-east) above the diagonal, else
+    // (north-west, south-east, south-west).
+    if (fx >= fy) {
+        return nw + (fx * (ne - nw)) + (fy * (se - ne));
+    }
+    return nw + (fy * (sw - nw)) + (fx * (se - sw));
 }
 
 double Tilemap::height_at(std::uint32_t x, std::uint32_t y) const {
@@ -2319,11 +2349,88 @@ std::optional<float> ground_top(const world::World& world, double x, double y, s
             grid->at(static_cast<std::uint32_t>(column), static_cast<std::uint32_t>(row)) < 0) {
             return;
         }
-        // As draw_diorama() places it: the block's height, plus its layer's lift.
-        const auto height = static_cast<float>(
-            map->height_at(static_cast<std::uint32_t>(column), static_cast<std::uint32_t>(row)));
+        // As draw_diorama() places it: the block's height (or the slope), plus its layer's
+        // lift.
+        const auto height =
+            static_cast<float>(map->surface_at((x - t->x) / tile, (y - t->y) / tile));
         const float here = height + (static_cast<float>(t->layer) * 0.002F);
         top = top ? std::max(*top, here) : here;
+    });
+    return top;
+}
+
+std::optional<std::array<double, 2>> terrain_hit(const world::World& world, const Ray& ray,
+                                                 std::uint32_t ppu) {
+    // From where the ray comes down through the highest terrain can stand, in small steps,
+    // to where it meets the ground: the first point below the terrain, then halved in on.
+    const std::optional<std::array<double, 2>> flat = ground_hit(ray, 0.0);
+    if (!flat || !(ray.direction.y < 0.0F)) {
+        return flat;
+    }
+    const auto point = [&](double t) {
+        return std::array<double, 3>{ray.origin.x + (t * ray.direction.x),
+                                     ray.origin.y + (t * ray.direction.y),
+                                     ray.origin.z + (t * ray.direction.z)};
+    };
+    const auto below = [&](double t) {
+        const std::array<double, 3> p = point(t);
+        return p[1] <= terrain_height(world, p[0], p[2], ppu);
+    };
+    const double down = -static_cast<double>(ray.direction.y);
+    const double t_ground = static_cast<double>(ray.origin.y) / down;
+    const double t_top = std::max(0.0, (static_cast<double>(ray.origin.y) - 16.0) / down);
+    // Steps of about a twentieth of a tile across the ground.
+    const double across =
+        std::hypot(static_cast<double>(ray.direction.x), static_cast<double>(ray.direction.z));
+    const double step = across > 1e-6 ? 0.05 / across : (t_ground - t_top);
+    double before = t_top;
+    const auto steps =
+        static_cast<std::int64_t>(std::ceil(std::min((t_ground - t_top) / step, 1e6)));
+    for (std::int64_t n = 0; n <= steps; ++n) {
+        const double t = std::min(t_top + (static_cast<double>(n) * step), t_ground);
+        if (below(t)) {
+            double low = before;
+            double high = t;
+            for (int halving = 0; halving < 24; ++halving) {
+                const double middle = (low + high) / 2.0;
+                (below(middle) ? high : low) = middle;
+            }
+            const std::array<double, 3> p = point(high);
+            return std::array<double, 2>{p[0], p[2]};
+        }
+        before = t;
+    }
+    return flat;
+}
+
+double terrain_height(const world::World& world, double x, double y, std::uint32_t ppu) {
+    const reflect::TypeInfo* type = world.registry().find_type<Tilemap>();
+    if (type == nullptr || !std::isfinite(x) || !std::isfinite(y)) {
+        return 0.0;
+    }
+    const double units = static_cast<double>(std::max<std::uint32_t>(ppu, 1));
+    double top = 0.0;
+    world.each(*type, [&](world::Entity entity, reflect::ObjectRef ref) {
+        const Tilemap* map = ref.as<Tilemap>();
+        const Transform2D* t = world.get<Transform2D>(entity);
+        if (map == nullptr || t == nullptr || !map->smooth || !map->visible) {
+            return;
+        }
+        std::string error;
+        const TileGrid* grid = map->grid(error);
+        if (grid == nullptr) {
+            return;
+        }
+        const double tile =
+            (map->tile_size == 0 ? units : static_cast<double>(map->tile_size)) / units;
+        const double column = (x - t->x) / tile;
+        const double row = (y - t->y) / tile;
+        if (column < 0.0 || row < 0.0 || column >= static_cast<double>(grid->width) ||
+            row >= static_cast<double>(grid->height) ||
+            grid->at(static_cast<std::uint32_t>(column), static_cast<std::uint32_t>(row)) < 0) {
+            return;
+        }
+        top = std::max(top, map->surface_at(column, row));
     });
     return top;
 }
@@ -2537,6 +2644,86 @@ DrawStats draw_diorama(const world::World& world, TextureCache& textures,
                            grid->at(static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y)) >=
                                0;
                 };
+                // Smooth terrain: each corner's height, and its normal from the slope
+                // around it.
+                const auto corner_height = [&](std::int64_t cx, std::int64_t cy) {
+                    const std::int64_t i = std::clamp<std::int64_t>(cx, 0, grid->width);
+                    const std::int64_t j = std::clamp<std::int64_t>(cy, 0, grid->height);
+                    return static_cast<float>(tilemap->height_at(static_cast<std::uint32_t>(i),
+                                                                 static_cast<std::uint32_t>(j)));
+                };
+                const auto corner_normal = [&](std::int64_t cx, std::int64_t cy) {
+                    const std::int64_t west = std::max<std::int64_t>(cx - 1, 0);
+                    const std::int64_t east = std::min<std::int64_t>(cx + 1, grid->width);
+                    const std::int64_t north_of = std::max<std::int64_t>(cy - 1, 0);
+                    const std::int64_t south_of = std::min<std::int64_t>(cy + 1, grid->height);
+                    const float across = static_cast<float>(east - west) * tile;
+                    const float down = static_cast<float>(south_of - north_of) * tile;
+                    const float dx =
+                        across > 0.0F ? (corner_height(east, cy) - corner_height(west, cy)) / across
+                                      : 0.0F;
+                    const float dz =
+                        down > 0.0F
+                            ? (corner_height(cx, south_of) - corner_height(cx, north_of)) / down
+                            : 0.0F;
+                    const float length = std::sqrt((dx * dx) + 1.0F + (dz * dz));
+                    return render::Vec3{-dx / length, 1.0F / length, -dz / length};
+                };
+                const auto draw_slopes = [&](std::uint32_t x, std::uint32_t y,
+                                             const render::Rect& source, float left, float right,
+                                             float north, float south) {
+                    const auto gx = static_cast<std::int64_t>(x);
+                    const auto gy = static_cast<std::int64_t>(y);
+                    // The source's texture coordinates, a hundredth of a texel inside.
+                    constexpr float inset = 0.01F;
+                    const auto tw = static_cast<float>(texture->width());
+                    const auto th = static_cast<float>(texture->height());
+                    const float u0 = (source.x + inset) / tw;
+                    const float u1 = (source.x + source.w - inset) / tw;
+                    const float v0 = (source.y + inset) / th;
+                    const float v1 = (source.y + source.h - inset) / th;
+                    const auto corner = [&](std::int64_t cx, std::int64_t cy, float px, float pz,
+                                            float u, float v) {
+                        const render::Vec3 normal = corner_normal(cx, cy);
+                        return render::MeshCorner{
+                            render::Vec3{px, corner_height(cx, cy) + lift, pz}, u, v,
+                            lit(brightness(normal, light), tint), normal};
+                    };
+                    const render::MeshCorner nw = corner(gx, gy, left, north, u0, v0);
+                    const render::MeshCorner ne = corner(gx + 1, gy, right, north, u1, v0);
+                    const render::MeshCorner se = corner(gx + 1, gy + 1, right, south, u1, v1);
+                    const render::MeshCorner sw = corner(gx, gy + 1, left, south, u0, v1);
+                    const std::array<render::MeshCorner, 6> slopes{nw, ne, se, nw, se, sw};
+                    render::Surface slope;
+                    slope.glow = tile_glow;
+                    renderer.draw_triangles(*texture, slopes, slope);
+                    stats.drawn += 2;
+                    // The map's edges, and beside empty cells: down to the ground.
+                    const auto skirt = [&](const render::MeshCorner& a, const render::MeshCorner& b,
+                                           float light_level, render::Vec3 normal) {
+                        if (a.position.y <= lift && b.position.y <= lift) {
+                            return;
+                        }
+                        renderer.draw(*texture,
+                                      {a.position, b.position,
+                                       render::Vec3{b.position.x, lift, b.position.z},
+                                       render::Vec3{a.position.x, lift, a.position.z}},
+                                      source, lit(light_level, tint), face(normal));
+                        ++stats.drawn;
+                    };
+                    if (!filled(gx, gy + 1) || gy + 1 >= static_cast<std::int64_t>(grid->height)) {
+                        skirt(sw, se, south_light, {0, 0, 1});
+                    }
+                    if (!filled(gx, gy - 1)) {
+                        skirt(ne, nw, north_light, {0, 0, -1});
+                    }
+                    if (!filled(gx - 1, gy)) {
+                        skirt(nw, sw, west_light, {-1, 0, 0});
+                    }
+                    if (!filled(gx + 1, gy) || gx + 1 >= static_cast<std::int64_t>(grid->width)) {
+                        skirt(se, ne, east_light, {1, 0, 0});
+                    }
+                };
                 for (std::uint32_t y = 0; y < grid->height; ++y) {
                     for (std::uint32_t x = 0; x < grid->width; ++x) {
                         const std::int32_t number = grid->at(x, y);
@@ -2554,6 +2741,10 @@ DrawStats draw_diorama(const world::World& world, TextureCache& textures,
                         const float right = left + tile;
                         const float north = z0 + (static_cast<float>(y) * tile);
                         const float south = north + tile;
+                        if (tilemap->smooth) {
+                            draw_slopes(x, y, source, left, right, north, south);
+                            continue;
+                        }
                         const auto height = static_cast<float>(tilemap->height_at(x, y));
                         const float top = height + lift;
                         // The top face: the tile as seen from above, north edge at the top.
@@ -2622,7 +2813,10 @@ DrawStats draw_diorama(const world::World& world, TextureCache& textures,
             // Upright, facing the camera, with the pivot on the map position; scaled and
             // turned in its own plane as in Classic 2D. Each corner is how far along the
             // camera's right it lies, and how far up.
-            const render::Vec3 base{static_cast<float>(transform->x), lift,
+            // On smooth terrain, standing on its slope.
+            const auto standing = static_cast<float>(
+                terrain_height(world, transform->x, transform->y - 0.001, camera.ppu));
+            const render::Vec3 base{static_cast<float>(transform->x), lift + standing,
                                     static_cast<float>(transform->y)};
             const render::Vec3 r = o.right;
             std::array<std::array<float, 2>, 4> card{};

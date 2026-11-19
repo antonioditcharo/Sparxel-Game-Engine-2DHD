@@ -255,6 +255,11 @@ struct Tilemap {
     /// Painting picks each tile's shape from its neighbours: for a tileset expanded from
     /// auto-tile blocks (assets/autotile.h), where each 48 tiles are one terrain.
     bool autotile = false;
+    /// Smooth terrain (plan/02 C14): in the Diorama style, `heights` are at the tiles'
+    /// corners, (columns + 1) x (rows + 1) of them, and each tile's top slopes between its
+    /// four, as hills and valleys; the map's edges drop to the ground. Off, each tile is a
+    /// block of its own height.
+    bool smooth = false;
     /// The alpha the tiles are drawn with, 0 to 255, from `opacity`.
     [[nodiscard]] std::uint8_t alpha() const noexcept;
     /// How far each tile is through its animation: 0 to animation_frames - 1.
@@ -268,8 +273,13 @@ struct Tilemap {
     /// is not valid.
     [[nodiscard]] const TileGrid* grid(std::string& error) const;
     /// How tall the tile in column `x`, row `y` stands: its own height, else `height`;
-    /// kept within 0 to 16.
+    /// kept within 0 to 16. For smooth terrain, the height of the corner at the top-left
+    /// of that tile (column `x` may be the map's width, row `y` its height).
     [[nodiscard]] double height_at(std::uint32_t x, std::uint32_t y) const;
+    /// The top of the map at (`column`, `row`), in tiles from its top-left corner,
+    /// fractions allowed: a block's height, or on smooth terrain the slope between the
+    /// tile's corners, as it is drawn (two triangles split from north-west to south-east).
+    [[nodiscard]] double surface_at(double column, double row) const;
 
 private:
     // A cache only: not reflected, so never saved.
@@ -662,9 +672,15 @@ constexpr double max_sun_shadow_tiles = 96.0;
 constexpr double max_shadow_length = 3.0;
 
 /// The top of the highest visible tile under map point (x, y), in tiles above the
-/// ground: a block's height, or about 0 for flat maps. Nothing if no tile is there.
+/// ground: a block's height, the slope of smooth terrain, or about 0 for flat maps.
+/// Nothing if no tile is there.
 [[nodiscard]] std::optional<float> ground_top(const world::World& world, double x, double y,
                                               std::uint32_t ppu);
+/// How high smooth terrain stands under map point (x, y), the highest of the visible
+/// smooth maps with a tile there; 0 where there is none. Sprites stand on it in the
+/// Diorama style.
+[[nodiscard]] double terrain_height(const world::World& world, double x, double y,
+                                    std::uint32_t ppu);
 
 /// How bright a face with `normal` is under `light`, from 0 to 1 (and above, if the light
 /// adds up to more).
@@ -690,6 +706,11 @@ struct Ray {
 /// if it runs parallel to it or away from it.
 [[nodiscard]] std::optional<std::array<double, 2>> ground_hit(const Ray& ray,
                                                               double height = 0.0) noexcept;
+/// Where `ray` first meets the ground, smooth terrain's hills (terrain_height()) included,
+/// as a map point (x, y): what a click on a hillside points at. As ground_hit() where
+/// there is no terrain.
+[[nodiscard]] std::optional<std::array<double, 2>> terrain_hit(const world::World& world,
+                                                               const Ray& ray, std::uint32_t ppu);
 
 /// The ground a Diorama camera shows around the point it looks at, relative to that point,
 /// in tiles, for a target of `aspect` (width / height). The top and bottom are where the

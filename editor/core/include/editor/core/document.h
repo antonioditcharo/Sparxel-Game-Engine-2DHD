@@ -233,8 +233,14 @@ public:
     /// Raises (or with `by` below 0, lowers) the tile of `tilemap` under map point (x, y), as
     /// tall as it stands now plus `by`, kept within 0 to 16: Diorama terrain built tile by
     /// tile (its Tile heights). A stroke of raising on one map is one undo step, as painting
-    /// is. False outside the map's tiles.
+    /// is. False outside the map's tiles. On Smooth terrain it raises the corner nearest
+    /// (x, y) instead, and the slopes around it with it.
     bool raise_tile(engine::Guid tilemap, double x, double y, double by);
+    /// On Smooth terrain, evens out the corner nearest map point (x, y): it takes the mean
+    /// of itself and the corners beside it, rounded to a quarter tile, so bumps and pits
+    /// soften as the brush passes. One undo step a stroke, as raising. False if the map is
+    /// not smooth terrain or (x, y) is off it.
+    bool smooth_terrain(engine::Guid tilemap, double x, double y);
     /// Creates an entity with a Position at (x, y). Returns its GUID.
     engine::Guid create_entity(std::string_view name, double x, double y);
     /// Places an asset (its path in assets/, such as "chars/hero.png") at map point

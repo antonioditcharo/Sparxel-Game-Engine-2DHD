@@ -57,10 +57,11 @@ public:
     /// How paint mode paints: cell by cell along the stroke, the rectangle between where
     /// the button went down and where it came up, or the whole area joined to the cell.
     /// Raise and Lower build Diorama terrain: each cell the stroke passes rises (or sinks)
-    /// by half a tile; the right button does the opposite.
+    /// by half a tile; the right button does the opposite. On Smooth terrain they move the
+    /// corner nearest the cursor, and Smooth evens out each corner it passes.
     /// Scatter paints some of the cells around the cursor, at random, as many in a hundred
     /// as the density: rocks and flowers sprinkled rather than laid in rows.
-    enum class PaintTool : std::uint8_t { Pencil, Rectangle, Fill, Raise, Lower, Scatter };
+    enum class PaintTool : std::uint8_t { Pencil, Rectangle, Fill, Raise, Lower, Scatter, Smooth };
     /// The Scatter tool's density: cells painted in a hundred, 1 to 100.
     void set_scatter_density(int density) noexcept { density_ = std::clamp(density, 1, 100); }
     void set_paint_tool(PaintTool tool) { paint_tool_ = tool; }

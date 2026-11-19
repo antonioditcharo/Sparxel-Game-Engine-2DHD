@@ -1168,6 +1168,23 @@ bool Document::shape_sprites(const std::vector<SpriteShape>& to, bool turning) {
     return true;
 }
 
+namespace {
+
+/// The heights grid of `map` with room for (x, y), missing cells NaN (the map's height).
+std::vector<std::vector<double>> heights_with(const scene2d::Tilemap& map, std::uint32_t x,
+                                              std::uint32_t y) {
+    std::vector<std::vector<double>> heights = scene2d::parse_heights(map.heights);
+    if (heights.size() <= y) {
+        heights.resize(y + 1);
+    }
+    if (heights[y].size() <= x) {
+        heights[y].resize(x + 1, std::numeric_limits<double>::quiet_NaN());
+    }
+    return heights;
+}
+
+} // namespace
+
 bool Document::raise_tile(Guid tilemap, double x, double y, double by) {
     Impl& d = *impl_;
     const world::Entity e = d.find(tilemap);
@@ -1185,10 +1202,14 @@ bool Document::raise_tile(Guid tilemap, double x, double y, double by) {
     const double units = static_cast<double>(std::max<std::uint32_t>(d.settings.ppu, 1));
     const double tile_size =
         (map->tile_size == 0 ? units : static_cast<double>(map->tile_size)) / units;
-    const double column = std::floor((x - transform->x) / tile_size);
-    const double row = std::floor((y - transform->y) / tile_size);
-    if (column < 0.0 || row < 0.0 || column >= static_cast<double>(parsed->width) ||
-        row >= static_cast<double>(parsed->height)) {
+    // A tile, or on smooth terrain the corner nearest.
+    const double column = map->smooth ? std::round((x - transform->x) / tile_size)
+                                      : std::floor((x - transform->x) / tile_size);
+    const double row = map->smooth ? std::round((y - transform->y) / tile_size)
+                                   : std::floor((y - transform->y) / tile_size);
+    const double extra = map->smooth ? 1.0 : 0.0;
+    if (column < 0.0 || row < 0.0 || column >= static_cast<double>(parsed->width) + extra ||
+        row >= static_cast<double>(parsed->height) + extra) {
         return false;
     }
     const auto cx = static_cast<std::uint32_t>(column);
@@ -1198,18 +1219,62 @@ bool Document::raise_tile(Guid tilemap, double x, double y, double by) {
     if (next == now) {
         return true; // already as high (or low) as it goes
     }
-    std::vector<std::vector<double>> heights = scene2d::parse_heights(map->heights);
-    if (heights.size() <= cy) {
-        heights.resize(cy + 1);
-    }
-    if (heights[cy].size() <= cx) {
-        heights[cy].resize(cx + 1, std::numeric_limits<double>::quiet_NaN());
-    }
+    std::vector<std::vector<double>> heights = heights_with(*map, cx, cy);
     heights[cy][cx] = next;
     serialize::Json before = d.snapshot();
     map->heights = scene2d::format_heights(heights);
     d.record((by > 0 ? "Raise " : "Lower ") + d.name_of(tilemap), std::move(before), tilemap,
              "tilemap/height");
+    return true;
+}
+
+bool Document::smooth_terrain(Guid tilemap, double x, double y) {
+    Impl& d = *impl_;
+    const world::Entity e = d.find(tilemap);
+    auto* map = e.is_valid() ? d.world->get<scene2d::Tilemap>(e) : nullptr;
+    const auto* transform = e.is_valid() ? d.world->get<scene2d::Transform2D>(e) : nullptr;
+    if (map == nullptr || transform == nullptr || !map->smooth || !std::isfinite(x) ||
+        !std::isfinite(y)) {
+        return false;
+    }
+    std::string error;
+    const scene2d::TileGrid* parsed = map->grid(error);
+    if (parsed == nullptr) {
+        return false;
+    }
+    const double units = static_cast<double>(std::max<std::uint32_t>(d.settings.ppu, 1));
+    const double tile_size =
+        (map->tile_size == 0 ? units : static_cast<double>(map->tile_size)) / units;
+    const double column = std::round((x - transform->x) / tile_size);
+    const double row = std::round((y - transform->y) / tile_size);
+    if (column < 0.0 || row < 0.0 || column > static_cast<double>(parsed->width) ||
+        row > static_cast<double>(parsed->height)) {
+        return false;
+    }
+    const auto cx = static_cast<std::uint32_t>(column);
+    const auto cy = static_cast<std::uint32_t>(row);
+    double sum = map->height_at(cx, cy);
+    int count = 1;
+    const std::array<std::array<std::int64_t, 2>, 4> beside{{{-1, 0}, {1, 0}, {0, -1}, {0, 1}}};
+    for (const auto& [dx, dy] : beside) {
+        const std::int64_t nx = static_cast<std::int64_t>(cx) + dx;
+        const std::int64_t ny = static_cast<std::int64_t>(cy) + dy;
+        if (nx < 0 || ny < 0 || nx > static_cast<std::int64_t>(parsed->width) ||
+            ny > static_cast<std::int64_t>(parsed->height)) {
+            continue;
+        }
+        sum += map->height_at(static_cast<std::uint32_t>(nx), static_cast<std::uint32_t>(ny));
+        ++count;
+    }
+    const double next = std::clamp(std::round(sum / count * 4.0) / 4.0, 0.0, 16.0);
+    if (next == map->height_at(cx, cy)) {
+        return true; // already smooth
+    }
+    std::vector<std::vector<double>> heights = heights_with(*map, cx, cy);
+    heights[cy][cx] = next;
+    serialize::Json before = d.snapshot();
+    map->heights = scene2d::format_heights(heights);
+    d.record("Smooth " + d.name_of(tilemap), std::move(before), tilemap, "tilemap/height");
     return true;
 }
 
@@ -2640,7 +2705,7 @@ world::Entity pick_diorama(const world::World& w, const engine::assets::AssetDat
     }
     // Maps: the tile where the ray meets the ground.
     const std::optional<std::array<double, 2>> ground =
-        scene2d::ground_hit(scene2d::diorama_ray(camera, aspect, ndc_x, ndc_y));
+        scene2d::terrain_hit(w, scene2d::diorama_ray(camera, aspect, ndc_x, ndc_y), camera.ppu);
     if (!ground) {
         return world::Entity{};
     }

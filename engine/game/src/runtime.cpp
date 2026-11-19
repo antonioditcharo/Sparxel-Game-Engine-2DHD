@@ -1547,9 +1547,11 @@ std::optional<std::array<double, 2>> pointer_point(const Runtime::Impl& r) {
     const double w = std::max(1.0, static_cast<double>(r.settings.width));
     const double h = std::max(1.0, static_cast<double>(r.settings.height));
     if (r.settings.style == RenderStyle::Diorama) {
-        return scene2d::ground_hit(scene2d::diorama_ray(view.orbit, static_cast<float>(view.aspect),
-                                                        (pointer->x / w * 2.0) - 1.0,
-                                                        1.0 - (pointer->y / h * 2.0)));
+        return scene2d::terrain_hit(
+            *r.world,
+            scene2d::diorama_ray(view.orbit, static_cast<float>(view.aspect),
+                                 (pointer->x / w * 2.0) - 1.0, 1.0 - (pointer->y / h * 2.0)),
+            r.settings.ppu);
     }
     const double ppu = static_cast<double>(std::max<std::uint32_t>(r.settings.ppu, 1));
     return std::array<double, 2>{view.flat.x + ((pointer->x - (w / 2.0)) / ppu),

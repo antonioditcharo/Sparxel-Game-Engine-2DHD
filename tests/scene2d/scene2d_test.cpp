@@ -2288,3 +2288,118 @@ TEST_CASE("A picture repainted again and again does not fill atlas page after pa
     // 41 paintings of 257 x 257 would need three pages; packed afresh, never more than one.
     CHECK(textures.atlas_pages() == 1);
 }
+
+TEST_CASE("Smooth terrain: heights at corners, slopes between, sprites standing on them") {
+    // A 2 x 2 map whose middle corner is 2 tiles up: a hill.
+    scene2d::Tilemap hill;
+    hill.tiles = "0,0\n0,0";
+    hill.heights = "0,0,0\n0,2,0\n0,0,0";
+    hill.smooth = true;
+    CHECK(hill.surface_at(1.0, 1.0) == doctest::Approx(2.0));
+    CHECK(hill.surface_at(0.5, 0.5) == doctest::Approx(1.0));
+    CHECK(hill.surface_at(0.75, 0.25) == doctest::Approx(0.5)); // above the diagonal
+    CHECK(hill.surface_at(0.25, 0.75) == doctest::Approx(0.5)); // below it
+    CHECK(hill.surface_at(1.5, 1.5) == doctest::Approx(1.0));
+    CHECK(hill.surface_at(0.0, 0.0) == doctest::Approx(0.0));
+    CHECK(hill.surface_at(std::nan(""), 0.0) == 0.0);
+    // Not smooth: the cell's own height, as a block.
+    scene2d::Tilemap blocks = hill;
+    blocks.smooth = false;
+    CHECK(blocks.surface_at(1.5, 1.5) == doctest::Approx(2.0));
+    CHECK(blocks.surface_at(0.5, 0.5) == doctest::Approx(0.0));
+
+    const Fixture f;
+    const auto w = f.make_world();
+    const world::Entity ground = w->create("hill");
+    w->add<scene2d::Transform2D>(ground);
+    scene2d::Tilemap* map = w->add<scene2d::Tilemap>(ground);
+    map->tileset = f.red_image.to_string();
+    map->tiles = hill.tiles;
+    map->heights = hill.heights;
+    map->smooth = true;
+    // At ppu 2 the red picture is one tile.
+    CHECK(scene2d::terrain_height(*w, 1.0, 1.0, 2) == doctest::Approx(2.0));
+    CHECK(scene2d::terrain_height(*w, 0.5, 0.5, 2) == doctest::Approx(1.0));
+    CHECK(scene2d::terrain_height(*w, 5.0, 5.0, 2) == 0.0); // off the map
+    CHECK(scene2d::ground_top(*w, 0.5, 0.5, 2).value_or(-1.0F) == doctest::Approx(1.0));
+    map->smooth = false;
+    CHECK(scene2d::terrain_height(*w, 1.0, 1.0, 2) == 0.0); // blocks are not terrain
+    map->smooth = true;
+    // A ray through a point of the hill's south slope (facing the camera) on the image
+    // meets the hill there, not the flat ground behind it.
+    {
+        scene2d::DioramaCamera view;
+        view.x = 1.0;
+        view.y = 1.0;
+        view.pitch = 40.0;
+        view.ppu = 2;
+        const render::Mat4 vp = scene2d::diorama_view_projection(view, 1.0F);
+        const std::array<float, 4> c = vp.transform(render::Vec3{1.0F, 1.0F, 1.5F});
+        const scene2d::Ray ray = scene2d::diorama_ray(view, 1.0F, c[0] / c[3], c[1] / c[3]);
+        const auto hit = scene2d::terrain_hit(*w, ray, 2);
+        REQUIRE(hit.has_value());
+        const std::array<double, 2> top = hit.value_or(std::array<double, 2>{});
+        CHECK(top[0] == doctest::Approx(1.0).epsilon(0.02));
+        CHECK(top[1] == doctest::Approx(1.5).epsilon(0.02));
+        const auto flat = scene2d::ground_hit(ray);
+        REQUIRE(flat.has_value());
+        CHECK(flat.value_or(std::array<double, 2>{})[1] < 1.0); // beyond, up the map
+    }
+
+    render::Device* device = gpu();
+    if (device == nullptr) {
+        return;
+    }
+    const world::Entity hiker = Fixture::place(*w, "hiker", 1.0, 1.0, f.blue_image);
+    static_cast<void>(hiker);
+    constexpr std::uint32_t size = 64;
+    const auto target = device->create_render_target(size, size);
+    const auto renderer = render::WorldRenderer::create(*device);
+    REQUIRE(target != nullptr);
+    REQUIRE(renderer != nullptr);
+    scene2d::TextureCache textures(*device, f.db);
+    scene2d::DioramaCamera camera;
+    camera.x = 1.0;
+    camera.y = 1.0;
+    camera.pitch = 50.0;
+    camera.distance = 10.0;
+    camera.ppu = 2;
+    scene2d::DioramaLight light;
+    light.sun = scene2d::sun_direction(90.0, 45.0); // from the east
+    light.sprite_shadow = 0.0F;
+    light.block_shadow = 0.0F;
+    const scene2d::DrawStats stats =
+        scene2d::draw_diorama(*w, textures, *renderer, *target, camera, f.background, light);
+    // Four tiles of two triangles, a sprite, and no skirts: the hill's edges are on the
+    // ground.
+    CHECK(stats.drawn == 9);
+    const std::vector<std::uint8_t> pixels = target->read_pixels();
+    const render::Mat4 vp = scene2d::diorama_view_projection(camera, 1.0F);
+    const auto at = [&](float x, float up, float y, const std::vector<std::uint8_t>& image) {
+        const std::array<float, 4> c = vp.transform(render::Vec3{x, up, y});
+        const auto px = static_cast<std::uint32_t>(((c[0] / c[3]) + 1.0F) / 2.0F * size);
+        const auto py = static_cast<std::uint32_t>((1.0F - (c[1] / c[3])) / 2.0F * size);
+        return pixel(image, size, px, py);
+    };
+    // The east slope faces the sun, the west slope away from it.
+    const Color east = at(1.7F, 0.6F, 1.0F, pixels);
+    const Color west = at(0.3F, 0.6F, 1.0F, pixels);
+    CAPTURE(east);
+    CAPTURE(west);
+    CHECK(east.r > west.r + 20);
+    CHECK(east.b == 0);
+    // The hiker stands on the top: blue (shaded) half a tile above it.
+    const Color standing = at(1.0F, 2.5F, 1.0F, pixels);
+    CAPTURE(standing);
+    CHECK(standing.r == 0);
+    CHECK(standing.b > 100);
+    // On flat ground it stands lower, and that point is sky.
+    map->heights.clear();
+    scene2d::draw_diorama(*w, textures, *renderer, *target, camera, f.background, light);
+    CHECK(at(1.0F, 2.5F, 1.0F, target->read_pixels()) == f.background);
+
+    // A raised edge drops to the ground: a skirt where the map ends.
+    map->heights = "2,2,2\n2,2,2\n2,2,2";
+    CHECK(scene2d::draw_diorama(*w, textures, *renderer, *target, camera, f.background, light)
+              .drawn == 9 + 8);
+}

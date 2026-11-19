@@ -80,7 +80,10 @@ public:
 
     struct Native;
     [[nodiscard]] const Native& native() const noexcept {
-        return atlas_ != nullptr ? atlas_->native() : *native_;
+        if (atlas_ != nullptr) {
+            return atlas_->native();
+        }
+        return *native_;
     }
 
 private:

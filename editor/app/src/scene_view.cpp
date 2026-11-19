@@ -106,9 +106,15 @@ std::optional<QPointF> SceneView::map_point(QPoint widget_point) const {
         return to_map(widget_point);
     }
     const std::array<double, 2> at = ndc(widget_point);
-    const auto hit = scene2d::ground_hit(scene2d::diorama_ray(
-        diorama_camera(document_->settings(), camera_x_, camera_y_),
-        static_cast<float>(image_.width()) / static_cast<float>(image_.height()), at[0], at[1]));
+    const scene2d::DioramaCamera camera =
+        diorama_camera(document_->settings(), camera_x_, camera_y_);
+    // On a hillside, the hill's ground, not the flat ground behind it.
+    const auto hit = scene2d::terrain_hit(
+        document_->world(),
+        scene2d::diorama_ray(
+            camera, static_cast<float>(image_.width()) / static_cast<float>(image_.height()), at[0],
+            at[1]),
+        camera.ppu);
     if (!hit) {
         return std::nullopt;
     }
@@ -151,18 +157,32 @@ void SceneView::paint_at(QPoint widget_point) {
         }
         return;
     }
-    if (paint_tool_ == PaintTool::Raise || paint_tool_ == PaintTool::Lower) {
+    if (paint_tool_ == PaintTool::Raise || paint_tool_ == PaintTool::Lower ||
+        paint_tool_ == PaintTool::Smooth) {
         if (!at) {
             return;
         }
-        // Each cell once a stroke, so holding the button over it does not run away.
-        const std::pair<std::int64_t, std::int64_t> tile{
-            static_cast<std::int64_t>(std::floor(at->x())),
-            static_cast<std::int64_t>(std::floor(at->y()))};
+        // Each cell (on smooth terrain, each corner) once a stroke, so holding the button
+        // over it does not run away.
+        const engine::world::Entity map_entity = document_->world().find(paint_map_);
+        const auto* map =
+            map_entity.is_valid() ? document_->world().get<scene2d::Tilemap>(map_entity) : nullptr;
+        const bool corners = map != nullptr && map->smooth;
+        const auto key = [corners](double v) {
+            return static_cast<std::int64_t>(corners ? std::round(v) : std::floor(v));
+        };
+        const std::pair<std::int64_t, std::int64_t> tile{key(at->x()), key(at->y())};
         if (std::find(raised_.begin(), raised_.end(), tile) != raised_.end()) {
             return;
         }
         raised_.push_back(tile);
+        if (paint_tool_ == PaintTool::Smooth) {
+            if (document_->smooth_terrain(paint_map_, at->x(), at->y())) {
+                Q_EMIT moved();
+                refresh();
+            }
+            return;
+        }
         const double up = paint_tool_ == PaintTool::Raise ? 0.5 : -0.5;
         if (document_->raise_tile(paint_map_, at->x(), at->y(), stroke_tile_ < 0 ? -up : up)) {
             Q_EMIT moved();
@@ -707,7 +727,8 @@ void SceneView::mousePressEvent(QMouseEvent* event) {
                 refresh();
             }
         } else if (paint_tool_ == PaintTool::Pencil || paint_tool_ == PaintTool::Raise ||
-                   paint_tool_ == PaintTool::Lower || paint_tool_ == PaintTool::Scatter) {
+                   paint_tool_ == PaintTool::Lower || paint_tool_ == PaintTool::Scatter ||
+                   paint_tool_ == PaintTool::Smooth) {
             paint_at(drag_from_);
         }
         return;

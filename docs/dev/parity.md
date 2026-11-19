@@ -19,7 +19,7 @@
 |---|---|---|---|
 | A. Project and workflow | 5 | 7 | 0 (+1 later) |
 | B. Pixel art | 5 | 9 | 0 (+1 later) |
-| C. World building | 4 | 8 | 2 |
+| C. World building | 4 | 9 | 1 |
 | D. Rendering and the look | 4 | 10 | 1 (+1 later) |
 | E. No-code logic | 5 | 6 | 0 (+1 later) |
 | F. Genre kits | 4 | 2 | 0 |
@@ -28,7 +28,7 @@
 | I. Physics | 3 | 2 | 0 |
 | J. Audio | 2 | 4 | 0 (+1 later) |
 | K. UI | 3 | 4 | 0 |
-| **All** | **43** | **56** | **3** (+6 later) |
+| **All** | **43** | **57** | **2** (+6 later) |
 
 The strongest areas match or pass their references: the RPG kit and window skins (RPG
 Maker), auto-tiles and tile variants (RPG Maker, LDtk), no-code Rules with tags, *it*,
@@ -93,7 +93,7 @@ action kits (GameMaker), audio mixing (zones, reverb), and team features.
 | C11 | Map connections | RPG Maker | **Done**: doors both ways, fades, arriving at doors |
 | C12 | glTF import | Godot | **Partial**: `.gltf` and `.glb` models placed as Models in the Diorama style, sun-lit, shadowed, turned and scaled; no animations, skins or JPEG textures |
 | C13 | Large worlds | Godot | **Not yet** |
-| C14 | Terrain | | **Not yet** (tile heights only) |
+| C14 | Terrain | | **Partial**: smooth terrain sloping between corner heights, sun-lit, with raise, lower and smooth brushes and sprites standing on it; tiles laid on slopes rather than blended textures |
 
 ## D. Rendering and the look
 

@@ -170,6 +170,22 @@ nothing extra to write ([reflection.md](reflection.md)).
   Sprites' shadows lie on the tile's own top (`ground_top()`), and the sun's shadow map
   reaches the tallest tile. The editor's **Raise** and **Lower** brushes paint them
   ([editor.md](editor.md)).
+- **Smooth terrain** (`smooth`, *Smooth terrain*; `plan/02` C14): the heights are at the
+  tiles' corners instead, (columns + 1) × (rows + 1) of them, and each tile's top slopes
+  between its four as two triangles (split north-west to south-east), so the ground rolls
+  into hills and valleys; the tiles' pictures lie on the slopes, and painting
+  auto-tiles over them blends grass into rock as on flat ground. Each corner is lit by the
+  sun at its own normal, from the slope around it, so hills shade softly; edges at the
+  map's border or beside an empty cell drop to the ground as a skirt.
+  `Tilemap::surface_at()` gives the height anywhere on a tile as it is drawn;
+  `terrain_height()` the highest smooth terrain under a point, which sprites stand on
+  (their feet, and so their shadows, on the slope); `ground_top()` includes it; and
+  `terrain_hit()` finds where a ray from the camera first meets a hillside, so the
+  editor's clicks and painting, and Point and Click's pointer, land on the hill rather
+  than the flat ground behind it. In the editor, Raise and Lower move the corner nearest
+  the cursor, and **Smooth** evens out each corner it passes. Triangles are opaque, so
+  a smooth map is never see-through, and tiles' normal maps do not apply to its slopes
+  (glow maps do).
 
 ### Solid tiles
 
@@ -427,6 +443,7 @@ the others run anywhere:
 | A sprite's corners | `sprite_corners()` upright; a quarter turn clockwise, exactly, and the same at -270; 45 degrees; flipped across and twice as tall; a rotation or scale that is not a number counts as none |
 | Turned, scaled and flipped (GPU) | A picture red on the left and blue on the right, at exact pixels: upright; flipped (blue on the left); a quarter turn about its feet (red on top, standing to the right of them), the same at -270; twice as wide; half as tall; a NaN rotation drawn upright. In the Diorama style, points a quarter and three quarters of a tile above the feet show the sprite; at half height only the lower one; turned upside down, neither |
 | Lighting maps (GPU) | `red_normal.png` and `red_glow.png` beside the red picture are found; a normal map of another size, and a glow map that is not there, are not; drawn, one sprite has relief and glows and the other not; the normal map removed and the change applied, neither |
+| Smooth terrain | `surface_at()` on a hill of one raised corner: 2 at the top, 1 halfway, 0.5 either side of a tile's diagonal, 0 at the foot, the map's height for NaN; as blocks, each cell's own height. `terrain_height()` and `ground_top()` on the hill, 0 off the map and for blocks; a ray through a point of the south slope meets the hill there, where the flat ground lies further up the map. On the GPU, with the sun in the east: the east slope brighter than the west, a sprite standing on the top (blue half a tile above it, the sky there on flat ground), eight triangles and a sprite drawn, and eight skirts once the map's edges are raised |
 | Models (GPU) | A flat square in `models/square.gltf` with its buffer beside it, green, seen from above under even light: green in the middle and the background in the corner; two triangles drawn; half the width at scale 0.5; wider than a quarter more turned 45 degrees; nothing hidden; a missing model counted |
 | Frames and tilemaps (GPU) | Exact pixels for frames 0, 1 and a wrapped 2; a 2 × 2 map with an empty cell and a skipped tile; a sprite over its map; tiles in view counted for an aligned and an offset camera; bad text and a missing tileset counted |
 
