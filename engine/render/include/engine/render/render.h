@@ -349,6 +349,14 @@ struct Surface {
     /// Whether it casts the sun's shadow (WorldRenderer::set_sun_shadow()). Billboards
     /// usually do not: seen from the sun they are edge-on cards.
     bool casts_shadow = true;
+    /// A normal map laid over the texture, texel for texel (red right, green up, blue out
+    /// of the picture, as most tools make them): the sun (WorldRenderer::set_sun_light())
+    /// and point lights light each pixel at its own normal, so a picture's bumps and
+    /// rounded edges catch the light. Null: the quad is flat. Quads only, not triangles.
+    const Texture* normal_map = nullptr;
+    /// A glow map laid over the texture: its colour, times its alpha, is added after the
+    /// light, so lit windows, eyes and lava glow in the dark. Null: none.
+    const Texture* glow = nullptr;
 };
 
 /// The sun's shadows: what stands between a surface and the sun darkens the sun's part of
@@ -436,6 +444,10 @@ public:
     /// and every surface facing the sun is darkened where the map says it is hidden from
     /// it. Darkness 0 turns them off.
     void set_sun_shadow(const SunShadow& shadow);
+    /// Tells the frame (after begin(), which forgets it) how its quads' colours were lit by
+    /// the sun: `ambient` plus `diffuse` times how much each faces `towards_sun`. Quads with
+    /// a normal map then take the sun at each pixel's own normal instead of the quad's.
+    void set_sun_light(Vec3 towards_sun, float ambient, float diffuse);
     /// Sends the frame to the GPU. Returns false, with the device's last_error() set, if it
     /// could not.
     bool end();
@@ -445,7 +457,10 @@ public:
         std::size_t translucent = 0; ///< Of `quads`, those blended.
         std::size_t shadows = 0;
         std::size_t sun_casters = 0; ///< Quads drawn into the shadow map; 0 without one.
-        /// One per run of quads sharing a texture, and one per run of shadows sharing a shape.
+        std::size_t relief = 0;      ///< Quads with a normal map.
+        std::size_t glowing = 0;     ///< Quads with a glow map.
+        /// One per run of quads sharing a texture (and normal and glow maps), and one per run
+        /// of shadows sharing a shape.
         std::size_t draw_calls = 0;
     };
     [[nodiscard]] Stats last_stats() const noexcept { return stats_; }

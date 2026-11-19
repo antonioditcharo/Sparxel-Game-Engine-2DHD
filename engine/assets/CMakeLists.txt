@@ -10,6 +10,7 @@ add_library(engine_assets STATIC
     src/assets.cpp
     src/autotile.cpp
     src/gltf.cpp
+    src/lighting_maps.cpp
 )
 add_library(engine::assets ALIAS engine_assets)
 

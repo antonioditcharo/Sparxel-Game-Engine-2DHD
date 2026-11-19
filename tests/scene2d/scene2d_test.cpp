@@ -2156,3 +2156,47 @@ TEST_CASE("Models: a glTF asset stands in the Diorama, turned, scaled and sun-li
     CHECK(scene2d::draw_diorama(*w, textures, *renderer, *target, camera, f.background, light)
               .missing == 1);
 }
+
+TEST_CASE("Lighting maps beside a picture are found and drawn with it in the Diorama style") {
+    const Fixture f;
+    // red.png with a normal map and a glow map beside it; blue.png with a normal map of
+    // the wrong size, which is not used.
+    write_image(f.folder.path / "red_normal.png", 2, 2,
+                std::vector<Color>(4, Color{200, 128, 230, 255}));
+    write_png(f.folder.path / "red_glow.png", Color{0, 0, 0, 0});
+    write_image(f.folder.path / "blue_normal.png", 1, 1, {Color{128, 128, 255, 255}});
+    assets::AssetDatabase db(f.folder.path);
+    db.refresh();
+
+    const auto w = f.make_world();
+    const world::Entity hero = Fixture::place(*w, "hero", 0.5, 0.5, f.red_image);
+    static_cast<void>(hero);
+    const world::Entity other = Fixture::place(*w, "other", 2.5, 0.5, f.blue_image);
+    static_cast<void>(other);
+
+    render::Device* device = gpu();
+    if (device == nullptr) {
+        return;
+    }
+    scene2d::TextureCache textures(*device, db);
+    CHECK(textures.normal_map(f.red_image) != nullptr);
+    CHECK(textures.glow_map(f.red_image) != nullptr);
+    CHECK(textures.normal_map(f.blue_image) == nullptr); // not the picture's size
+    CHECK(textures.glow_map(f.blue_image) == nullptr);   // none
+    const auto target = device->create_render_target(64, 64);
+    const auto renderer = render::WorldRenderer::create(*device);
+    REQUIRE(target != nullptr);
+    REQUIRE(renderer != nullptr);
+    scene2d::DioramaCamera camera;
+    camera.x = 1.5;
+    camera.ppu = 2;
+    scene2d::draw_diorama(*w, textures, *renderer, *target, camera, f.background, {});
+    CHECK(renderer->last_stats().relief == 1);
+    CHECK(renderer->last_stats().glowing == 1);
+    // Gone from the folder, it is no longer used once the change is applied.
+    fs::remove(f.folder.path / "red_normal.png");
+    textures.apply(db.refresh());
+    CHECK(textures.normal_map(f.red_image) == nullptr);
+    scene2d::draw_diorama(*w, textures, *renderer, *target, camera, f.background, {});
+    CHECK(renderer->last_stats().relief == 0);
+}

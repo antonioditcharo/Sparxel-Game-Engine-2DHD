@@ -981,7 +981,10 @@ struct WorldVertex {
     float albedo_g;
     float albedo_b;
     Effects fx;
+    /// Along the texture's u across the quad, and 1 if it has a normal map (else 0).
+    std::array<float, 4> tangent;
 };
+static_assert(sizeof(WorldVertex) == 144);
 
 } // namespace
 
@@ -1005,6 +1008,12 @@ struct WorldRenderer::Native {
     std::vector<PointLight> lights;
     std::vector<WorldVertex> vertices;
     std::vector<const Texture*> textures; ///< One per quad.
+    std::vector<const Texture*> normals;  ///< One per quad; null for flat.
+    std::vector<const Texture*> glows;    ///< One per quad; null for none.
+    std::unique_ptr<Texture> flat_normal; ///< One texel facing straight out.
+    std::unique_ptr<Texture> no_glow;     ///< One clear black texel.
+    /// set_sun_light(): towards the sun, ambient, diffuse.
+    std::optional<std::array<float, 5>> sun_light;
     // Shadow decals, drawn after everything else (shadow.frag.hlsl).
     SDL_GPUGraphicsPipeline* shadow_pipeline{nullptr};
     std::unique_ptr<Texture> shadow_mask; ///< A soft round blob.
@@ -1016,6 +1025,8 @@ struct WorldRenderer::Native {
     struct Translucent {
         std::array<WorldVertex, 6> vertices;
         const Texture* texture;
+        const Texture* normal;
+        const Texture* glow;
         float distance; ///< Squared, from the eye to the quad's middle.
     };
     std::vector<Translucent> translucent;
@@ -1089,7 +1100,8 @@ std::unique_ptr<WorldRenderer> WorldRenderer::create(Device& device) {
     fragment_info.entrypoint = "main";
     fragment_info.format = vertex_info.format;
     fragment_info.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
-    fragment_info.num_samplers = 2; // the quad's texture, the sun's shadow map
+    // The quad's texture, the sun's shadow map, the normal map, the glow map.
+    fragment_info.num_samplers = 4;
     fragment_info.num_uniform_buffers = 1;
     SDL_GPUShader* fragment_shader = SDL_CreateGPUShader(gpu, &fragment_info);
 
@@ -1116,7 +1128,7 @@ std::unique_ptr<WorldRenderer> WorldRenderer::create(Device& device) {
         buffer.slot = 0;
         buffer.pitch = sizeof(WorldVertex);
         buffer.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
-        SDL_GPUVertexAttribute attributes[9]{};
+        SDL_GPUVertexAttribute attributes[10]{};
         attributes[0] = {0, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, 0};
         attributes[1] = {1, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2, 12};
         attributes[2] = {2, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4, 20};
@@ -1127,6 +1139,7 @@ std::unique_ptr<WorldRenderer> WorldRenderer::create(Device& device) {
         attributes[6] = {6, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4, 80};
         attributes[7] = {7, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4, 96};
         attributes[8] = {8, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4, 112};
+        attributes[9] = {9, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4, 128}; // the tangent
 
         SDL_GPUColorTargetDescription color{};
         color.format = pixel_format;
@@ -1137,7 +1150,7 @@ std::unique_ptr<WorldRenderer> WorldRenderer::create(Device& device) {
         info.vertex_input_state.vertex_buffer_descriptions = &buffer;
         info.vertex_input_state.num_vertex_buffers = 1;
         info.vertex_input_state.vertex_attributes = attributes;
-        info.vertex_input_state.num_vertex_attributes = 9;
+        info.vertex_input_state.num_vertex_attributes = 10;
         info.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
         info.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
         info.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_NONE;
@@ -1262,7 +1275,12 @@ std::unique_ptr<WorldRenderer> WorldRenderer::create(Device& device) {
         }
     }
     std::unique_ptr<Texture> shadow_mask = device.create_texture(mask_size, mask_size, mask);
-    if (sampler == nullptr || shadow_mask == nullptr) {
+    const std::array<std::uint8_t, 4> facing_out{128, 128, 255, 255};
+    std::unique_ptr<Texture> flat_normal = device.create_texture(1, 1, facing_out);
+    const std::array<std::uint8_t, 4> clear_black{0, 0, 0, 0};
+    std::unique_ptr<Texture> no_glow = device.create_texture(1, 1, clear_black);
+    if (sampler == nullptr || shadow_mask == nullptr || flat_normal == nullptr ||
+        no_glow == nullptr) {
         if (sampler == nullptr) {
             device.last_error_ = sdl_error("Creating the world sampler failed");
         } else {
@@ -1319,6 +1337,8 @@ std::unique_ptr<WorldRenderer> WorldRenderer::create(Device& device) {
     native->sun_pipeline = sun_pipeline;
     native->sun_map = sun_map;
     native->shadow_mask = std::move(shadow_mask);
+    native->flat_normal = std::move(flat_normal);
+    native->no_glow = std::move(no_glow);
     native->sampler = sampler;
     native->depth_format = depth_format;
     return std::unique_ptr<WorldRenderer>(new WorldRenderer(device, std::move(native)));
@@ -1345,11 +1365,26 @@ void WorldRenderer::begin(RenderTarget& target, Color clear, const Mat4& view_pr
                                                                 lights.size(), max_point_lights)));
     native_->vertices.clear();
     native_->textures.clear();
+    native_->normals.clear();
+    native_->glows.clear();
+    native_->sun_light.reset();
     native_->shadows.clear();
     native_->shadow_shapes.clear();
     native_->translucent.clear();
     native_->casts.clear();
     native_->sun.reset();
+}
+
+void WorldRenderer::set_sun_light(Vec3 towards_sun, float ambient, float diffuse) {
+    const float length =
+        std::sqrt((towards_sun.x * towards_sun.x) + (towards_sun.y * towards_sun.y) +
+                  (towards_sun.z * towards_sun.z));
+    if (native_->target == nullptr || !(length > 0.0F) || !std::isfinite(length) ||
+        !std::isfinite(ambient) || !std::isfinite(diffuse)) {
+        return;
+    }
+    native_->sun_light = std::array<float, 5>{towards_sun.x / length, towards_sun.y / length,
+                                              towards_sun.z / length, ambient, diffuse};
 }
 
 void WorldRenderer::set_sun_shadow(const SunShadow& shadow) {
@@ -1370,8 +1405,8 @@ namespace {
 /// A shadow's corner: its darkness travels in the colour's red (shadow.frag.hlsl).
 WorldVertex shadow_corner(const Vec3& p, float u, float v, float darkness) {
     const float d = std::isfinite(darkness) ? std::clamp(darkness, 0.0F, 1.0F) : 0.0F;
-    return WorldVertex{p.x,  p.y,  p.z,  u,    v,    d,    d,    d,        1.0F,
-                       0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 1.0F, 1.0F, Effects{}};
+    return WorldVertex{p.x,  p.y,  p.z,  u,    v,    d,    d,    d,         1.0F,
+                       0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 1.0F, 1.0F, Effects{}, {}};
 }
 
 } // namespace
@@ -1423,13 +1458,29 @@ void WorldRenderer::draw_triangles(const Texture& texture, std::span<const MeshC
     std::size_t slot = 0;
     for (std::size_t i = 0; i < whole; ++i) {
         const MeshCorner& c = corners[i];
-        native_->vertices.push_back(
-            WorldVertex{c.position.x, c.position.y, c.position.z, c.u, c.v, c.color[0], c.color[1],
-                        c.color[2], c.color[3], c.normal.x, c.normal.y, c.normal.z, surface.wrap,
-                        surface.albedo[0], surface.albedo[1], surface.albedo[2], Effects{}});
+        native_->vertices.push_back(WorldVertex{c.position.x,
+                                                c.position.y,
+                                                c.position.z,
+                                                c.u,
+                                                c.v,
+                                                c.color[0],
+                                                c.color[1],
+                                                c.color[2],
+                                                c.color[3],
+                                                c.normal.x,
+                                                c.normal.y,
+                                                c.normal.z,
+                                                surface.wrap,
+                                                surface.albedo[0],
+                                                surface.albedo[1],
+                                                surface.albedo[2],
+                                                Effects{},
+                                                {}});
         if (++slot == 6) {
             slot = 0;
             native_->textures.push_back(&texture);
+            native_->normals.push_back(nullptr);
+            native_->glows.push_back(surface.glow);
             native_->casts.push_back(surface.casts_shadow);
         }
     }
@@ -1439,6 +1490,8 @@ void WorldRenderer::draw_triangles(const Texture& texture, std::span<const MeshC
             native_->vertices.push_back(last);
         }
         native_->textures.push_back(&texture);
+        native_->normals.push_back(nullptr);
+        native_->glows.push_back(surface.glow);
         native_->casts.push_back(surface.casts_shadow);
     }
 }
@@ -1469,6 +1522,16 @@ void WorldRenderer::draw(const Texture& texture, const std::array<Vec3, 4>& give
     const float u1 = f1 + margin_u;
     const float v1 = g1 + margin_v;
     const std::array<Vec3, 4> corners = grow ? grown(given, source) : given;
+    // Along u: from the top-left corner to the top-right.
+    const float tx = corners[1].x - corners[0].x;
+    const float ty = corners[1].y - corners[0].y;
+    const float tz = corners[1].z - corners[0].z;
+    const float across = std::sqrt((tx * tx) + (ty * ty) + (tz * tz));
+    const bool relief = surface.normal_map != nullptr && across > 0.0F && std::isfinite(across);
+    const std::array<float, 4> tangent =
+        relief ? std::array<float, 4>{tx / across, ty / across, tz / across, 1.0F}
+               : std::array<float, 4>{};
+    const Texture* normal_map = relief ? surface.normal_map : nullptr;
     const auto corner = [&](const Vec3& p, float u, float v) {
         return WorldVertex{p.x,
                            p.y,
@@ -1486,7 +1549,8 @@ void WorldRenderer::draw(const Texture& texture, const std::array<Vec3, 4>& give
                            surface.albedo[0],
                            surface.albedo[1],
                            surface.albedo[2],
-                           fx};
+                           fx,
+                           tangent};
     };
     const WorldVertex tl = corner(corners[0], u0, v0);
     const WorldVertex tr = corner(corners[1], u1, v0);
@@ -1503,13 +1567,18 @@ void WorldRenderer::draw(const Texture& texture, const std::array<Vec3, 4>& give
         const float dx = middle.x - eye.x;
         const float dy = middle.y - eye.y;
         const float dz = middle.z - eye.z;
-        native_->translucent.push_back(Native::Translucent{
-            {tl, tr, bl, tr, br, bl}, &texture, (dx * dx) + (dy * dy) + (dz * dz)});
+        native_->translucent.push_back(Native::Translucent{{tl, tr, bl, tr, br, bl},
+                                                           &texture,
+                                                           normal_map,
+                                                           surface.glow,
+                                                           (dx * dx) + (dy * dy) + (dz * dz)});
         return;
     }
     const WorldVertex quad[6] = {tl, tr, bl, tr, br, bl};
     native_->vertices.insert(native_->vertices.end(), std::begin(quad), std::end(quad));
     native_->textures.push_back(&texture);
+    native_->normals.push_back(normal_map);
+    native_->glows.push_back(surface.glow);
     native_->casts.push_back(surface.casts_shadow);
 }
 
@@ -1671,7 +1740,7 @@ bool WorldRenderer::end() {
         // The pixel shader's uniforms: fog, the point lights, then the sun's shadows (see
         // world.frag.hlsl).
         const bool fog_on = n.fog.end > n.fog.start;
-        std::array<float, 4 * (3 + (2 * max_point_lights) + 6)> frame{};
+        std::array<float, 4 * (3 + (2 * max_point_lights) + 8)> frame{};
         frame[0] = static_cast<float>(n.fog.color.r) / 255.0F;
         frame[1] = static_cast<float>(n.fog.color.g) / 255.0F;
         frame[2] = static_cast<float>(n.fog.color.b) / 255.0F;
@@ -1714,23 +1783,43 @@ bool WorldRenderer::end() {
             frame.at(at + 21) = n.sun->towards_sun.y;
             frame.at(at + 22) = n.sun->towards_sun.z;
         }
+        if (n.sun_light) {
+            const std::size_t at = 4 * (3 + (2 * max_point_lights) + 6);
+            const std::array<float, 5>& sun = *n.sun_light;
+            frame.at(at) = sun[0];
+            frame.at(at + 1) = sun[1];
+            frame.at(at + 2) = sun[2];
+            frame.at(at + 4) = sun[3];
+            frame.at(at + 5) = sun[4];
+            frame.at(at + 6) = 1.0F;
+        }
         SDL_PushGPUFragmentUniformData(commands, 0, frame.data(), sizeof(frame));
-        // Every world draw samples its texture and the sun's map.
-        const auto bind = [&n, pass](const Texture& texture) {
-            std::array<SDL_GPUTextureSamplerBinding, 2> samplers{};
+        // Every world draw samples its texture, the sun's map, and its normal and glow maps
+        // (a flat normal and no glow when it has none).
+        const auto bind = [&n, pass](const Texture& texture, const Texture* normal,
+                                     const Texture* glow) {
+            std::array<SDL_GPUTextureSamplerBinding, 4> samplers{};
             samplers[0].texture = texture.native().texture;
-            samplers[0].sampler = n.sampler;
             samplers[1].texture = n.sun_map;
-            samplers[1].sampler = n.sampler;
-            SDL_BindGPUFragmentSamplers(pass, 0, samplers.data(), 2);
+            samplers[2].texture =
+                (normal != nullptr ? normal : n.flat_normal.get())->native().texture;
+            samplers[3].texture = (glow != nullptr ? glow : n.no_glow.get())->native().texture;
+            for (SDL_GPUTextureSamplerBinding& s : samplers) {
+                s.sampler = n.sampler;
+            }
+            SDL_BindGPUFragmentSamplers(pass, 0, samplers.data(), 4);
+        };
+        const auto same = [&n](std::size_t a, std::size_t b) {
+            return n.textures[a] == n.textures[b] && n.normals[a] == n.normals[b] &&
+                   n.glows[a] == n.glows[b];
         };
         std::size_t first = 0;
         while (first < n.textures.size()) {
             std::size_t last = first + 1;
-            while (last < n.textures.size() && n.textures[last] == n.textures[first]) {
+            while (last < n.textures.size() && same(first, last)) {
                 ++last;
             }
-            bind(*n.textures[first]);
+            bind(*n.textures[first], n.normals[first], n.glows[first]);
             SDL_DrawGPUPrimitives(pass, static_cast<std::uint32_t>((last - first) * 6), 1,
                                   static_cast<std::uint32_t>(first * 6), 0);
             ++stats_.draw_calls;
@@ -1765,10 +1854,13 @@ bool WorldRenderer::end() {
             while (from < n.translucent.size()) {
                 std::size_t to = from + 1;
                 while (to < n.translucent.size() &&
-                       n.translucent[to].texture == n.translucent[from].texture) {
+                       n.translucent[to].texture == n.translucent[from].texture &&
+                       n.translucent[to].normal == n.translucent[from].normal &&
+                       n.translucent[to].glow == n.translucent[from].glow) {
                     ++to;
                 }
-                bind(*n.translucent[from].texture);
+                const Native::Translucent& quad = n.translucent[from];
+                bind(*quad.texture, quad.normal, quad.glow);
                 SDL_DrawGPUPrimitives(pass, static_cast<std::uint32_t>((to - from) * 6), 1,
                                       shadowed_count + static_cast<std::uint32_t>(from * 6), 0);
                 ++stats_.draw_calls;
@@ -1784,6 +1876,16 @@ bool WorldRenderer::end() {
         return false;
     }
     stats_.quads = n.textures.size() + n.translucent.size();
+    const auto counted = [](const std::vector<const Texture*>& maps) {
+        return static_cast<std::size_t>(
+            std::count_if(maps.begin(), maps.end(), [](const Texture* t) { return t != nullptr; }));
+    };
+    stats_.relief = counted(n.normals);
+    stats_.glowing = counted(n.glows);
+    for (const Native::Translucent& quad : n.translucent) {
+        stats_.relief += quad.normal != nullptr ? 1 : 0;
+        stats_.glowing += quad.glow != nullptr ? 1 : 0;
+    }
     stats_.translucent = n.translucent.size();
     stats_.shadows = n.shadows.size() / 6;
     return true;

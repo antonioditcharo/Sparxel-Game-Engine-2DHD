@@ -547,3 +547,84 @@ TEST_CASE("The sun's shadow map darkens what something stands between it and the
     REQUIRE(world->end());
     CHECK(pixel(target->read_pixels(), 16, 6, 8) == Color{255, 255, 255, 255});
 }
+
+TEST_CASE("Normal maps bend the sun and point lights per pixel; glow maps shine in the dark") {
+    render::Device* device = gpu();
+    if (device == nullptr) {
+        return;
+    }
+    const auto target = device->create_render_target(16, 16);
+    const auto world = render::WorldRenderer::create(*device);
+    REQUIRE(target != nullptr);
+    REQUIRE(world != nullptr);
+    const std::vector<std::uint8_t> two_white{255, 255, 255, 255, 255, 255, 255, 255};
+    const auto white = device->create_texture(2, 1, two_white);
+    // Left texel tilted right (0.6, 0, 0.8), right texel tilted left (-0.6, 0, 0.8).
+    const std::vector<std::uint8_t> tilted{204, 128, 230, 255, 51, 128, 230, 255};
+    const auto bumps = device->create_texture(2, 1, tilted);
+    REQUIRE(white != nullptr);
+    REQUIRE(bumps != nullptr);
+    const Mat4 camera = Mat4::orthographic(-8, 8, -8, 8, 1, 20) *
+                        Mat4::look_at(Vec3{0, 0, 10}, Vec3{0, 0, 0}, Vec3{0, 1, 0});
+    const Vec3 eye{0, 0, 10};
+    // The sun up and to the right, at 45 degrees: a wall facing the eye takes
+    // 0.5 + 0.5 x 0.707 of it, as its colour says.
+    const Vec3 towards_sun{1, 0, 1};
+    const float flat = 0.5F + (0.5F * std::sqrt(0.5F));
+    const std::array<float, 4> sunlit{flat, flat, flat, 1.0F};
+    render::Surface wall;
+    wall.normal = Vec3{0, 0, 1};
+    const auto draw = [&](const render::Surface& surface, std::array<float, 4> colour, bool sun,
+                          std::span<const render::PointLight> lights) {
+        world->begin(*target, background, camera, eye, render::Fog{}, lights);
+        if (sun) {
+            world->set_sun_light(towards_sun, 0.5F, 0.5F);
+        }
+        world->draw(*white, facing(-8, -8, 8, 8, 0), Rect{0, 0, 2, 1}, colour, surface);
+        REQUIRE(world->end());
+        return target->read_pixels();
+    };
+    // Flat: both halves alike, 218.
+    std::vector<std::uint8_t> pixels = draw(wall, sunlit, true, {});
+    CHECK(near_colour(pixel(pixels, 16, 4, 8), Color{218, 218, 218, 255}, 2));
+    CHECK(pixel(pixels, 16, 4, 8) == pixel(pixels, 16, 12, 8));
+    CHECK(world->last_stats().relief == 0);
+    // With the normal map: the half tilted towards the sun takes nearly all of it
+    // (0.5 + 0.5 x 0.99), the other half little (0.5 + 0.5 x 0.14).
+    render::Surface bumpy = wall;
+    bumpy.normal_map = bumps.get();
+    pixels = draw(bumpy, sunlit, true, {});
+    CHECK(near_colour(pixel(pixels, 16, 4, 8), Color{254, 254, 254, 255}, 3));
+    CHECK(near_colour(pixel(pixels, 16, 12, 8), Color{146, 146, 146, 255}, 3));
+    CHECK(world->last_stats().relief == 1);
+    // Without set_sun_light() the sun is as the colour says.
+    pixels = draw(bumpy, sunlit, false, {});
+    CHECK(near_colour(pixel(pixels, 16, 4, 8), Color{218, 218, 218, 255}, 2));
+
+    // A point light to the right: the left half, tilted towards it, brighter than flat;
+    // between the middle and the light, the half tilted away is dimmer.
+    const std::array<render::PointLight, 1> lamp{
+        render::PointLight{Vec3{4.0F, 0.5F, 2.0F}, 10.0F, {1.0F, 0.0F, 0.0F}}};
+    const std::array<float, 4> dark{0.0F, 0.0F, 0.0F, 1.0F};
+    const std::vector<std::uint8_t> plain = draw(wall, dark, false, lamp);
+    pixels = draw(bumpy, dark, false, lamp);
+    CAPTURE(pixel(plain, 16, 6, 7).r);
+    CAPTURE(pixel(pixels, 16, 6, 7).r);
+    CHECK(pixel(pixels, 16, 6, 7).r > pixel(plain, 16, 6, 7).r + 30);
+    CHECK(pixel(pixels, 16, 10, 7).r + 30 < pixel(plain, 16, 10, 7).r);
+
+    // A glow map: its colour times its alpha, added in the dark.
+    const auto glow = solid(*device, Color{0, 255, 0, 128});
+    render::Surface glowing = wall;
+    glowing.glow = glow.get();
+    pixels = draw(glowing, dark, false, {});
+    CHECK(near_colour(pixel(pixels, 16, 8, 8), Color{0, 128, 0, 255}, 2));
+    CHECK(world->last_stats().glowing == 1);
+
+    // Quads differing only in their maps are drawn apart.
+    world->begin(*target, background, camera, eye);
+    world->draw(*white, facing(-8, -8, 0, 8, 0), Rect{0, 0, 2, 1}, sunlit, wall);
+    world->draw(*white, facing(0, -8, 8, 8, 0), Rect{0, 0, 2, 1}, sunlit, bumpy);
+    REQUIRE(world->end());
+    CHECK(world->last_stats().draw_calls == 2);
+}

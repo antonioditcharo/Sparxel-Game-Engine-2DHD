@@ -1088,6 +1088,107 @@ QString MainWindow::make_autotiles(const QString& asset_path) {
     return text_of(made);
 }
 
+QString MainWindow::make_normal_map(const QString& asset_path,
+                                    const engine::assets::NormalMapSettings& settings) {
+    if (document_ == nullptr) {
+        return {};
+    }
+    std::string error;
+    const std::string made = document_->make_normal_map(utf8_of(asset_path), settings, error);
+    if (made.empty()) {
+        statusBar()->showMessage(tr("No normal map made: %1").arg(text_of(error)), 8000);
+        return {};
+    }
+    reload_assets();
+    statusBar()->showMessage(
+        tr("Made %1: in the Diorama style the sun and lights now catch the picture's edges")
+            .arg(text_of(made)),
+        10000);
+    return text_of(made);
+}
+
+QString MainWindow::make_glow_map(const QString& asset_path, float threshold) {
+    if (document_ == nullptr) {
+        return {};
+    }
+    std::string error;
+    const std::string made = document_->make_glow_map(utf8_of(asset_path), threshold, error);
+    if (made.empty()) {
+        statusBar()->showMessage(tr("No glow map made: %1").arg(text_of(error)), 8000);
+        return {};
+    }
+    reload_assets();
+    statusBar()->showMessage(
+        tr("Made %1: in the Diorama style its colours shine in the dark; paint over it in "
+           "Sprite Studio to choose what glows")
+            .arg(text_of(made)),
+        10000);
+    return text_of(made);
+}
+
+void MainWindow::ask_normal_map(const QString& asset_path) {
+    if (document_ == nullptr) {
+        return;
+    }
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Make a normal map"));
+    auto* form = new QFormLayout(&dialog);
+    auto* relief = new QComboBox(&dialog);
+    relief->addItem(tr("Rounded edges (characters, props)"));
+    relief->addItem(tr("Bumps from brightness (stone, bark)"));
+    relief->addItem(tr("Both"));
+    form->addRow(tr("Shape:"), relief);
+    auto* strength = new QSpinBox(&dialog);
+    strength->setRange(0, 800);
+    strength->setSingleStep(25);
+    strength->setSuffix(QStringLiteral(" %"));
+    strength->setValue(100);
+    form->addRow(tr("Strength:"), strength);
+    auto* bevel = new QSpinBox(&dialog);
+    bevel->setRange(1, 16);
+    bevel->setValue(3);
+    bevel->setSuffix(tr(" pixels"));
+    form->addRow(tr("Edges round over:"), bevel);
+    auto* cell = new QSpinBox(&dialog);
+    cell->setRange(0, 4096);
+    cell->setSpecialValueText(tr("Whole picture"));
+    cell->setSuffix(tr(" pixels"));
+    cell->setToolTip(tr("For a tileset or a sprite sheet: each tile or frame rounds off at its "
+                        "own edges"));
+    form->addRow(tr("Each tile or frame:"), cell);
+    // A tileset (every pixel opaque) starts at a tile; a sprite at the whole picture.
+    if (const engine::assets::AssetRecord* record = document_->assets().find(utf8_of(asset_path))) {
+        std::string ignored;
+        if (const auto bytes = document_->assets().read(record->guid)) {
+            if (const auto image = engine::assets::decode_png(*bytes, ignored)) {
+                bool solid = true;
+                for (std::size_t i = 3; i < image->rgba.size(); i += 4) {
+                    solid = solid && image->rgba[i] == 255;
+                }
+                if (solid) {
+                    relief->setCurrentIndex(1);
+                    cell->setValue(static_cast<int>(std::max(1U, document_->settings().ppu)));
+                }
+            }
+        }
+    }
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    buttons->button(QDialogButtonBox::Ok)->setText(tr("Make"));
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    form->addRow(buttons);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+    engine::assets::NormalMapSettings settings;
+    settings.relief = static_cast<engine::assets::Relief>(relief->currentIndex());
+    settings.strength = static_cast<float>(strength->value()) / 100.0F;
+    settings.bevel = static_cast<std::uint32_t>(bevel->value());
+    settings.cell_width = static_cast<std::uint32_t>(cell->value());
+    settings.cell_height = settings.cell_width;
+    make_normal_map(asset_path, settings);
+}
+
 StoryWindow* MainWindow::open_story(const QString& asset_path) {
     if (document_ == nullptr) {
         return nullptr;
@@ -1612,6 +1713,21 @@ void MainWindow::build_actions() {
                                        [this, relative] { make_autotiles(relative); });
         make->setToolTip(tr("Each 2 x 3 tiles of this picture are a terrain; makes a tileset "
                             "of every shape each takes, for a tilemap with Auto-tile on"));
+        QAction* normals = menu.addAction(tr("Make a normal map…"), this,
+                                          [this, relative] { ask_normal_map(relative); });
+        normals->setToolTip(tr("Makes <name>_normal.png beside it: in the Diorama style, the "
+                               "sun and lights catch its rounded edges and bumps"));
+        QAction* glow = menu.addAction(tr("Make a glow map…"), this, [this, relative] {
+            bool chosen = false;
+            const int least = QInputDialog::getInt(this, tr("Make a glow map"),
+                                                   tr("Colours at least this bright glow (%):"), 85,
+                                                   0, 100, 5, &chosen);
+            if (chosen) {
+                make_glow_map(relative, static_cast<float>(least) / 100.0F);
+            }
+        });
+        glow->setToolTip(tr("Makes <name>_glow.png beside it: its brightest colours shine in "
+                            "the dark, as lit windows and eyes do"));
         menu.setToolTipsVisible(true);
         menu.exec(asset_tree_->viewport()->mapToGlobal(at));
     });

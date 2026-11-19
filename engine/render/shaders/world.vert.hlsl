@@ -1,6 +1,6 @@
 // World vertex shader: transforms 3D positions by the view-projection matrix, and passes on
-// what the pixel shader lights with: the world position, the surface (normal and wrap) and
-// its albedo; and the sprite's effects (render::SpriteEffects). The matrix arrives as four
+// what the pixel shader lights with: the world position, the surface (normal and wrap), its
+// albedo and tangent (for normal maps); and the sprite's effects (render::SpriteEffects). The matrix arrives as four
 // rows and is applied with dot products, so its layout means the same thing in SPIR-V and
 // DXIL. Uniforms are in (b, space1), as SDL GPU requires for vertex shaders.
 
@@ -24,6 +24,7 @@ struct Input
     float4 outline : TEXCOORD6;  // rgb, and its alpha (0: none)
     float4 frame : TEXCOORD7;    // the source's texture coordinates: left, top, right, bottom
     float4 params : TEXCOORD8;   // x: dissolve, yz: one texel
+    float4 tangent : TEXCOORD9;  // xyz: along the texture's u, w: 1 with a normal map
 };
 
 struct Output
@@ -38,6 +39,7 @@ struct Output
     float4 outline : TEXCOORD7;
     float4 frame : TEXCOORD8;
     float4 params : TEXCOORD9;
+    float4 tangent : TEXCOORD10;
     float4 position : SV_Position;
 };
 
@@ -56,5 +58,6 @@ Output main(Input input)
     output.outline = input.outline;
     output.frame = input.frame;
     output.params = input.params;
+    output.tangent = input.tangent;
     return output;
 }

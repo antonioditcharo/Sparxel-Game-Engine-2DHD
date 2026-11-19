@@ -100,7 +100,37 @@ Tested (`tests/assets/gltf_test.cpp`): one triangle, under a parent moved by (1,
 and a child scaled by 2, read the same from a `data:` URI, a file beside it and a `.glb`,
 with its own normal, base colour and box; and each error above.
 
-## 7. Next increments
+## 7. Lighting maps
+
+`engine/assets/lighting_maps.h` (`plan/02` B9, as Sprite Illuminator makes them) makes, from
+a picture, the maps the Diorama style lights it with ([scene2d.md](scene2d.md) §7,
+*Lighting maps*):
+
+- **Normal maps** (`make_normal_map()`): the same size as the picture, red along it to the
+  right, green up it, blue out of it (flat is 128, 128, 255), every pixel opaque, clear
+  pixels flat. The height they slope by comes from:
+  - **Rounded**: the outline, rounded off as a quarter circle over *bevel* pixels (1 to
+    16), steep at the edge and flat on top: characters and props look moulded.
+  - **Bumpy**: the brightness, bright parts raised by up to 2 pixels: stone, bark,
+    cobbles.
+  - **Both**: the two added.
+
+  *Strength* (0 to 8) makes every slope steeper or flatter. *Cells* (a tileset's tiles or
+  a sheet's frames) are kept apart: their edges are edges, and no slope crosses them.
+- **Glow maps** (`make_glow_map()`): the picture's pixels at least a threshold bright
+  (the brightest of red, green and blue), opaque, and nothing else: lit windows, eyes,
+  lava. Paint over one to choose exactly what glows.
+
+Tested (`tests/assets/lighting_maps_test.cpp`): a square rounded over 2 pixels faces left
+on its left edge, right on its right, up and down on its top and bottom, its mirrored
+edges exactly mirrored, flat on top and where clear, every pixel opaque; steeper at
+strength 3, flat at 0; a broken picture gives nothing. A bright pixel in a dark strip,
+bumpy: tilted left before it, right after it, flat on top. Two tiles side by side: flat
+along their seam as one picture, each rounded at its own edge as cells of 4. A glow map
+keeps a lit window, not a dark pixel or a bright clear one; at threshold 0 every opaque
+pixel.
+
+## 8. Next increments
 
 Towards Spike A, "file watcher → import → cache → hot reload of a sprite into the running
 viewport" (`plan/08` Phase 0):

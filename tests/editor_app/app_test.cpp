@@ -2790,3 +2790,19 @@ TEST_CASE("Playing in the editor: the game's frames shown, its keys from here") 
     CHECK_FALSE(game->playing());
     CHECK(e.window.scene_view()->isVisible());
 }
+
+TEST_CASE("Lighting maps from the Assets list: a normal map and a glow map beside a picture") {
+    Editor e;
+    const engine::assets::NormalMapSettings settings;
+    CHECK(e.window.make_normal_map(QStringLiteral("art/hero.png"), settings) ==
+          QStringLiteral("art/hero_normal.png"));
+    CHECK(e.window.statusBar()->currentMessage().startsWith(
+        QStringLiteral("Made art/hero_normal.png")));
+    CHECK(e.window.document()->assets().find("art/hero_normal.png") != nullptr);
+    CHECK(e.window.make_glow_map(QStringLiteral("art/hero.png"), 0.9F) ==
+          QStringLiteral("art/hero_glow.png"));
+    // A map of a map is refused, saying why.
+    CHECK(e.window.make_normal_map(QStringLiteral("art/hero_glow.png"), settings).isEmpty());
+    CHECK(e.window.statusBar()->currentMessage() ==
+          QStringLiteral("No normal map made: art/hero_glow.png is a lighting map already."));
+}

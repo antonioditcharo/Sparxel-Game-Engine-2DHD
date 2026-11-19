@@ -12,6 +12,7 @@
 // See docs/dev/editor.md.
 
 #include "engine/assets/assets.h"
+#include "engine/assets/lighting_maps.h"
 #include "engine/foundation/guid.h"
 #include "engine/foundation/reflect.h"
 #include "engine/game/runtime.h"
@@ -148,6 +149,16 @@ public:
     /// replacing one there), at the project's pixels per unit. Returns its path; empty, with
     /// `error`, if it cannot.
     std::string make_autotiles(std::string_view path, std::string& error);
+    /// Makes a normal map (assets/lighting_maps.h) of the picture at `path` in assets/
+    /// ("art/hero.png") beside it ("art/hero_normal.png", replacing one there), so the
+    /// Diorama style lights each of its pixels at its own slope. Returns its path; empty,
+    /// with `error`, if it cannot.
+    std::string make_normal_map(std::string_view path,
+                                const engine::assets::NormalMapSettings& settings,
+                                std::string& error);
+    /// The same for a glow map ("art/hero_glow.png") of its colours at least `threshold`
+    /// bright (0 to 1), which shine in the dark.
+    std::string make_glow_map(std::string_view path, float threshold, std::string& error);
     /// Imports an Aseprite file (".aseprite" or ".ase", its path in assets/) as a sprite
     /// sheet beside it: "art/hero.aseprite" makes "art/hero.png" (every frame side by side)
     /// and "art/hero.sheet" (each frame's duration, and the tags as animations), replacing

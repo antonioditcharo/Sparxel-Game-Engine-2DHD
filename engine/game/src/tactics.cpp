@@ -321,13 +321,14 @@ void TacticsObject::play_enemy(world::World& world, world::Entity enemy, std::ui
                 }
             }
         }
-        if (best) {
+        if (best.has_value()) {
+            const Tile chosen = *best;
             if (auto* to = world.get<scene2d::Transform2D>(enemy)) {
-                const auto [x, y] = stand_on(*best);
+                const auto [x, y] = stand_on(chosen);
                 to->x = x;
                 to->y = y;
             }
-            targets = targets_from(world, enemy, *best);
+            targets = targets_from(world, enemy, chosen);
         }
     }
     if (!targets.empty()) {

@@ -356,6 +356,16 @@ the style ([game.md](game.md) §2).
   asset changes; a model that cannot be read is counted as missing. Classic 2D does not
   draw models. In the editor, dropping a `.gltf` or `.glb` from the assets list places a
   Model there, and the inspector chooses another from the project's models.
+- **Lighting maps** (`plan/02` B9): a picture with a **normal map** beside it, the PNG of
+  the same name ending `_normal` and of the same size (`art/hero_normal.png` for
+  `art/hero.png`), is lit pixel by pixel: the sun (`set_sun_light()`, as `brightness()`
+  lights faces) and point lights fall on each pixel's own slope, so a character's
+  rounded edges catch the torchlight on the side it comes from and a stone wall's bumps
+  shade with the sun. One ending `_glow` is a **glow map**, added after the light, so
+  lit windows shine at night. Sprites, tiles and block sides all use them; nothing needs
+  setting, and the editor makes both ([assets.md](assets.md) §7). The texture cache
+  finds them once (`normal_map()`, `glow_map()`) and looks again when assets change; a
+  map of another size is not used. Classic 2D does not use them yet.
 - **Depth** sorts everything; there is no draw order to manage. **Fog** fades distant
   things into the haze.
 - **Rays** (`diorama_ray()`, `ground_hit()`): the ray from the eye through any point of the
@@ -400,6 +410,7 @@ the others run anywhere:
 | See-through maps (GPU) | `alpha()` from `opacity`, clamped, NaN as solid; water at 0.5 over a riverbed: in Classic 2D exactly half of each; in the Diorama style the lit riverbed and lit water mixed by the alpha, four quads blended; opacity 1 and 0 blend none |
 | A sprite's corners | `sprite_corners()` upright; a quarter turn clockwise, exactly, and the same at -270; 45 degrees; flipped across and twice as tall; a rotation or scale that is not a number counts as none |
 | Turned, scaled and flipped (GPU) | A picture red on the left and blue on the right, at exact pixels: upright; flipped (blue on the left); a quarter turn about its feet (red on top, standing to the right of them), the same at -270; twice as wide; half as tall; a NaN rotation drawn upright. In the Diorama style, points a quarter and three quarters of a tile above the feet show the sprite; at half height only the lower one; turned upside down, neither |
+| Lighting maps (GPU) | `red_normal.png` and `red_glow.png` beside the red picture are found; a normal map of another size, and a glow map that is not there, are not; drawn, one sprite has relief and glows and the other not; the normal map removed and the change applied, neither |
 | Models (GPU) | A flat square in `models/square.gltf` with its buffer beside it, green, seen from above under even light: green in the middle and the background in the corner; two triangles drawn; half the width at scale 0.5; wider than a quarter more turned 45 degrees; nothing hidden; a missing model counted |
 | Frames and tilemaps (GPU) | Exact pixels for frames 0, 1 and a wrapped 2; a 2 × 2 map with an empty cell and a skipped tile; a sprite over its map; tiles in view counted for an aligned and an offset camera; bad text and a missing tileset counted |
 
@@ -410,7 +421,7 @@ the others run anywhere:
 2. **Auto-tiles, further**: animated terrains (water from 3 blocks side by side), and
    rules for 2D layers in the LDtk style (grass edges by neighbour patterns, random
    variants).
-3. **2D lights, further:** normal maps, so a light shades a picture's bumps from the
-   side it comes from, and lights that cast shadows (`plan/04` §3).
+3. **2D lights, further:** normal maps in Classic 2D too (the Diorama style has them:
+   §7), and lights that cast shadows (`plan/04` §3).
 4. **Diorama, further:** shadows from point lights, billboard modes other than Upright,
    directional sprite sets, and tilt-shift depth of field (`plan/04` §5 to §8).

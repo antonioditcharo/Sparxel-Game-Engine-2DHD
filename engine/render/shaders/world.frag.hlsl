@@ -1,5 +1,5 @@
-// World pixel shader: the texel times the vertex colour plus the point lights, then linear
-// distance fog. Opaque quads cut alpha out, so pixel art keeps hard edges and sorts by
+// World pixel shader: the texel times the vertex colour plus the point lights (at the normal
+// map's normal, when the quad has one), plus the glow map, then linear distance fog. Opaque quads cut alpha out, so pixel art keeps hard edges and sorts by
 // depth; see-through quads (the blended pipeline sets fog_range.w) keep the texel's alpha
 // times the colour's, to blend over what is behind them.
 // Textures and samplers are in (t, space2) and (s, space2), uniforms in (b, space3), as SDL
@@ -7,8 +7,12 @@
 
 Texture2D<float4> world_texture : register(t0, space2);
 Texture2D<float> shadow_map : register(t1, space2); // depth seen from the sun
+Texture2D<float4> normal_texture : register(t2, space2); // flat when the quad has none
+Texture2D<float4> glow_texture : register(t3, space2);   // clear when the quad has none
 SamplerState world_sampler : register(s0, space2);
 SamplerState shadow_sampler : register(s1, space2);
+SamplerState normal_sampler : register(s2, space2);
+SamplerState glow_sampler : register(s3, space2);
 
 #define MAX_POINT_LIGHTS 16 // render::max_point_lights
 
@@ -26,6 +30,8 @@ cbuffer Frame : register(b0, space3)
     float4 shadow_row3;
     float4 shadow_params; // x: 1 if on, y: darkness, z: one texel, w: depth bias
     float4 sun;           // xyz: towards the sun
+    float4 sun_light;     // xyz: towards the sun, for normal maps
+    float4 sun_amounts;   // x: ambient, y: diffuse, z: 1 if set
 };
 
 // How much of the sun reaches `world`: 1 in the open, down to 1 - darkness where
@@ -82,6 +88,7 @@ struct Input
     float4 outline : TEXCOORD7;
     float4 frame : TEXCOORD8;
     float4 params : TEXCOORD9;
+    float4 tangent : TEXCOORD10;
 };
 
 // The texel at `uv`, clear outside the source (an outlined quad reaches a texel beyond it).
@@ -134,7 +141,31 @@ float4 main(Input input) : SV_Target0
     const float normal_length = length(input.surface.xyz);
     if (normal_length > 0.0001)
     {
-        const float3 normal = input.surface.xyz / normal_length;
+        float3 normal = input.surface.xyz / normal_length;
+        if (input.tangent.w > 0.5)
+        {
+            // The normal map's normal: red along u, green up the picture, blue out of it.
+            const float3 across = input.tangent.xyz - normal * dot(normal, input.tangent.xyz);
+            const float across_length = length(across);
+            if (across_length > 0.0001)
+            {
+                const float3 t = across / across_length;
+                const float3 b = cross(normal, t);
+                const float3 m =
+                    normal_texture.Sample(normal_sampler, input.uv).xyz * 2.0 - 1.0;
+                const float3 bent = normalize(t * m.x + b * m.y + normal * m.z);
+                // The sun at the pixel's normal, in place of the quad's.
+                if (sun_amounts.z > 0.5)
+                {
+                    const float flat_sun =
+                        sun_amounts.x + sun_amounts.y * saturate(dot(normal, sun_light.xyz));
+                    const float bent_sun =
+                        sun_amounts.x + sun_amounts.y * saturate(dot(bent, sun_light.xyz));
+                    light *= bent_sun / max(flat_sun, 0.001);
+                }
+                normal = bent;
+            }
+        }
         const float wrap = input.surface.w;
         const int count = (int)light_count.x;
         [loop]
@@ -156,6 +187,8 @@ float4 main(Input input) : SV_Target0
         }
     }
     float3 rgb = texel.rgb * light;
+    const float4 glow = glow_texture.Sample(glow_sampler, input.uv);
+    rgb += glow.rgb * glow.a;
     rgb = lerp(rgb, input.flash.rgb, input.flash.a);
     if (fog_range.z > 0.5)
     {

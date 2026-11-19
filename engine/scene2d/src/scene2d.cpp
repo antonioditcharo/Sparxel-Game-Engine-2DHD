@@ -1382,6 +1382,36 @@ const render::Texture* TextureCache::light_falloff() {
     return falloff_.get();
 }
 
+const render::Texture* TextureCache::beside(Guid image, std::string_view ending) {
+    const std::string key = image.to_string() + std::string(ending);
+    if (const auto found = beside_.find(key); found != beside_.end()) {
+        return found->second;
+    }
+    const render::Texture* result = nullptr;
+    const assets::AssetRecord* record = assets_.find(image);
+    if (record != nullptr && record->path.ends_with(".png")) {
+        const std::string path =
+            record->path.substr(0, record->path.size() - 4) + std::string(ending) + ".png";
+        const assets::AssetRecord* map = assets_.find(path);
+        const render::Texture* picture = get(image);
+        const render::Texture* texture = map != nullptr ? get(map->guid) : nullptr;
+        if (picture != nullptr && texture != nullptr && texture->width() == picture->width() &&
+            texture->height() == picture->height()) {
+            result = texture;
+        }
+    }
+    beside_[key] = result;
+    return result;
+}
+
+const render::Texture* TextureCache::normal_map(Guid image) {
+    return beside(image, "_normal");
+}
+
+const render::Texture* TextureCache::glow_map(Guid image) {
+    return beside(image, "_glow");
+}
+
 const TextureCache::LoadedModel* TextureCache::model(Guid asset) {
     if (const auto found = models_.find(asset); found != models_.end()) {
         return found->second.get();
@@ -1438,6 +1468,10 @@ void TextureCache::apply(const assets::AssetChanges& changes) {
     if (!changes.modified.empty() || !changes.removed.empty() || !changes.added.empty()) {
         models_.clear();
         model_textures_.clear();
+    }
+    // Normal and glow maps may have come, gone or been resized.
+    if (!changes.empty()) {
+        beside_.clear();
     }
     const auto forget = [this](Guid guid) {
         textures_.erase(guid);
@@ -2285,6 +2319,8 @@ DrawStats draw_diorama(const world::World& world, TextureCache& textures,
     const double ppu = static_cast<double>(std::max<std::uint32_t>(camera.ppu, 1));
     const std::vector<render::PointLight> lights = diorama_lights(world, camera.x, camera.y);
     renderer.begin(target, clear, view_projection, eye, fog, lights);
+    // Normal maps take the sun at each pixel: as brightness() lights faces.
+    renderer.set_sun_light(light.sun, light.ambient, light.diffuse);
     if (const std::optional<render::SunShadow> sun = diorama_sun_shadow(world, camera, light)) {
         renderer.set_sun_shadow(*sun);
     }
@@ -2374,6 +2410,15 @@ DrawStats draw_diorama(const world::World& world, TextureCache& textures,
             tilemap != nullptr && tilemap->visible) {
             const std::optional<Guid> image = Guid::parse(tilemap->tileset);
             const render::Texture* texture = image ? textures.get(*image) : nullptr;
+            const render::Texture* tile_normals = image ? textures.normal_map(*image) : nullptr;
+            const render::Texture* tile_glow = image ? textures.glow_map(*image) : nullptr;
+            // Tile faces: lit from the front only, with the tileset's maps.
+            const auto face = [&](render::Vec3 normal) {
+                render::Surface s = surface(normal, 0.0F);
+                s.normal_map = tile_normals;
+                s.glow = tile_glow;
+                return s;
+            };
             std::string error;
             const TileGrid* grid = tilemap->grid(error);
             const std::uint32_t size = tilemap->tile_size == 0
@@ -2418,7 +2463,7 @@ DrawStats draw_diorama(const world::World& world, TextureCache& textures,
                             *texture,
                             {render::Vec3{left, top, north}, render::Vec3{right, top, north},
                              render::Vec3{right, top, south}, render::Vec3{left, top, south}},
-                            source, lit(top_light, tint), surface(render::Vec3{0, 1, 0}, 0.0F));
+                            source, lit(top_light, tint), face(render::Vec3{0, 1, 0}));
                         ++stats.drawn;
                         if (height <= 0.0F) {
                             continue;
@@ -2431,7 +2476,7 @@ DrawStats draw_diorama(const world::World& world, TextureCache& textures,
                                           {render::Vec3{a.x, top, a.z}, render::Vec3{b.x, top, b.z},
                                            render::Vec3{b.x, bottom, b.z},
                                            render::Vec3{a.x, bottom, a.z}},
-                                          source, lit(light_level, tint), surface(normal, 0.0F));
+                                          source, lit(light_level, tint), face(normal));
                             ++stats.drawn;
                         };
                         const auto gx = static_cast<std::int64_t>(x);
@@ -2555,6 +2600,8 @@ DrawStats draw_diorama(const world::World& world, TextureCache& textures,
                     // Billboards take point lights from all round, softly, and in their
                     // tint.
                     render::Surface s = surface(sprite_normal, 1.0F);
+                    s.normal_map = textures.normal_map(*image);
+                    s.glow = textures.glow_map(*image);
                     s.casts_shadow = false; // an edge-on card from the sun: its own shadow
                     s.albedo = {static_cast<float>(sprite->tint_r) / 255.0F,
                                 static_cast<float>(sprite->tint_g) / 255.0F,

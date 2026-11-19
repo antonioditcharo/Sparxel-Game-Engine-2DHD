@@ -144,6 +144,14 @@ public:
     /// Makes auto-tiles from the picture at `asset_path` in assets/ (Document::
     /// make_autotiles()); returns the tileset made, or empty, saying why in the status bar.
     QString make_autotiles(const QString& asset_path);
+    /// Makes a normal map or a glow map of the picture at `asset_path` beside it
+    /// (Document::make_normal_map(), make_glow_map()); returns the map made, or empty,
+    /// saying why in the status bar.
+    QString make_normal_map(const QString& asset_path,
+                            const engine::assets::NormalMapSettings& settings);
+    QString make_glow_map(const QString& asset_path, float threshold);
+    /// The Assets list's *Make a normal map…*: asks how, then makes it.
+    void ask_normal_map(const QString& asset_path);
     /// Imports an Aseprite file of the project (Document::import_aseprite()): its sprite
     /// sheet, made again whenever the file changes. Returns the picture made, or empty.
     QString import_aseprite(const QString& asset_path);

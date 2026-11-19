@@ -486,6 +486,13 @@ public:
     /// Classic 2D's lights. Made once; null if it cannot be.
     const render::Texture* light_falloff();
 
+    /// The normal map beside an image asset: the PNG of the same name ending "_normal"
+    /// ("art/hero_normal.png" for "art/hero.png"), the same size as it. Null if there is
+    /// none. Found once and kept until assets change (apply()).
+    const render::Texture* normal_map(Guid image);
+    /// The same for its glow map, ending "_glow".
+    const render::Texture* glow_map(Guid image);
+
     /// A model read from a glTF asset, with a texture for each of its meshes (its own, or
     /// plain white for its colour alone).
     struct LoadedModel {
@@ -514,6 +521,9 @@ private:
     std::unordered_map<Guid, std::unique_ptr<LoadedModel>, GuidHash> models_;
     std::vector<std::unique_ptr<render::Texture>> model_textures_;
     std::unique_ptr<render::Texture> white_;
+    /// normal_map() and glow_map(), by the image and the ending; null kept for none.
+    std::unordered_map<std::string, const render::Texture*> beside_;
+    const render::Texture* beside(Guid image, std::string_view ending);
     std::string last_error_;
 };
 

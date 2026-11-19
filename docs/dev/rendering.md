@@ -199,6 +199,19 @@ world->end();
   wall with the sun at 45 degrees darkens exactly the wall 2 to its left, by half (128
   of 255); nothing without the sun's shadows, with a card that does not cast, or on a
   wall facing away from the sun.
+- **Normal and glow maps** (`Surface::normal_map`, `Surface::glow`): a quad's normal map
+  is read texel for texel with its texture (red along u, green up the picture, blue out
+  of it); its tangent comes from the top-left and top-right corners, so flipped and
+  turned quads stay right. Point lights then light each pixel at the map's normal, and,
+  after `set_sun_light(towards_sun, ambient, diffuse)`, so does the sun: the colour's
+  sun part is scaled from the quad's normal to the pixel's. A glow map's colour times
+  its alpha is added after the light, before fog. Quads without them sample a flat
+  normal and a clear glow, so one pipeline serves all; runs of quads are split where the
+  maps change. Tested: a wall under a sun at 45 degrees is 218 flat; with a map tilting
+  its left half towards the sun and its right half away, 254 and 146, and 218 again
+  without `set_sun_light()`; a point light to its right brightens the half tilted towards
+  it and dims the other; a half-alpha green glow adds 128 of green in the dark; quads
+  differing only in their maps take two draw calls; `Stats` counts them.
 - **Triangles** (`draw_triangles(texture, corners, surface)`): a model's meshes, three
   `MeshCorner`s each (position, texture coordinates, colour, normal). They share the
   quads' pipelines and batches: two triangles fill a quad's six vertices, and an odd one

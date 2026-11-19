@@ -426,6 +426,77 @@ std::string Document::make_autotiles(std::string_view path, std::string& error) 
     return made.generic_string();
 }
 
+namespace {
+
+/// Reads the picture at `path` in assets/, makes another from it with `make`, and writes
+/// that beside it, its name ending `ending`. Returns its path; empty, with `error`, if not.
+template <typename Make>
+std::string make_beside(engine::assets::AssetDatabase& assets, const fs::path& folder,
+                        std::string_view path, std::string_view ending, const Make& make,
+                        std::string& error) {
+    const fs::path file(path);
+    const engine::assets::AssetRecord* record = assets.find(path);
+    if (record == nullptr || file.extension() != ".png") {
+        error = "There is no picture " + std::string(path) + " in assets/.";
+        return {};
+    }
+    const std::string stem = file.stem().string();
+    if (stem.ends_with("_normal") || stem.ends_with("_glow")) {
+        error = std::string(path) + " is a lighting map already.";
+        return {};
+    }
+    const std::optional<std::vector<std::uint8_t>> bytes = assets.read(record->guid);
+    const std::optional<engine::assets::Image> image =
+        bytes ? engine::assets::decode_png(*bytes, error) : std::nullopt;
+    if (!image) {
+        if (error.empty()) {
+            error = std::string(path) + " cannot be read.";
+        }
+        return {};
+    }
+    const engine::assets::Image made_image = make(*image);
+    const std::vector<std::uint8_t> png = made_image.width == 0
+                                              ? std::vector<std::uint8_t>{}
+                                              : engine::assets::encode_png(made_image);
+    const fs::path made = file.parent_path() / (stem + std::string(ending) + ".png");
+    if (png.empty() ||
+        !game::write_file_atomically(
+            folder / "assets" / made,
+            std::string_view(reinterpret_cast<const char*>(png.data()), png.size()), // NOLINT
+            error)) {
+        if (error.empty()) {
+            error = "The map could not be written.";
+        }
+        return {};
+    }
+    static_cast<void>(assets.refresh()); // its .meta, and so its GUID
+    return made.generic_string();
+}
+
+} // namespace
+
+std::string Document::make_normal_map(std::string_view path,
+                                      const engine::assets::NormalMapSettings& settings,
+                                      std::string& error) {
+    const Impl& d = *impl_;
+    return make_beside(
+        *d.assets, d.folder, path, "_normal",
+        [&settings](const engine::assets::Image& image) {
+            return engine::assets::make_normal_map(image, settings);
+        },
+        error);
+}
+
+std::string Document::make_glow_map(std::string_view path, float threshold, std::string& error) {
+    const Impl& d = *impl_;
+    return make_beside(
+        *d.assets, d.folder, path, "_glow",
+        [threshold](const engine::assets::Image& image) {
+            return engine::assets::make_glow_map(image, threshold);
+        },
+        error);
+}
+
 std::vector<std::string> Document::texts_to_translate() const {
     const Impl& d = *impl_;
     std::vector<std::string> out;

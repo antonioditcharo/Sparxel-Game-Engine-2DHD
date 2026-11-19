@@ -18,7 +18,7 @@
 | Area | Done | Partial | Not yet |
 |---|---|---|---|
 | A. Project and workflow | 5 | 7 | 0 (+1 later) |
-| B. Pixel art | 4 | 8 | 2 (+1 later) |
+| B. Pixel art | 4 | 9 | 1 (+1 later) |
 | C. World building | 4 | 8 | 2 |
 | D. Rendering and the look | 4 | 10 | 1 (+1 later) |
 | E. No-code logic | 5 | 6 | 0 (+1 later) |
@@ -28,7 +28,7 @@
 | I. Physics | 3 | 2 | 0 |
 | J. Audio | 2 | 4 | 0 (+1 later) |
 | K. UI | 3 | 4 | 0 |
-| **All** | **42** | **55** | **5** (+6 later) |
+| **All** | **42** | **56** | **4** (+6 later) |
 
 The strongest areas match or pass their references: the RPG kit and window skins (RPG
 Maker), auto-tiles and tile variants (RPG Maker, LDtk), no-code Rules with tags, *it*,
@@ -68,7 +68,7 @@ action kits (GameMaker), audio mixing (zones, reverb), and team features.
 | B6 | Frame events | Spine | **Done**: named on frames in Sprite Studio, kept in the sheet, sent to Rules as the frame comes |
 | B7 | Hitboxes and pivots per frame | GameMaker | **Partial**: a hit and a hurt box per frame, drawn in Sprite Studio, raising *hit* and *hits* in the game; one pivot per sprite, not per frame |
 | B8 | Directional sets | RPG Maker character sheets | **Partial**: 4-direction walk rows (Walk Animation); no 8 directions or mirroring |
-| B9 | Lighting maps | Sprite Illuminator | **Not yet** |
+| B9 | Lighting maps | Sprite Illuminator | **Partial**: normal maps made (rounded, bumpy, by cell) and glow maps, lighting sprites and tiles in the Diorama style; no normal brush, specular or roughness, nor Classic 2D |
 | B10 | Slices and 9-slice | Aseprite | **Partial**: 9-slice drawing (Screen Pictures, box frames); slices not authored in Sprite Studio |
 | B11 | Atlas packing | Unity, GameMaker | **Not yet** (one sheet per sprite) |
 | B12 | Import | Aseprite → engines | **Done**: PNG, sheets, `.aseprite` with tags and live reload |

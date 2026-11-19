@@ -3961,3 +3961,34 @@ TEST_CASE("Copy, paste and duplicate: whole entities, new names, one undo step e
     CHECK(d->entities().size() == before);
     CHECK(d->duplicate({}, error).empty());
 }
+
+TEST_CASE("Lighting maps are made beside a picture, and not of a map") {
+    const Sample sample;
+    const auto d = sample.open();
+    std::string error;
+    const engine::assets::NormalMapSettings settings;
+    const std::string normal = d->make_normal_map("art/hero.png", settings, error);
+    CHECK(error.empty());
+    CHECK(normal == "art/hero_normal.png");
+    const engine::assets::AssetRecord* made = d->assets().find(normal);
+    REQUIRE(made != nullptr);
+    // The same size as the picture.
+    const auto picture = d->assets().read(d->assets().find("art/hero.png")->guid);
+    const auto map = d->assets().read(made->guid);
+    REQUIRE(picture.has_value());
+    REQUIRE(map.has_value());
+    const auto a = engine::assets::decode_png(picture.value_or(std::vector<std::uint8_t>{}), error);
+    const auto b = engine::assets::decode_png(map.value_or(std::vector<std::uint8_t>{}), error);
+    const engine::assets::Image first = a.value_or(engine::assets::Image{});
+    const engine::assets::Image second = b.value_or(engine::assets::Image{});
+    CHECK(first.width > 0);
+    CHECK(first.width == second.width);
+    CHECK(first.height == second.height);
+    CHECK(d->make_glow_map("art/hero.png", 0.9F, error) == "art/hero_glow.png");
+    CHECK(d->assets().find("art/hero_glow.png") != nullptr);
+    // Not of a map, nor of what is not a picture.
+    CHECK(d->make_normal_map("art/hero_normal.png", settings, error).empty());
+    CHECK(error == "art/hero_normal.png is a lighting map already.");
+    CHECK(d->make_glow_map("logic/main.drules", 0.5F, error).empty());
+    CHECK(error == "There is no picture logic/main.drules in assets/.");
+}

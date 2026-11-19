@@ -87,6 +87,7 @@ add_executable(engine_assets_tests
     test_main.cpp
     assets/assets_test.cpp
     assets/gltf_test.cpp
+    assets/lighting_maps_test.cpp
 )
 target_link_libraries(engine_assets_tests PRIVATE
     engine::assets
