@@ -376,3 +376,60 @@ TEST_CASE("Window points land on the image's pixels, wherever fit_integer() puts
     CHECK_FALSE(
         render::image_point(place, std::numeric_limits<double>::quiet_NaN(), 0.0, 320, 180));
 }
+
+TEST_CASE("Atlas regions draw as textures of their own, batched together") {
+    render::Device* device = gpu();
+    if (device == nullptr) {
+        return;
+    }
+    const auto atlas = device->create_atlas(16, 16);
+    REQUIRE(atlas != nullptr);
+    CHECK_FALSE(atlas->translucent());
+    // The checker at (1, 1), a half-clear red pixel at (5, 1), one clear pixel between.
+    const std::vector<std::uint8_t> squares{
+        255, 0, 0,   255, 0,   255, 0,   255, //
+        0,   0, 255, 255, 255, 255, 255, 255,
+    };
+    const auto checks = device->create_region(*atlas, 1, 1, 2, 2, squares);
+    const std::vector<std::uint8_t> glass{255, 0, 0, 128};
+    const auto pane = device->create_region(*atlas, 5, 1, 1, 1, glass);
+    REQUIRE(checks != nullptr);
+    REQUIRE(pane != nullptr);
+    CHECK(checks->width() == 2);
+    CHECK(checks->height() == 2);
+    CHECK(&checks->pixels() == atlas.get());
+    CHECK(checks->atlas_x() == 1);
+    CHECK(checks->atlas_y() == 1);
+    CHECK(&atlas->pixels() == atlas.get());
+    CHECK_FALSE(checks->translucent());
+    CHECK(pane->translucent());
+    // What does not fit, or a region of a region, is refused.
+    CHECK(device->create_region(*atlas, 15, 0, 2, 2, squares) == nullptr);
+    CHECK(device->create_region(*checks, 0, 0, 1, 1, glass) == nullptr);
+    CHECK(device->create_region(*atlas, 0, 0, 2, 2, glass) == nullptr);
+
+    const auto target = device->create_render_target(8, 4);
+    const auto sprites = render::SpriteRenderer::create(*device);
+    REQUIRE(target != nullptr);
+    REQUIRE(sprites != nullptr);
+    const Color back{10, 20, 30, 255};
+    sprites->begin(*target, back);
+    // The whole checker, twice as big, at (0, 0); its blue pixel alone at (4, 0); and an
+    // outlined white pixel at (6, 2), whose outline reads the clear pixel beside it.
+    sprites->draw(*checks, Rect{0, 0, 2, 2}, Rect{0, 0, 4, 4});
+    sprites->draw(*checks, Rect{0, 1, 1, 1}, Rect{4, 0, 1, 1});
+    render::SpriteEffects outlined;
+    outlined.outline = Color{0, 0, 0, 255};
+    sprites->draw(*checks, Rect{1, 1, 1, 1}, Rect{6, 2, 1, 1}, Color{255, 255, 255, 255}, outlined);
+    REQUIRE(sprites->end());
+    CHECK(sprites->last_stats().draw_calls == 1);
+    const std::vector<std::uint8_t> pixels = target->read_pixels();
+    CHECK(pixel(pixels, 8, 0, 0) == Color{255, 0, 0, 255});
+    CHECK(pixel(pixels, 8, 3, 0) == Color{0, 255, 0, 255});
+    CHECK(pixel(pixels, 8, 0, 3) == Color{0, 0, 255, 255});
+    CHECK(pixel(pixels, 8, 3, 3) == Color{255, 255, 255, 255});
+    CHECK(pixel(pixels, 8, 4, 0) == Color{0, 0, 255, 255});
+    CHECK(pixel(pixels, 8, 6, 2) == Color{255, 255, 255, 255});
+    CHECK(pixel(pixels, 8, 7, 2) == Color{0, 0, 0, 255}); // the outline, beyond the pixel
+    CHECK(pixel(pixels, 8, 5, 1) == back);
+}

@@ -45,6 +45,15 @@ std::vector<std::uint8_t> pixels = target->read_pixels();            // waits fo
 
 ## 3. Sprites
 
+- **Atlases:** `Device::create_atlas()` makes a clear texture, and `create_region()` puts
+  a picture into it and returns a `Texture` for that region: its own size and
+  see-through flag, sources in its own pixels, while `pixels()` is the atlas, which both
+  renderers bind and batch by. So pictures in one atlas share draw calls in Classic 2D
+  and in 3D (quads, shaped shadows and triangles, whose 0 to 1 spans the region).
+  Regions that do not fit, of a region, or of the wrong byte count are refused. Tested:
+  a checker and a see-through pixel in one atlas drawn at exact pixels in one draw call,
+  an outline reading the clear pixel beside its region; a quad and a triangle from two
+  regions of one atlas drawn in their colours in one draw call.
 - **Coordinates are pixels of the target:** (0, 0) is the top-left corner and y grows
   downwards, as in every pixel-art tool.
 - **Nearest-neighbour sampling** and exact pixel placement: a 2 × 2 texture drawn at

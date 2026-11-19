@@ -2200,3 +2200,91 @@ TEST_CASE("Lighting maps beside a picture are found and drawn with it in the Dio
     scene2d::draw_diorama(*w, textures, *renderer, *target, camera, f.background, {});
     CHECK(renderer->last_stats().relief == 0);
 }
+
+TEST_CASE("Pictures are packed into atlas pages: fewer draw calls, the same pixels") {
+    render::Device* device = gpu();
+    if (device == nullptr) {
+        return;
+    }
+    const Fixture f;
+    // A picture too big to pack, and one given a normal map later.
+    write_image(f.folder.path / "wide.png", scene2d::TextureCache::max_packed + 1, 1,
+                std::vector<Color>(scene2d::TextureCache::max_packed + 1, Color{0, 255, 0, 255}));
+    assets::AssetDatabase db(f.folder.path);
+    db.refresh();
+    const Guid wide = db.find("wide.png")->guid;
+
+    const auto w = f.make_world();
+    Fixture::place(*w, "Red", 0.0, 0.0, f.red_image);
+    Fixture::place(*w, "Blue", 0.5, 0.5, f.blue_image);
+    const scene2d::Camera2D camera{0.0, 0.0, 2, 2};
+    const auto target = device->create_render_target(16, 16);
+    const auto sprites = render::SpriteRenderer::create(*device);
+    REQUIRE(target != nullptr);
+    REQUIRE(sprites != nullptr);
+
+    scene2d::TextureCache packed(*device, db);
+    scene2d::draw_world(*w, packed, *sprites, *target, camera, f.background);
+    CHECK(sprites->last_stats().draw_calls == 1);
+    CHECK(packed.atlas_pages() == 1);
+    const std::vector<std::uint8_t> from_atlas = target->read_pixels();
+    // Each picture still its own size, in the same atlas.
+    const render::Texture* red = packed.get(f.red_image);
+    const render::Texture* blue = packed.get(f.blue_image);
+    REQUIRE(red != nullptr);
+    REQUIRE(blue != nullptr);
+    CHECK(red->width() == 2);
+    CHECK(&red->pixels() == &blue->pixels());
+    CHECK(&red->pixels() != red);
+    // Too big: a texture of its own.
+    const render::Texture* big = packed.get(wide);
+    REQUIRE(big != nullptr);
+    CHECK(&big->pixels() == big);
+
+    // Without packing: a draw call for each, and exactly the same pixels.
+    scene2d::TextureCache unpacked(*device, db);
+    unpacked.set_packing(false);
+    scene2d::draw_world(*w, unpacked, *sprites, *target, camera, f.background);
+    CHECK(sprites->last_stats().draw_calls == 2);
+    CHECK(unpacked.atlas_pages() == 0);
+    CHECK(target->read_pixels() == from_atlas);
+
+    // Given a normal map, a picture leaves the atlas once the change is applied.
+    write_png(f.folder.path / "red_normal.png", Color{128, 128, 255, 255});
+    packed.apply(db.refresh());
+    red = packed.get(f.red_image);
+    REQUIRE(red != nullptr);
+    CHECK(&red->pixels() == red);
+    CHECK(packed.normal_map(f.red_image) != nullptr);
+    blue = packed.get(f.blue_image);
+    REQUIRE(blue != nullptr);
+    CHECK(&blue->pixels() != blue); // still packed
+}
+
+TEST_CASE("A picture repainted again and again does not fill atlas page after page") {
+    render::Device* device = gpu();
+    if (device == nullptr) {
+        return;
+    }
+    const Fixture f;
+    // The largest picture packed, repainted until more than half a page went to waste.
+    const std::uint32_t side = scene2d::TextureCache::max_packed;
+    const fs::path file = f.folder.path / "big.png";
+    write_image(file, side, side, std::vector<Color>(std::size_t{side} * side, f.red));
+    assets::AssetDatabase db(f.folder.path);
+    db.refresh();
+    const Guid big = db.find("big.png")->guid;
+    scene2d::TextureCache textures(*device, db);
+    REQUIRE(textures.get(big) != nullptr);
+    CHECK(textures.atlas_pages() == 1);
+    for (int i = 0; i < 40; ++i) {
+        const Color c = (i % 2) == 0 ? f.blue : f.red;
+        write_image(file, side, side, std::vector<Color>(std::size_t{side} * side, c));
+        const assets::AssetChanges changes = db.refresh();
+        REQUIRE(changes.modified.size() == 1);
+        textures.apply(changes);
+        REQUIRE(textures.get(big) != nullptr);
+    }
+    // 41 paintings of 257 x 257 would need three pages; packed afresh, never more than one.
+    CHECK(textures.atlas_pages() == 1);
+}

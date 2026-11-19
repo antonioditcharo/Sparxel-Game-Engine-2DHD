@@ -1718,11 +1718,11 @@ void MainWindow::build_actions() {
         normals->setToolTip(tr("Makes <name>_normal.png beside it: in the Diorama style, the "
                                "sun and lights catch its rounded edges and bumps"));
         QAction* glow = menu.addAction(tr("Make a glow map…"), this, [this, relative] {
-            bool chosen = false;
+            bool picked = false;
             const int least = QInputDialog::getInt(this, tr("Make a glow map"),
                                                    tr("Colours at least this bright glow (%):"), 85,
-                                                   0, 100, 5, &chosen);
-            if (chosen) {
+                                                   0, 100, 5, &picked);
+            if (picked) {
                 make_glow_map(relative, static_cast<float>(least) / 100.0F);
             }
         });

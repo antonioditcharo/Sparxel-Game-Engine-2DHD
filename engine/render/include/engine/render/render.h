@@ -68,14 +68,29 @@ public:
     /// or water painted that way. The world renderer blends such pictures (§7).
     [[nodiscard]] bool translucent() const noexcept { return translucent_; }
 
+    /// The texture its pixels are in: an atlas, for a region of one
+    /// (Device::create_region()), else itself. Things drawn from regions of one atlas
+    /// share its draw calls.
+    [[nodiscard]] const Texture& pixels() const noexcept {
+        return atlas_ != nullptr ? *atlas_ : *this;
+    }
+    /// Where its top-left pixel is in pixels(): (0, 0) unless it is a region.
+    [[nodiscard]] std::uint32_t atlas_x() const noexcept { return x_; }
+    [[nodiscard]] std::uint32_t atlas_y() const noexcept { return y_; }
+
     struct Native;
-    [[nodiscard]] const Native& native() const noexcept { return *native_; }
+    [[nodiscard]] const Native& native() const noexcept {
+        return atlas_ != nullptr ? atlas_->native() : *native_;
+    }
 
 private:
     friend class Device;
     Texture(std::unique_ptr<Native> native, std::uint32_t width, std::uint32_t height);
 
-    std::unique_ptr<Native> native_;
+    std::unique_ptr<Native> native_; ///< Null for a region.
+    const Texture* atlas_ = nullptr;
+    std::uint32_t x_ = 0;
+    std::uint32_t y_ = 0;
     std::uint32_t width_ = 0;
     std::uint32_t height_ = 0;
     bool translucent_ = false;
@@ -184,6 +199,20 @@ public:
     /// pixel count does not match, or the GPU refuses (see last_error()).
     [[nodiscard]] std::unique_ptr<Texture> create_texture(std::uint32_t width, std::uint32_t height,
                                                           std::span<const std::uint8_t> rgba);
+    /// A clear texture of `width` x `height` to pack pictures into (create_region()), as
+    /// sprite atlases are: pictures drawn from one atlas share draw calls. Null if the size
+    /// is zero or the GPU refuses.
+    [[nodiscard]] std::unique_ptr<Texture> create_atlas(std::uint32_t width, std::uint32_t height);
+    /// Puts `rgba` (`width` x `height`, rows top to bottom) into `atlas` at (x, y), and
+    /// returns a texture standing for that region: drawn as a texture of its own, with
+    /// sources in its own pixels, but batched with the atlas's other regions. Null, with
+    /// last_error(), if it does not fit, `atlas` is itself a region, or the upload fails.
+    /// The atlas must outlive it. Leave a clear pixel between regions: an outline reads a
+    /// pixel beyond its picture.
+    [[nodiscard]] std::unique_ptr<Texture> create_region(const Texture& atlas, std::uint32_t x,
+                                                         std::uint32_t y, std::uint32_t width,
+                                                         std::uint32_t height,
+                                                         std::span<const std::uint8_t> rgba);
 
     /// An offscreen target. Null if the size is zero or the GPU refuses.
     [[nodiscard]] std::unique_ptr<RenderTarget> create_render_target(std::uint32_t width,

@@ -1325,8 +1325,12 @@ const render::Texture* TextureCache::get(Guid image) {
     if (!decoded) {
         return nullptr;
     }
+    const assets::AssetRecord* record = assets_.find(image);
     std::unique_ptr<render::Texture> texture =
-        device_.create_texture(decoded->width, decoded->height, decoded->rgba);
+        packing_ && record != nullptr && !has_lighting_maps(*record) ? pack(*decoded) : nullptr;
+    if (texture == nullptr) {
+        texture = device_.create_texture(decoded->width, decoded->height, decoded->rgba);
+    }
     if (texture == nullptr) {
         last_error_ = assets_.find(image)->path + ": " + device_.last_error();
         return nullptr;
@@ -1334,6 +1338,55 @@ const render::Texture* TextureCache::get(Guid image) {
     const render::Texture* result = texture.get();
     textures_.emplace(image, std::move(texture));
     return result;
+}
+
+bool TextureCache::has_lighting_maps(const assets::AssetRecord& record) const {
+    if (!record.path.ends_with(".png")) {
+        return false;
+    }
+    const std::string stem = record.path.substr(0, record.path.size() - 4);
+    return assets_.find(stem + "_normal.png") != nullptr ||
+           assets_.find(stem + "_glow.png") != nullptr;
+}
+
+std::unique_ptr<render::Texture> TextureCache::pack(const assets::Image& image) {
+    if (image.width > max_packed || image.height > max_packed || image.width == 0 ||
+        image.height == 0) {
+        return nullptr;
+    }
+    // A clear pixel all round each picture: an outline reads one beyond its edge.
+    const std::uint32_t w = image.width + 1;
+    const std::uint32_t h = image.height + 1;
+    const auto place = [&](AtlasPage& page) -> std::unique_ptr<render::Texture> {
+        if (page.next_x + w + 1 > atlas_size) {
+            // A new shelf below this one.
+            page.shelf_top += page.shelf_height;
+            page.shelf_height = 0;
+            page.next_x = 0;
+        }
+        if (page.shelf_top + h + 1 > atlas_size) {
+            return nullptr; // full
+        }
+        auto region = device_.create_region(*page.texture, page.next_x + 1, page.shelf_top + 1,
+                                            image.width, image.height, image.rgba);
+        if (region != nullptr) {
+            page.next_x += w;
+            page.shelf_height = std::max(page.shelf_height, h);
+        }
+        return region;
+    };
+    if (!pages_.empty()) {
+        if (auto region = place(pages_.back())) {
+            return region;
+        }
+    }
+    AtlasPage page;
+    page.texture = device_.create_atlas(atlas_size, atlas_size);
+    if (page.texture == nullptr) {
+        return nullptr;
+    }
+    pages_.push_back(std::move(page));
+    return place(pages_.back());
 }
 
 std::optional<assets::Image> TextureCache::load(Guid image) {
@@ -1394,7 +1447,17 @@ const render::Texture* TextureCache::beside(Guid image, std::string_view ending)
             record->path.substr(0, record->path.size() - 4) + std::string(ending) + ".png";
         const assets::AssetRecord* map = assets_.find(path);
         const render::Texture* picture = get(image);
-        const render::Texture* texture = map != nullptr ? get(map->guid) : nullptr;
+        const render::Texture* texture = nullptr;
+        if (map != nullptr) {
+            if (const auto found = maps_.find(map->guid); found != maps_.end()) {
+                texture = found->second.get();
+            } else if (const std::optional<assets::Image> pixels = load(map->guid)) {
+                std::unique_ptr<render::Texture> made =
+                    device_.create_texture(pixels->width, pixels->height, pixels->rgba);
+                texture = made.get();
+                maps_.emplace(map->guid, std::move(made));
+            }
+        }
         if (picture != nullptr && texture != nullptr && texture->width() == picture->width() &&
             texture->height() == picture->height()) {
             result = texture;
@@ -1474,7 +1537,14 @@ void TextureCache::apply(const assets::AssetChanges& changes) {
         beside_.clear();
     }
     const auto forget = [this](Guid guid) {
-        textures_.erase(guid);
+        if (const auto found = textures_.find(guid); found != textures_.end()) {
+            const render::Texture& texture = *found->second;
+            if (&texture.pixels() != &texture) {
+                wasted_ += std::uint64_t{texture.width() + 1} * (texture.height() + 1);
+            }
+            textures_.erase(found);
+        }
+        maps_.erase(guid);
         const std::string prefix = guid.to_string() + " ";
         std::erase_if(recolored_,
                       [&prefix](const auto& entry) { return entry.first.starts_with(prefix); });
@@ -1484,6 +1554,34 @@ void TextureCache::apply(const assets::AssetChanges& changes) {
     }
     for (const Guid guid : changes.removed) {
         forget(guid);
+    }
+    // A picture given a normal or glow map leaves its atlas, so the maps line up with it.
+    // (The space it had in the atlas is not used again.)
+    for (const std::vector<Guid>* list : {&changes.added, &changes.moved}) {
+        for (const Guid guid : *list) {
+            const assets::AssetRecord* record = assets_.find(guid);
+            if (record == nullptr) {
+                continue;
+            }
+            for (const std::string_view ending : {"_normal.png", "_glow.png"}) {
+                if (record->path.ends_with(ending)) {
+                    const std::string picture =
+                        record->path.substr(0, record->path.size() - ending.size()) + ".png";
+                    if (const assets::AssetRecord* base = assets_.find(picture)) {
+                        forget(base->guid);
+                    }
+                }
+            }
+        }
+    }
+    // Pictures repainted again and again (in Sprite Studio, say) would fill page after
+    // page: past half a page wasted, the pages are packed afresh.
+    if (wasted_ > std::uint64_t{atlas_size} * atlas_size / 2) {
+        std::erase_if(textures_, [](const auto& entry) {
+            return &entry.second->pixels() != entry.second.get();
+        });
+        pages_.clear();
+        wasted_ = 0;
     }
 }
 

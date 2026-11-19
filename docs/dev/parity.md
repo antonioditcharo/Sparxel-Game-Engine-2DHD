@@ -18,7 +18,7 @@
 | Area | Done | Partial | Not yet |
 |---|---|---|---|
 | A. Project and workflow | 5 | 7 | 0 (+1 later) |
-| B. Pixel art | 4 | 9 | 1 (+1 later) |
+| B. Pixel art | 5 | 9 | 0 (+1 later) |
 | C. World building | 4 | 8 | 2 |
 | D. Rendering and the look | 4 | 10 | 1 (+1 later) |
 | E. No-code logic | 5 | 6 | 0 (+1 later) |
@@ -28,7 +28,7 @@
 | I. Physics | 3 | 2 | 0 |
 | J. Audio | 2 | 4 | 0 (+1 later) |
 | K. UI | 3 | 4 | 0 |
-| **All** | **42** | **56** | **4** (+6 later) |
+| **All** | **43** | **56** | **3** (+6 later) |
 
 The strongest areas match or pass their references: the RPG kit and window skins (RPG
 Maker), auto-tiles and tile variants (RPG Maker, LDtk), no-code Rules with tags, *it*,
@@ -70,7 +70,7 @@ action kits (GameMaker), audio mixing (zones, reverb), and team features.
 | B8 | Directional sets | RPG Maker character sheets | **Partial**: 4-direction walk rows (Walk Animation); no 8 directions or mirroring |
 | B9 | Lighting maps | Sprite Illuminator | **Partial**: normal maps made (rounded, bumpy, by cell) and glow maps, lighting sprites and tiles in the Diorama style; no normal brush, specular or roughness, nor Classic 2D |
 | B10 | Slices and 9-slice | Aseprite | **Partial**: 9-slice drawing (Screen Pictures, box frames); slices not authored in Sprite Studio |
-| B11 | Atlas packing | Unity, GameMaker | **Not yet** (one sheet per sprite) |
+| B11 | Atlas packing | Unity, GameMaker | **Done**: pictures packed into shared atlas pages as they load, batching sprites and tiles from different pictures; nothing to manage |
 | B12 | Import | Aseprite → engines | **Done**: PNG, sheets, `.aseprite` with tags and live reload |
 | B13 | Character generator | RPG Maker | **Partial**: four-direction walking sheets from hair, headwear and colours, previewed and placed ready to walk; few parts yet (no faces, outfits or accessories to pick) |
 | B14 | 3D-to-pixel baker | | Later |

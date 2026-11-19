@@ -154,7 +154,9 @@ Texture::Texture(std::unique_ptr<Native> native, std::uint32_t width, std::uint3
     : native_(std::move(native)), width_(width), height_(height) {}
 
 Texture::~Texture() {
-    SDL_ReleaseGPUTexture(native_->device, native_->texture);
+    if (native_ != nullptr) {
+        SDL_ReleaseGPUTexture(native_->device, native_->texture);
+    }
 }
 
 RenderTarget::RenderTarget(std::unique_ptr<Native> native, std::uint32_t width,
@@ -258,6 +260,95 @@ std::string Device::driver_name() const {
     return name == nullptr ? std::string() : std::string(name);
 }
 
+namespace {
+
+/// Uploads `rgba` (`width` x `height`) into `texture` at (x, y). False if it could not.
+bool upload_pixels(Device::Native& device, SDL_GPUTexture* texture, std::uint32_t x,
+                   std::uint32_t y, std::uint32_t width, std::uint32_t height,
+                   std::span<const std::uint8_t> rgba) {
+    const std::uint32_t bytes = image_bytes(width, height);
+    SDL_GPUTransferBufferCreateInfo buffer_info{};
+    buffer_info.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
+    buffer_info.size = bytes;
+    SDL_GPUTransferBuffer* buffer = SDL_CreateGPUTransferBuffer(device.device, &buffer_info);
+    void* mapped =
+        buffer == nullptr ? nullptr : SDL_MapGPUTransferBuffer(device.device, buffer, false);
+    SDL_GPUCommandBuffer* commands =
+        mapped == nullptr ? nullptr : SDL_AcquireGPUCommandBuffer(device.device);
+    if (commands == nullptr) {
+        if (mapped != nullptr) {
+            SDL_UnmapGPUTransferBuffer(device.device, buffer);
+        }
+        release(device.device, buffer);
+        return false;
+    }
+    std::memcpy(mapped, rgba.data(), bytes);
+    SDL_UnmapGPUTransferBuffer(device.device, buffer);
+    SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(commands);
+    SDL_GPUTextureTransferInfo source{};
+    source.transfer_buffer = buffer;
+    SDL_GPUTextureRegion region{};
+    region.texture = texture;
+    region.x = x;
+    region.y = y;
+    region.w = width;
+    region.h = height;
+    region.d = 1;
+    SDL_UploadToGPUTexture(copy, &source, &region, false);
+    SDL_EndGPUCopyPass(copy);
+    const bool submitted = submit_paced(device, commands);
+    SDL_ReleaseGPUTransferBuffer(device.device, buffer); // Freed once the GPU is done.
+    return submitted;
+}
+
+bool any_translucent(std::span<const std::uint8_t> rgba) {
+    for (std::size_t i = 3; i < rgba.size(); i += 4) {
+        if (rgba[i] != 0 && rgba[i] != 255) {
+            return true;
+        }
+    }
+    return false;
+}
+
+} // namespace
+
+std::unique_ptr<Texture> Device::create_atlas(std::uint32_t width, std::uint32_t height) {
+    const std::uint32_t bytes = image_bytes(width, height);
+    if (width == 0 || height == 0 || bytes == 0) {
+        last_error_ = "An atlas needs a size above zero.";
+        return nullptr;
+    }
+    const std::vector<std::uint8_t> clear(bytes, 0);
+    return create_texture(width, height, clear);
+}
+
+std::unique_ptr<Texture> Device::create_region(const Texture& atlas, std::uint32_t x,
+                                               std::uint32_t y, std::uint32_t width,
+                                               std::uint32_t height,
+                                               std::span<const std::uint8_t> rgba) {
+    const std::uint32_t bytes = image_bytes(width, height);
+    if (width == 0 || height == 0 || bytes == 0 || rgba.size() != bytes) {
+        last_error_ =
+            "A region needs a size above zero and exactly width x height x 4 bytes of pixels.";
+        return nullptr;
+    }
+    if (&atlas.pixels() != &atlas || x > atlas.width() || y > atlas.height() ||
+        width > atlas.width() - x || height > atlas.height() - y) {
+        last_error_ = "The region does not fit in the atlas.";
+        return nullptr;
+    }
+    if (!upload_pixels(*native_, atlas.native().texture, x, y, width, height, rgba)) {
+        last_error_ = sdl_error("Uploading into an atlas failed");
+        return nullptr;
+    }
+    auto made = std::unique_ptr<Texture>(new Texture(nullptr, width, height));
+    made->atlas_ = &atlas;
+    made->x_ = x;
+    made->y_ = y;
+    made->translucent_ = any_translucent(rgba);
+    return made;
+}
+
 std::unique_ptr<Texture> Device::create_texture(std::uint32_t width, std::uint32_t height,
                                                 std::span<const std::uint8_t> rgba) {
     const std::uint32_t bytes = image_bytes(width, height);
@@ -279,55 +370,16 @@ std::unique_ptr<Texture> Device::create_texture(std::uint32_t width, std::uint32
         last_error_ = sdl_error("Creating a texture failed");
         return nullptr;
     }
-
-    SDL_GPUTransferBufferCreateInfo buffer_info{};
-    buffer_info.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-    buffer_info.size = bytes;
-    SDL_GPUTransferBuffer* buffer = SDL_CreateGPUTransferBuffer(native_->device, &buffer_info);
-    void* mapped =
-        buffer == nullptr ? nullptr : SDL_MapGPUTransferBuffer(native_->device, buffer, false);
-    SDL_GPUCommandBuffer* commands =
-        mapped == nullptr ? nullptr : SDL_AcquireGPUCommandBuffer(native_->device);
-    if (commands == nullptr) {
-        last_error_ = sdl_error("Uploading a texture failed");
-        if (mapped != nullptr) {
-            SDL_UnmapGPUTransferBuffer(native_->device, buffer);
-        }
-        release(native_->device, buffer);
-        SDL_ReleaseGPUTexture(native_->device, texture);
-        return nullptr;
-    }
-    std::memcpy(mapped, rgba.data(), bytes);
-    SDL_UnmapGPUTransferBuffer(native_->device, buffer);
-
-    SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(commands);
-    SDL_GPUTextureTransferInfo source{};
-    source.transfer_buffer = buffer;
-    SDL_GPUTextureRegion region{};
-    region.texture = texture;
-    region.w = width;
-    region.h = height;
-    region.d = 1;
-    SDL_UploadToGPUTexture(copy, &source, &region, false);
-    SDL_EndGPUCopyPass(copy);
-    const bool submitted = submit_paced(*native_, commands);
-    SDL_ReleaseGPUTransferBuffer(native_->device, buffer); // Freed once the GPU is done.
-    if (!submitted) {
+    if (!upload_pixels(*native_, texture, 0, 0, width, height, rgba)) {
         last_error_ = sdl_error("Uploading a texture failed");
         SDL_ReleaseGPUTexture(native_->device, texture);
         return nullptr;
     }
-
     auto native = std::make_unique<Texture::Native>();
     native->device = native_->device;
     native->texture = texture;
     auto made = std::unique_ptr<Texture>(new Texture(std::move(native), width, height));
-    for (std::size_t i = 3; i < rgba.size(); i += 4) {
-        if (rgba[i] != 0 && rgba[i] != 255) {
-            made->translucent_ = true;
-            break;
-        }
-    }
+    made->translucent_ = any_translucent(rgba);
     return made;
 }
 
@@ -735,12 +787,16 @@ void SpriteRenderer::draw(const Texture& texture, Rect source, const std::array<
     if (native_->target == nullptr) {
         return;
     }
-    const auto tex_w = static_cast<float>(texture.width());
-    const auto tex_h = static_cast<float>(texture.height());
-    const float f0 = source.x / tex_w;
-    const float g0 = source.y / tex_h;
-    const float f1 = (source.x + source.w) / tex_w;
-    const float g1 = (source.y + source.h) / tex_h;
+    // A region's source is in its atlas.
+    const Texture& pixels = texture.pixels();
+    const auto tex_w = static_cast<float>(pixels.width());
+    const auto tex_h = static_cast<float>(pixels.height());
+    const float sx = source.x + static_cast<float>(texture.atlas_x());
+    const float sy = source.y + static_cast<float>(texture.atlas_y());
+    const float f0 = sx / tex_w;
+    const float g0 = sy / tex_h;
+    const float f1 = (sx + source.w) / tex_w;
+    const float g1 = (sy + source.h) / tex_h;
     const Effects fx = effects_for(effects, f0, g0, f1, g1, tex_w, tex_h);
     // Outlined: a texel more each way, drawn from beyond the source (clear there).
     const bool grow = effects.outlined();
@@ -762,7 +818,7 @@ void SpriteRenderer::draw(const Texture& texture, Rect source, const std::array<
         {br.x, br.y, u1, v1, r, g, b, a, fx}, {bl.x, bl.y, u0, v1, r, g, b, a, fx},
     };
     native_->vertices.insert(native_->vertices.end(), std::begin(vertices), std::end(vertices));
-    native_->textures.push_back(&texture);
+    native_->textures.push_back(&pixels);
     native_->blends.push_back(native_->blend);
 }
 
@@ -1432,19 +1488,22 @@ void WorldRenderer::draw_shadow(const Texture& shape, const std::array<Vec3, 4>&
     }
     // As draw() maps a source: a hundredth of a texel inside its edges.
     constexpr float inset = 0.01F;
-    const auto tex_w = static_cast<float>(shape.width());
-    const auto tex_h = static_cast<float>(shape.height());
-    const float u0 = (source.x + inset) / tex_w;
-    const float v0 = (source.y + inset) / tex_h;
-    const float u1 = (source.x + source.w - inset) / tex_w;
-    const float v1 = (source.y + source.h - inset) / tex_h;
+    const Texture& pixels = shape.pixels();
+    const auto tex_w = static_cast<float>(pixels.width());
+    const auto tex_h = static_cast<float>(pixels.height());
+    const float sx = source.x + static_cast<float>(shape.atlas_x());
+    const float sy = source.y + static_cast<float>(shape.atlas_y());
+    const float u0 = (sx + inset) / tex_w;
+    const float v0 = (sy + inset) / tex_h;
+    const float u1 = (sx + source.w - inset) / tex_w;
+    const float v1 = (sy + source.h - inset) / tex_h;
     const WorldVertex tl = shadow_corner(corners[0], u0, v0, darkness[0]);
     const WorldVertex tr = shadow_corner(corners[1], u1, v0, darkness[1]);
     const WorldVertex br = shadow_corner(corners[2], u1, v1, darkness[2]);
     const WorldVertex bl = shadow_corner(corners[3], u0, v1, darkness[3]);
     const WorldVertex quad[6] = {tl, tr, bl, tr, br, bl};
     native_->shadows.insert(native_->shadows.end(), std::begin(quad), std::end(quad));
-    native_->shadow_shapes.push_back(&shape);
+    native_->shadow_shapes.push_back(&pixels);
 }
 
 void WorldRenderer::draw_triangles(const Texture& texture, std::span<const MeshCorner> corners,
@@ -1453,6 +1512,15 @@ void WorldRenderer::draw_triangles(const Texture& texture, std::span<const MeshC
         return;
     }
     const std::size_t whole = corners.size() - (corners.size() % 3);
+    // 0 to 1 across the texture: across its region, for one in an atlas.
+    const Texture& pixels = texture.pixels();
+    const float scale_u = static_cast<float>(texture.width()) / static_cast<float>(pixels.width());
+    const float scale_v =
+        static_cast<float>(texture.height()) / static_cast<float>(pixels.height());
+    const float offset_u =
+        static_cast<float>(texture.atlas_x()) / static_cast<float>(pixels.width());
+    const float offset_v =
+        static_cast<float>(texture.atlas_y()) / static_cast<float>(pixels.height());
     // Quads are kept six corners each, one texture to each six; triangles go in pairs, and
     // an odd one out with a triangle of no size.
     std::size_t slot = 0;
@@ -1461,8 +1529,8 @@ void WorldRenderer::draw_triangles(const Texture& texture, std::span<const MeshC
         native_->vertices.push_back(WorldVertex{c.position.x,
                                                 c.position.y,
                                                 c.position.z,
-                                                c.u,
-                                                c.v,
+                                                offset_u + (c.u * scale_u),
+                                                offset_v + (c.v * scale_v),
                                                 c.color[0],
                                                 c.color[1],
                                                 c.color[2],
@@ -1478,7 +1546,7 @@ void WorldRenderer::draw_triangles(const Texture& texture, std::span<const MeshC
                                                 {}});
         if (++slot == 6) {
             slot = 0;
-            native_->textures.push_back(&texture);
+            native_->textures.push_back(&pixels);
             native_->normals.push_back(nullptr);
             native_->glows.push_back(surface.glow);
             native_->casts.push_back(surface.casts_shadow);
@@ -1489,7 +1557,7 @@ void WorldRenderer::draw_triangles(const Texture& texture, std::span<const MeshC
         for (; slot < 6; ++slot) {
             native_->vertices.push_back(last);
         }
-        native_->textures.push_back(&texture);
+        native_->textures.push_back(&pixels);
         native_->normals.push_back(nullptr);
         native_->glows.push_back(surface.glow);
         native_->casts.push_back(surface.casts_shadow);
@@ -1502,16 +1570,20 @@ void WorldRenderer::draw(const Texture& texture, const std::array<Vec3, 4>& give
     if (native_->target == nullptr) {
         return;
     }
-    const auto tex_w = static_cast<float>(texture.width());
-    const auto tex_h = static_cast<float>(texture.height());
+    // A region's source is in its atlas.
+    const Texture& pixels = texture.pixels();
+    const auto tex_w = static_cast<float>(pixels.width());
+    const auto tex_h = static_cast<float>(pixels.height());
+    const float sx = source.x + static_cast<float>(texture.atlas_x());
+    const float sy = source.y + static_cast<float>(texture.atlas_y());
     // In perspective, a texture coordinate exactly on a texel edge can round into the
     // neighbouring texel, so the next tile of an atlas bleeds in along tile seams. A
     // hundredth of a texel inside the edges cannot show, and keeps sampling in the source.
     constexpr float inset = 0.01F;
-    const float f0 = (source.x + inset) / tex_w;
-    const float g0 = (source.y + inset) / tex_h;
-    const float f1 = (source.x + source.w - inset) / tex_w;
-    const float g1 = (source.y + source.h - inset) / tex_h;
+    const float f0 = (sx + inset) / tex_w;
+    const float g0 = (sy + inset) / tex_h;
+    const float f1 = (sx + source.w - inset) / tex_w;
+    const float g1 = (sy + source.h - inset) / tex_h;
     const Effects fx = effects_for(effects, f0, g0, f1, g1, tex_w, tex_h);
     // Outlined: a texel more each way, drawn from beyond the source (clear there).
     const bool grow = effects.outlined();
@@ -1568,7 +1640,7 @@ void WorldRenderer::draw(const Texture& texture, const std::array<Vec3, 4>& give
         const float dy = middle.y - eye.y;
         const float dz = middle.z - eye.z;
         native_->translucent.push_back(Native::Translucent{{tl, tr, bl, tr, br, bl},
-                                                           &texture,
+                                                           &pixels,
                                                            normal_map,
                                                            surface.glow,
                                                            (dx * dx) + (dy * dy) + (dz * dz)});
@@ -1576,7 +1648,7 @@ void WorldRenderer::draw(const Texture& texture, const std::array<Vec3, 4>& give
     }
     const WorldVertex quad[6] = {tl, tr, bl, tr, br, bl};
     native_->vertices.insert(native_->vertices.end(), std::begin(quad), std::end(quad));
-    native_->textures.push_back(&texture);
+    native_->textures.push_back(&pixels);
     native_->normals.push_back(normal_map);
     native_->glows.push_back(surface.glow);
     native_->casts.push_back(surface.casts_shadow);

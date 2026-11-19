@@ -269,6 +269,22 @@ map ([game.md](game.md) §3):
 A test repaints a PNG on disk from blue to green; after `refresh()` and `apply()`, the next
 frame shows green.
 
+**Atlas packing** (`plan/02` B11): `get()` packs every picture up to 256 pixels each way
+into shared 2048 × 2048 atlas pages (`render::Device::create_region()`, [rendering.md](rendering.md)
+§3), on shelves, with a clear pixel round each so outlines still read clear beyond a
+picture's edge. Sprites and tiles from different pictures then share draw calls, with no
+sprite sheet for anyone to make or keep. Larger pictures, pictures with a normal or glow
+map (their maps must line up texel for texel), recoloured pictures and lighting maps keep
+textures of their own. A picture given a normal or glow map leaves its atlas when the
+change is applied. Space a reloaded picture had in a page is not used again; once half a
+page has gone that way (a picture repainted again and again in Sprite Studio), every
+packed picture is dropped and packed afresh as it is next drawn. `set_packing(false)` turns
+it off. Tested: two sprites from two pictures take one draw call packed and two unpacked,
+with byte-identical frames; both are regions of one page, each its own size; a picture
+257 pixels wide is not packed; given a normal map, the red picture leaves the atlas while
+the blue stays. The largest packed picture repainted 40 times, each noticed,
+never takes more than one page.
+
 ## 7. The Diorama style
 
 `draw_diorama(world, textures, renderer, target, camera, clear, light, fog)` draws the same

@@ -471,8 +471,18 @@ public:
     TextureCache(render::Device& device, const assets::AssetDatabase& assets);
 
     /// The texture for an image asset, or null if it is unknown, not an image, or cannot
-    /// be decoded or uploaded (see last_error()).
+    /// be decoded or uploaded (see last_error()). Pictures up to max_packed pixels each way
+    /// are packed into shared atlas pages (render::Device::create_region()), so sprites and
+    /// tiles drawn together share draw calls; nobody needs to make sprite sheets for that.
+    /// Pictures with normal or glow maps keep textures of their own, so the maps line up.
     const render::Texture* get(Guid image);
+    static constexpr std::uint32_t atlas_size = 2048; ///< Each atlas page, square.
+    static constexpr std::uint32_t max_packed = 256;
+    /// Whether get() packs pictures into atlas pages (it does unless turned off). Only
+    /// pictures loaded after a change are affected.
+    void set_packing(bool pack) noexcept { packing_ = pack; }
+    /// Atlas pages made so far.
+    [[nodiscard]] std::size_t atlas_pages() const noexcept { return pages_.size(); }
     /// The same, with its colours swapped by `recolor` (a Sprite's); each recolouring is
     /// made once and kept. An empty `recolor` is get(image).
     const render::Texture* get(Guid image, std::string_view recolor);
@@ -511,8 +521,26 @@ private:
     const assets::AssetDatabase& assets_;
     /// The image asset's pixels, or nothing (with last_error()).
     std::optional<assets::Image> load(Guid image);
+    /// Whether the image has a normal or glow map beside it.
+    [[nodiscard]] bool has_lighting_maps(const assets::AssetRecord& record) const;
+    /// A region of an atlas page holding `image`, on a page with room; null if none can.
+    std::unique_ptr<render::Texture> pack(const assets::Image& image);
 
+    /// An atlas page: shelves of pictures, filled left to right, top to bottom.
+    struct AtlasPage {
+        std::unique_ptr<render::Texture> texture;
+        std::uint32_t shelf_top = 0;    ///< The current shelf's top.
+        std::uint32_t shelf_height = 0; ///< Its tallest picture so far, and the gap.
+        std::uint32_t next_x = 0;
+    };
+    bool packing_ = true;
+    /// Pixels of pages held by pictures since reloaded: past half a page, every packed
+    /// picture is dropped and packed again as it is next drawn.
+    std::uint64_t wasted_ = 0;
+    std::vector<AtlasPage> pages_; ///< Before the textures: regions go first.
     std::unordered_map<Guid, std::unique_ptr<render::Texture>, GuidHash> textures_;
+    /// Normal and glow maps, each a texture of its own.
+    std::unordered_map<Guid, std::unique_ptr<render::Texture>, GuidHash> maps_;
     std::unique_ptr<render::Texture> falloff_;
     /// Recoloured textures, by "<guid> <recolor>".
     std::unordered_map<std::string, std::unique_ptr<render::Texture>> recolored_;

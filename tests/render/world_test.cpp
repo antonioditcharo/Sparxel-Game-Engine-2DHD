@@ -628,3 +628,37 @@ TEST_CASE("Normal maps bend the sun and point lights per pixel; glow maps shine 
     REQUIRE(world->end());
     CHECK(world->last_stats().draw_calls == 2);
 }
+
+TEST_CASE("Atlas regions in 3D: quads and triangles from one atlas share a draw call") {
+    render::Device* device = gpu();
+    if (device == nullptr) {
+        return;
+    }
+    const auto atlas = device->create_atlas(8, 8);
+    const std::vector<std::uint8_t> one_red{255, 0, 0, 255};
+    const std::vector<std::uint8_t> one_blue{0, 0, 255, 255};
+    REQUIRE(atlas != nullptr);
+    const auto reds = device->create_region(*atlas, 1, 1, 1, 1, one_red);
+    const auto blues = device->create_region(*atlas, 4, 4, 1, 1, one_blue);
+    REQUIRE(reds != nullptr);
+    REQUIRE(blues != nullptr);
+    const auto target = device->create_render_target(16, 16);
+    const auto world = render::WorldRenderer::create(*device);
+    REQUIRE(target != nullptr);
+    REQUIRE(world != nullptr);
+    const Mat4 camera = Mat4::orthographic(-8, 8, -8, 8, 1, 20) *
+                        Mat4::look_at(Vec3{0, 0, 10}, Vec3{0, 0, 0}, Vec3{0, 1, 0});
+    world->begin(*target, background, camera, Vec3{0, 0, 10});
+    world->draw(*reds, facing(-8, -8, 0, 8, 0), Rect{0, 0, 1, 1});
+    // A triangle across the right half, 0 to 1 across the blue region.
+    const std::array<render::MeshCorner, 3> corners{
+        render::MeshCorner{Vec3{0, -8, 0}, 0.0F, 0.0F, {1, 1, 1, 1}, Vec3{0, 0, 1}},
+        render::MeshCorner{Vec3{8, -8, 0}, 1.0F, 0.0F, {1, 1, 1, 1}, Vec3{0, 0, 1}},
+        render::MeshCorner{Vec3{8, 8, 0}, 1.0F, 1.0F, {1, 1, 1, 1}, Vec3{0, 0, 1}}};
+    world->draw_triangles(*blues, corners);
+    REQUIRE(world->end());
+    CHECK(world->last_stats().draw_calls == 1);
+    const std::vector<std::uint8_t> pixels = target->read_pixels();
+    CHECK(pixel(pixels, 16, 4, 8) == red);
+    CHECK(pixel(pixels, 16, 14, 12) == blue);
+}
