@@ -1274,7 +1274,7 @@ TEST_CASE("Pictures are dragged from the assets into the scene") {
     const std::unique_ptr<QMimeData> rules = drag_data(e.sample.path / "assets/logic/main.drules");
     drop(*rules, view->from_map(6.5, 8.0));
     CHECK(e.window.statusBar()->currentMessage().startsWith(
-        QStringLiteral("Only pictures (PNG) and sounds")));
+        QStringLiteral("Only pictures (PNG), sounds")));
     CHECK(e.window.document()->undo_label() != "Place main");
 
     // Nor is a file from outside the assets.

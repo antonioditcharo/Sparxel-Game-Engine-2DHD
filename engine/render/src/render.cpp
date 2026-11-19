@@ -1412,6 +1412,37 @@ void WorldRenderer::draw_shadow(const Texture& shape, const std::array<Vec3, 4>&
     native_->shadow_shapes.push_back(&shape);
 }
 
+void WorldRenderer::draw_triangles(const Texture& texture, std::span<const MeshCorner> corners,
+                                   const Surface& surface) {
+    if (native_->target == nullptr || corners.size() < 3) {
+        return;
+    }
+    const std::size_t whole = corners.size() - (corners.size() % 3);
+    // Quads are kept six corners each, one texture to each six; triangles go in pairs, and
+    // an odd one out with a triangle of no size.
+    std::size_t slot = 0;
+    for (std::size_t i = 0; i < whole; ++i) {
+        const MeshCorner& c = corners[i];
+        native_->vertices.push_back(
+            WorldVertex{c.position.x, c.position.y, c.position.z, c.u, c.v, c.color[0], c.color[1],
+                        c.color[2], c.color[3], c.normal.x, c.normal.y, c.normal.z, surface.wrap,
+                        surface.albedo[0], surface.albedo[1], surface.albedo[2], Effects{}});
+        if (++slot == 6) {
+            slot = 0;
+            native_->textures.push_back(&texture);
+            native_->casts.push_back(surface.casts_shadow);
+        }
+    }
+    if (slot != 0) {
+        const WorldVertex last = native_->vertices.back();
+        for (; slot < 6; ++slot) {
+            native_->vertices.push_back(last);
+        }
+        native_->textures.push_back(&texture);
+        native_->casts.push_back(surface.casts_shadow);
+    }
+}
+
 void WorldRenderer::draw(const Texture& texture, const std::array<Vec3, 4>& given, Rect source,
                          std::array<float, 4> color, const Surface& surface,
                          const SpriteEffects& effects) {

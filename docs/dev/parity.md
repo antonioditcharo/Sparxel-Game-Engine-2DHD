@@ -19,7 +19,7 @@
 |---|---|---|---|
 | A. Project and workflow | 5 | 7 | 0 (+1 later) |
 | B. Pixel art | 4 | 8 | 2 (+1 later) |
-| C. World building | 4 | 7 | 3 |
+| C. World building | 4 | 8 | 2 |
 | D. Rendering and the look | 4 | 10 | 1 (+1 later) |
 | E. No-code logic | 5 | 6 | 0 (+1 later) |
 | F. Genre kits | 4 | 2 | 0 |
@@ -28,7 +28,7 @@
 | I. Physics | 3 | 2 | 0 |
 | J. Audio | 2 | 4 | 0 (+1 later) |
 | K. UI | 3 | 4 | 0 |
-| **All** | **42** | **54** | **6** (+6 later) |
+| **All** | **42** | **55** | **5** (+6 later) |
 
 The strongest areas match or pass their references: the RPG kit and window skins (RPG
 Maker), auto-tiles and tile variants (RPG Maker, LDtk), no-code Rules with tags, *it*,
@@ -91,7 +91,7 @@ action kits (GameMaker), audio mixing (zones, reverb), and team features.
 | C9 | Water, sky, weather | Octopath | **Partial**: rain, snow, fog and animated tiles; no sky presets |
 | C10 | Navigation | Godot | **Partial**: grid A* (walkers find their way round walls); no navmesh |
 | C11 | Map connections | RPG Maker | **Done**: doors both ways, fades, arriving at doors |
-| C12 | glTF import | Godot | **Not yet** |
+| C12 | glTF import | Godot | **Partial**: `.gltf` and `.glb` models placed as Models in the Diorama style, sun-lit, shadowed, turned and scaled; no animations, skins or JPEG textures |
 | C13 | Large worlds | Godot | **Not yet** |
 | C14 | Terrain | | **Not yet** (tile heights only) |
 

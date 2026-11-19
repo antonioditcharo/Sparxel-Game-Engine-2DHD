@@ -86,6 +86,7 @@ add_test(NAME render COMMAND engine_render_tests)
 add_executable(engine_assets_tests
     test_main.cpp
     assets/assets_test.cpp
+    assets/gltf_test.cpp
 )
 target_link_libraries(engine_assets_tests PRIVATE
     engine::assets

@@ -213,6 +213,41 @@ TEST_CASE("Sprite effects in 3D: a flash after the light, an outline, and dissol
     CHECK(pixel(drawn(fx, {1.0F, 1.0F, 1.0F, 1.0F}), 16, 8, 8) == background);
 }
 
+TEST_CASE("Triangles: a model's meshes drawn, lit by their corners, in pairs or one alone") {
+    render::Device* device = gpu();
+    if (device == nullptr) {
+        return;
+    }
+    const auto target = device->create_render_target(16, 16);
+    const auto world = render::WorldRenderer::create(*device);
+    REQUIRE(target != nullptr);
+    REQUIRE(world != nullptr);
+    const auto white = solid(*device, Color{255, 255, 255, 255});
+    const Mat4 camera = Mat4::orthographic(-8, 8, -8, 8, 1, 20) *
+                        Mat4::look_at(Vec3{0, 0, 10}, Vec3{0, 0, 0}, Vec3{0, 1, 0});
+    const auto corner = [](float x, float y, std::array<float, 4> colour) {
+        return render::MeshCorner{Vec3{x, y, 0}, 0.5F, 0.5F, colour, Vec3{0, 0, 1}};
+    };
+    const std::array<float, 4> reddish{1, 0, 0, 1};
+    const std::array<float, 4> greenish{0, 1, 0, 1};
+    // A square of two red triangles on the left, one green triangle on the right, and two
+    // corners more, which make no triangle.
+    const std::vector<render::MeshCorner> corners{
+        corner(-6, -4, reddish), corner(-2, -4, reddish), corner(-2, 4, reddish),
+        corner(-6, -4, reddish), corner(-2, 4, reddish),  corner(-6, 4, reddish),
+        corner(2, -4, greenish), corner(6, -4, greenish), corner(2, 4, greenish),
+        corner(0, 0, greenish),  corner(0, 1, greenish)};
+    world->begin(*target, background, camera, Vec3{0, 0, 10});
+    world->draw_triangles(*white, corners);
+    REQUIRE(world->end());
+    const std::vector<std::uint8_t> pixels = target->read_pixels();
+    CHECK(pixel(pixels, 16, 4, 8) == red);
+    CHECK(pixel(pixels, 16, 4, 5) == red); // the square's other half
+    CHECK(pixel(pixels, 16, 10, 10) == green);
+    CHECK(pixel(pixels, 16, 13, 4) == background); // above the green triangle's slope
+    CHECK(pixel(pixels, 16, 8, 8) == background);  // the two corners left drew nothing
+}
+
 TEST_CASE("Perspective makes far things smaller") {
     render::Device* device = gpu();
     if (device == nullptr) {

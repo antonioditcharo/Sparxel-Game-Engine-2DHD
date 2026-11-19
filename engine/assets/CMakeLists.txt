@@ -9,6 +9,7 @@ add_library(engine_assets STATIC
     src/aseprite.cpp
     src/assets.cpp
     src/autotile.cpp
+    src/gltf.cpp
 )
 add_library(engine::assets ALIAS engine_assets)
 

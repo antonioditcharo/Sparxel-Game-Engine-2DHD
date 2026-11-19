@@ -54,7 +54,9 @@ struct Field {
 };
 
 bool has(const std::vector<Tile>& tiles, Tile t) {
-    return std::find(tiles.begin(), tiles.end(), t) != tiles.end();
+    // Not std::find: a newer standard library vectorises it for 16-byte types in a way
+    // older clang-cl cannot compile.
+    return std::any_of(tiles.begin(), tiles.end(), [t](Tile u) { return u == t; });
 }
 
 } // namespace

@@ -108,6 +108,19 @@ std::vector<std::pair<std::string, std::string>> sounds(Document& document) {
     return out;
 }
 
+/// The project's glTF models, for a Model's field: (path, GUID).
+std::vector<std::pair<std::string, std::string>> models(Document& document) {
+    std::vector<std::pair<std::string, std::string>> out;
+    for (const engine::assets::AssetRecord& record : document.assets().assets()) {
+        const std::string_view path = record.path;
+        if (path.ends_with(".gltf") || path.ends_with(".glb")) {
+            out.emplace_back(record.path, record.guid.to_string());
+        }
+    }
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
 } // namespace
 
 Inspector::Inspector(QWidget* parent) : QWidget(parent), layout_(new QVBoxLayout(this)) {
@@ -396,19 +409,24 @@ QWidget* Inspector::field(const reflect::TypeInfo& component,
         const std::string value = current && std::holds_alternative<std::string>(*current)
                                       ? std::get<std::string>(*current)
                                       : std::string();
-        if (property.id == "image" || property.id == "tileset" || property.id == "sound") {
-            // A picture or a sound: choose one of the project's by its path.
+        const bool model = component.name == "model_3d" && property.id == "model";
+        if (property.id == "image" || property.id == "tileset" || property.id == "sound" || model) {
+            // A picture, a sound or a model: choose one of the project's by its path.
             const bool sound = property.id == "sound";
             auto* choose = new QComboBox(content_);
             choose->addItem(tr("(none)"), QString());
-            for (const auto& [path, guid] : sound ? sounds(*document_) : images(*document_)) {
+            for (const auto& [path, guid] : model   ? models(*document_)
+                                            : sound ? sounds(*document_)
+                                                    : images(*document_)) {
                 choose->addItem(text_of(path), text_of(guid));
             }
             const int index = choose->findData(text_of(value));
             if (index >= 0) {
                 choose->setCurrentIndex(index);
             } else if (!value.empty()) {
-                choose->addItem(sound ? tr("(missing sound)") : tr("(missing picture)"),
+                choose->addItem(model   ? tr("(missing model)")
+                                : sound ? tr("(missing sound)")
+                                        : tr("(missing picture)"),
                                 text_of(value));
                 choose->setCurrentIndex(choose->count() - 1);
             }

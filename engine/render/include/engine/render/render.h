@@ -371,6 +371,15 @@ inline constexpr std::uint32_t sun_shadow_size = 2048;
 /// light, falling smoothly to 0 at `radius`: (1 - (d / r)^2)^2.
 [[nodiscard]] float light_falloff(float distance, float radius) noexcept;
 
+/// One corner of a triangle for WorldRenderer::draw_triangles().
+struct MeshCorner {
+    Vec3 position;
+    float u = 0.0F; ///< Texture coordinates, 0 to 1 across the whole texture.
+    float v = 0.0F;
+    std::array<float, 4> color{1.0F, 1.0F, 1.0F, 1.0F}; ///< As draw()'s colour.
+    Vec3 normal;                                        ///< For point lights.
+};
+
 /// Draws textured quads in 3D with a depth buffer: the ground, walls and billboarded
 /// sprites of a diorama.
 ///
@@ -404,6 +413,12 @@ public:
     void draw(const Texture& texture, const std::array<Vec3, 4>& corners, Rect source,
               std::array<float, 4> color = {1.0F, 1.0F, 1.0F, 1.0F}, const Surface& surface = {},
               const SpriteEffects& effects = {});
+    /// Queues triangles, three corners each (a model's meshes): textured with `texture`,
+    /// each corner's colour multiplying it (ambient and sun light times tint) and point
+    /// lights added at its own normal, as `surface` says otherwise (wrap, albedo, whether it
+    /// casts the sun's shadow). Opaque, with texels below a half alpha cut out, as quads.
+    void draw_triangles(const Texture& texture, std::span<const MeshCorner> corners,
+                        const Surface& surface = {});
     /// Queues a soft round shadow over the quad with these corners (as draw() takes
     /// them): what is already there is darkened by up to `darkness` (0 to 1) in the
     /// middle, fading out to the rim. Shadows are drawn after every quad, and only where

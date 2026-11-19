@@ -74,7 +74,33 @@ Every list in `AssetChanges` and the issues are sorted, so results are determini
 - `encode_png()` writes RGBA8 as PNG, for tools and tests. A round trip is exact (tested).
 - Both use the PNG support built into SDL 3.4, so no extra library is needed.
 
-## 6. Next increments
+## 6. Models
+
+`load_gltf()` (`engine/assets/gltf.h`, `plan/02` C12) reads a glTF 2.0 model, the format
+Godot, Blender and every 3D tool export, into triangle meshes for the Diorama style
+([scene2d.md](scene2d.md) §7, *Models*):
+
+- **Both forms:** a `.gltf` file, its buffers embedded as `data:` URIs or in files beside
+  it (read through a `ModelFileReader`, which the texture cache points at the asset
+  database, so `models/hut.gltf` finds `models/hut.bin`); or a `.glb` holding the JSON
+  and its buffer in one file.
+- **What is read:** the default scene's nodes, each node's translation, rotation and
+  scale (or matrix) applied down the tree; every triangle primitive's positions, normals
+  (each triangle's own when there are none) and first texture coordinates, as floats,
+  unsigned bytes, shorts or ints, indexed or not; each material's base colour and its
+  base colour texture when it is a PNG. One mesh for each primitive; the box round every
+  vertex (`low`, `high`).
+- **What is not:** cameras, lights, skins, animations, morph targets, lines and points,
+  JPEG textures, and extensions. A model that needs them still loads without them.
+- **Errors in plain words:** "It is not a glTF model.", "Only glTF 2 models can be
+  read.", "The model has no triangles.", "A buffer is shorter than its views say.",
+  "The model's buffer square.bin cannot be read."
+
+Tested (`tests/assets/gltf_test.cpp`): one triangle, under a parent moved by (1, 2, 3)
+and a child scaled by 2, read the same from a `data:` URI, a file beside it and a `.glb`,
+with its own normal, base colour and box; and each error above.
+
+## 7. Next increments
 
 Towards Spike A, "file watcher → import → cache → hot reload of a sprite into the running
 viewport" (`plan/08` Phase 0):

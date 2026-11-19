@@ -199,6 +199,13 @@ world->end();
   wall with the sun at 45 degrees darkens exactly the wall 2 to its left, by half (128
   of 255); nothing without the sun's shadows, with a card that does not cast, or on a
   wall facing away from the sun.
+- **Triangles** (`draw_triangles(texture, corners, surface)`): a model's meshes, three
+  `MeshCorner`s each (position, texture coordinates, colour, normal). They share the
+  quads' pipelines and batches: two triangles fill a quad's six vertices, and an odd one
+  is padded with a triangle of no size. Each corner's own normal takes point lights, so
+  curved surfaces light smoothly; the `Surface` gives wrap, albedo and whether they cast
+  the sun's shadow. Tested: two triangles making a square drawn in its colour, and an
+  odd third beside them.
 - **Batching:** one draw call per run of quads sharing a texture, as for sprites.
 - **See-through quads** (glass, water, fading characters): a quad whose colour's alpha is
   below 1, or whose texture has partly see-through pixels (`Texture::translucent()`,

@@ -1800,10 +1800,11 @@ Guid Document::place_asset(std::string_view asset_path, double x, double y, std:
     const bool picture = extension == ".png";
     const bool sound =
         extension == ".wav" || extension == ".ogg" || extension == ".flac" || extension == ".mp3";
-    if (!picture && !sound) {
-        error = "Only pictures (PNG) and sounds (WAV, Ogg, FLAC, MP3) can be placed in the "
-                "scene; " +
-                std::string(asset_path) + " is neither.";
+    const bool model = extension == ".gltf" || extension == ".glb";
+    if (!picture && !sound && !model) {
+        error = "Only pictures (PNG), sounds (WAV, Ogg, FLAC, MP3) and models (glTF) can be "
+                "placed in the scene; " +
+                std::string(asset_path) + " is none of them.";
         return Guid{};
     }
     if (!std::isfinite(x) || !std::isfinite(y)) {
@@ -1820,6 +1821,10 @@ Guid Document::place_asset(std::string_view asset_path, double x, double y, std:
     if (picture) {
         if (auto* sprite = d.world->add<scene2d::Sprite>(e)) {
             sprite->image = record->guid.to_string();
+        }
+    } else if (model) {
+        if (auto* placed = d.world->add<scene2d::Model3D>(e)) {
+            placed->model = record->guid.to_string();
         }
     } else if (auto* source = d.world->add<game::SoundSource>(e)) {
         source->sound = record->guid.to_string();

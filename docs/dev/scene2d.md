@@ -40,6 +40,7 @@ nothing extra to write ([reflection.md](reflection.md)).
 | `SpriteAnimation` ("sprite_animation") | `tag` (a tag of the sheet, such as *walk*: §3), `first_frame`, `frame_count`, `frames_per_second`, `loop`, `playing`; actions *Play*, *Play the animation {name}* (a tag) and *Stop*; events *finished* and *frame_event* (its [name]) | "Animation" |
 | `Tilemap` ("tilemap") | `tileset` (an asset GUID), `tiles`, `visible`, `solid`; advanced: `tile_size`, `shapes` (*Tile shapes*) | "Tilemap" |
 | `Parallax` ("parallax") | `scroll_x`, `scroll_y` (*Scroll across*, *Scroll down*: 0 fixed on the screen, 1 with the map, 0.5 at half speed), `repeat_x`, `repeat_y` | "Parallax" |
+| `Model3D` ("model_3d") | `model` (a glTF asset GUID), `scale` (tiles to a model unit), `turn` (degrees), `height` (tiles), `visible`, `casts_shadow` (*Casts a shadow*) | "Model" (Diorama style only: §7, *Models*) |
 
 - **Units:** one world unit is one tile of `ppu` pixels, the project setting (default 16,
   `plan/04` §2). A sprite's size comes from its image: 1 image pixel is 1 world pixel.
@@ -343,6 +344,18 @@ the style ([game.md](game.md) §2).
   silhouettes above.
 
   ![The sample village in the Diorama style with a low sun in the north: the north wall's shadow lies along the top of the grass, and the characters' silhouettes fall towards the camera](diorama-shadows.png)
+- **Models** (`Model3D`, `plan/02` C12): a glTF asset ([assets.md](assets.md) §6)
+  standing on its Position, as HD-2D games set pixel-art characters among 3D houses,
+  trees and bridges. Its ground (model y 0) is the position, raised by *height*; its
+  units are tiles times *scale*; *turn* turns it about the up axis, clockwise seen from
+  above. Each corner is lit by the sun and ambient light at its own normal
+  (`brightness()`) times the material's base colour, and takes point lights per pixel;
+  it casts the sun's shadow unless *Casts a shadow* is off, and receives shadows like
+  everything else. The texture cache reads each model once (`TextureCache::model()`,
+  with a texture per mesh, plain white for colour alone) and reads it again when any
+  asset changes; a model that cannot be read is counted as missing. Classic 2D does not
+  draw models. In the editor, dropping a `.gltf` or `.glb` from the assets list places a
+  Model there, and the inspector chooses another from the project's models.
 - **Depth** sorts everything; there is no draw order to manage. **Fog** fades distant
   things into the haze.
 - **Rays** (`diorama_ray()`, `ground_hit()`): the ray from the eye through any point of the
@@ -387,6 +400,7 @@ the others run anywhere:
 | See-through maps (GPU) | `alpha()` from `opacity`, clamped, NaN as solid; water at 0.5 over a riverbed: in Classic 2D exactly half of each; in the Diorama style the lit riverbed and lit water mixed by the alpha, four quads blended; opacity 1 and 0 blend none |
 | A sprite's corners | `sprite_corners()` upright; a quarter turn clockwise, exactly, and the same at -270; 45 degrees; flipped across and twice as tall; a rotation or scale that is not a number counts as none |
 | Turned, scaled and flipped (GPU) | A picture red on the left and blue on the right, at exact pixels: upright; flipped (blue on the left); a quarter turn about its feet (red on top, standing to the right of them), the same at -270; twice as wide; half as tall; a NaN rotation drawn upright. In the Diorama style, points a quarter and three quarters of a tile above the feet show the sprite; at half height only the lower one; turned upside down, neither |
+| Models (GPU) | A flat square in `models/square.gltf` with its buffer beside it, green, seen from above under even light: green in the middle and the background in the corner; two triangles drawn; half the width at scale 0.5; wider than a quarter more turned 45 degrees; nothing hidden; a missing model counted |
 | Frames and tilemaps (GPU) | Exact pixels for frames 0, 1 and a wrapped 2; a 2 × 2 map with an empty cell and a skipped tile; a sprite over its map; tiles in view counted for an aligned and an offset camera; bad text and a missing tileset counted |
 
 ## 9. Next increments

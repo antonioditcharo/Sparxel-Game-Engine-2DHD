@@ -229,8 +229,9 @@ public:
     /// Places an asset (its path in assets/, such as "chars/hero.png") at map point
     /// (x, y), snapped to whole pixels: a new entity named after the file, with a
     /// Position and, for a picture (PNG), a Sprite showing it; for a sound (WAV, Ogg,
-    /// FLAC or MP3), a Sound Source repeating it there. One undo step. Returns its GUID,
-    /// or an invalid one, with `error` in plain language, if the asset is neither.
+    /// FLAC or MP3), a Sound Source repeating it there; for a model (".gltf" or ".glb"), a
+    /// Model standing there. One undo step. Returns its GUID, or an invalid one, with
+    /// `error` in plain language, if the asset is none of them.
     engine::Guid place_asset(std::string_view asset_path, double x, double y, std::string& error);
     /// Places a character sheet (a picture of 3 frames across and 4 rows: down, left, right,
     /// up, as the character generator makes) at map point (x, y): a Sprite cut into its

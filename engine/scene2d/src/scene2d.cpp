@@ -234,6 +234,30 @@ void register_types(reflect::Registry& registry) {
         .tooltip("How high above the ground the light is.");
     light.property<&Light::enabled>("enabled").tooltip("Turn the light off without removing it.");
 
+    auto model = registry.add_type<Model3D>("model_3d")
+                     .display_name("Model")
+                     .category("Visuals")
+                     .tooltip("A 3D model (glTF) standing here in the Diorama style: a house, "
+                              "a tree, a bridge.");
+    model.property<&Model3D::model>("model").tooltip("A .gltf or .glb file in assets/.");
+    model.property<&Model3D::scale>("scale")
+        .range(0.001, 1000.0)
+        .step(0.1)
+        .tooltip("Tiles to one of the model's units: 1 when it was made a metre a tile.");
+    model.property<&Model3D::turn>("turn")
+        .range(-360.0, 360.0)
+        .step(15.0)
+        .unit(reflect::Unit::Degrees)
+        .tooltip("Turned about the up axis, clockwise seen from above.");
+    model.property<&Model3D::height>("height")
+        .range(-64.0, 64.0)
+        .step(0.25)
+        .unit(reflect::Unit::Tiles)
+        .tooltip("Above the ground (or below it).");
+    model.property<&Model3D::visible>("visible").tooltip("Hide it without removing it.");
+    model.property<&Model3D::casts_shadow>("casts_shadow")
+        .display_name("Casts a shadow")
+        .tooltip("In the sun's shadows.");
     auto parallax =
         registry.add_type<Parallax>("parallax")
             .display_name("Parallax")
@@ -265,7 +289,8 @@ bool register_components(world::World& world) {
     const bool tilemap = world.register_component<Tilemap>();
     const bool light = world.register_component<Light>();
     const bool parallax = world.register_component<Parallax>();
-    return transform && sprite && animation && tilemap && light && parallax;
+    const bool model = world.register_component<Model3D>();
+    return transform && sprite && animation && tilemap && light && parallax && model;
 }
 
 // ---------------------------------------------------------------------------------------
@@ -1357,7 +1382,63 @@ const render::Texture* TextureCache::light_falloff() {
     return falloff_.get();
 }
 
+const TextureCache::LoadedModel* TextureCache::model(Guid asset) {
+    if (const auto found = models_.find(asset); found != models_.end()) {
+        return found->second.get();
+    }
+    std::unique_ptr<LoadedModel>& slot = models_[asset];
+    const assets::AssetRecord* record = assets_.find(asset);
+    const std::optional<std::vector<std::uint8_t>> bytes =
+        record != nullptr ? assets_.read(asset) : std::nullopt;
+    if (!bytes) {
+        last_error_ = "There is no model " + asset.to_string() + " in assets/.";
+        return nullptr;
+    }
+    // Its buffers and pictures, beside it.
+    const std::string folder = record->path.find('/') == std::string::npos
+                                   ? std::string()
+                                   : record->path.substr(0, record->path.rfind('/') + 1);
+    const assets::ModelFileReader beside =
+        [this, &folder](std::string_view uri) -> std::optional<std::vector<std::uint8_t>> {
+        const assets::AssetRecord* file = assets_.find(folder + std::string(uri));
+        return file != nullptr ? assets_.read(file->guid) : std::nullopt;
+    };
+    std::string error;
+    std::optional<assets::Model> read = assets::load_gltf(*bytes, beside, error);
+    if (!read) {
+        last_error_ = record->path + ": " + error;
+        return nullptr;
+    }
+    auto loaded = std::make_unique<LoadedModel>();
+    loaded->model = std::move(*read);
+    for (const assets::ModelMesh& mesh : loaded->model.meshes) {
+        const render::Texture* texture = nullptr;
+        if (mesh.texture) {
+            if (auto made = device_.create_texture(mesh.texture->width, mesh.texture->height,
+                                                   mesh.texture->rgba)) {
+                texture = made.get();
+                model_textures_.push_back(std::move(made));
+            }
+        }
+        if (texture == nullptr) {
+            if (white_ == nullptr) {
+                const std::vector<std::uint8_t> one{255, 255, 255, 255};
+                white_ = device_.create_texture(1, 1, one);
+            }
+            texture = white_.get();
+        }
+        loaded->textures.push_back(texture);
+    }
+    slot = std::move(loaded);
+    return slot.get();
+}
+
 void TextureCache::apply(const assets::AssetChanges& changes) {
+    // A model's file, or one beside it, may have changed: they are read again.
+    if (!changes.modified.empty() || !changes.removed.empty() || !changes.added.empty()) {
+        models_.clear();
+        model_textures_.clear();
+    }
     const auto forget = [this](Guid guid) {
         textures_.erase(guid);
         const std::string prefix = guid.to_string() + " ";
@@ -2237,6 +2318,57 @@ DrawStats draw_diorama(const world::World& world, TextureCache& textures,
         }
         // Layers lift things a hair, so maps painted over each other do not flicker.
         const auto lift = static_cast<float>(transform->layer) * 0.002F;
+
+        // A model: its triangles turned, scaled and set at the position, lit by the sun at
+        // each corner'sin_turn normal.
+        if (const Model3D* placed = world.get<Model3D>(entity);
+            placed != nullptr && placed->visible) {
+            const std::optional<Guid> asset = Guid::parse(placed->model);
+            const TextureCache::LoadedModel* loaded = asset ? textures.model(*asset) : nullptr;
+            const double scale = std::isfinite(placed->scale) ? placed->scale : 1.0;
+            const double angle =
+                std::isfinite(placed->turn) ? placed->turn * 3.14159265358979 / 180.0 : 0.0;
+            const auto cos_turn = static_cast<float>(std::cos(angle));
+            const auto sin_turn = static_cast<float>(std::sin(angle));
+            const auto up =
+                static_cast<float>(std::isfinite(placed->height) ? placed->height : 0.0);
+            if (loaded == nullptr) {
+                ++stats.missing;
+            } else {
+                std::vector<render::MeshCorner> corners;
+                for (std::size_t m = 0; m < loaded->model.meshes.size(); ++m) {
+                    const assets::ModelMesh& mesh = loaded->model.meshes[m];
+                    corners.clear();
+                    corners.reserve(mesh.vertices.size());
+                    for (const assets::ModelVertex& v : mesh.vertices) {
+                        const float x = v.position[0];
+                        const float z = v.position[2];
+                        const render::Vec3 normal{
+                            (cos_turn * v.normal[0]) - (sin_turn * v.normal[2]), v.normal[1],
+                            (sin_turn * v.normal[0]) + (cos_turn * v.normal[2])};
+                        const float shade = brightness(normal, light);
+                        corners.push_back(render::MeshCorner{
+                            render::Vec3{
+                                static_cast<float>(transform->x) +
+                                    (((cos_turn * x) - (sin_turn * z)) * static_cast<float>(scale)),
+                                up + lift + (v.position[1] * static_cast<float>(scale)),
+                                static_cast<float>(transform->y) +
+                                    (((sin_turn * x) + (cos_turn * z)) *
+                                     static_cast<float>(scale))},
+                            v.uv[0],
+                            v.uv[1],
+                            {mesh.color[0] * shade, mesh.color[1] * shade, mesh.color[2] * shade,
+                             1.0F},
+                            normal});
+                    }
+                    render::Surface model_surface;
+                    model_surface.albedo = {mesh.color[0], mesh.color[1], mesh.color[2]};
+                    model_surface.casts_shadow = placed->casts_shadow;
+                    renderer.draw_triangles(*loaded->textures[m], corners, model_surface);
+                    stats.drawn += corners.size() / 3;
+                }
+            }
+        }
 
         if (const Tilemap* tilemap = world.get<Tilemap>(entity);
             tilemap != nullptr && tilemap->visible) {

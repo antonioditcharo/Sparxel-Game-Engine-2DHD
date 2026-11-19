@@ -14,6 +14,12 @@ namespace engine::game {
 
 namespace {
 
+/// Whether `tile` is among `tiles`. Not std::find: a newer standard library vectorises it for
+/// 16-byte types in a way older clang-cl cannot compile.
+bool contains(const std::vector<Tile>& tiles, Tile tile) {
+    return std::any_of(tiles.begin(), tiles.end(), [tile](Tile t) { return t == tile; });
+}
+
 /// A living unit and where it stands.
 struct Placed {
     world::Entity entity;
@@ -224,14 +230,13 @@ void TacticsObject::choose(world::World& world, std::uint32_t ppu) {
         std::find_if(all.begin(), all.end(), [&](const Placed& p) { return p.tile == cursor_; });
     const world::Entity chosen = world.find(selected_);
     if (step_ == Step::Target) {
-        if (at_cursor != all.end() &&
-            std::find(targets_.begin(), targets_.end(), cursor_) != targets_.end()) {
+        if (at_cursor != all.end() && contains(targets_, cursor_)) {
             attack(world, chosen, at_cursor->entity);
             finish_unit(world);
         }
         return;
     }
-    if (step_ == Step::Move && std::find(moves_.begin(), moves_.end(), cursor_) != moves_.end()) {
+    if (step_ == Step::Move && contains(moves_, cursor_)) {
         if (scene2d::Transform2D* to = world.get<scene2d::Transform2D>(chosen)) {
             const auto [x, y] = stand_on(cursor_);
             to->x = x;

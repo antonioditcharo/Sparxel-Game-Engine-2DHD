@@ -352,6 +352,26 @@ TEST_CASE("A property of several entities changes for all of them, as one step")
     CHECK(d->world().name(d->world().find(elder)) == "hero_2");
 }
 
+TEST_CASE("Placing a glTF model from the assets makes a Model there") {
+    const Sample sample;
+    {
+        std::ofstream out(sample.path / "assets" / "art" / "hut.glb", std::ios::binary);
+        out << "glTF";
+    }
+    const auto d = sample.open();
+    std::string error;
+    const Guid hut = d->place_asset("art/hut.glb", 2.0, 3.0, error);
+    REQUIRE(hut.is_valid());
+    const world::Entity e = d->world().find(hut);
+    CHECK(d->world().name(e) == "hut");
+    const auto* model = d->world().get<scene2d::Model3D>(e);
+    REQUIRE(model != nullptr);
+    CHECK(model->model == d->assets().find("art/hut.glb")->guid.to_string());
+    CHECK(model->scale == 1.0);
+    CHECK(d->world().get<scene2d::Sprite>(e) == nullptr);
+    CHECK(d->undo_label() == "Place hut");
+}
+
 TEST_CASE("Placing a picture from the assets makes a sprite there, as one step") {
     const Sample sample;
     const auto d = sample.open();
@@ -376,10 +396,10 @@ TEST_CASE("Placing a picture from the assets makes a sprite there, as one step")
     CHECK(d->entities().size() == before);
     CHECK_FALSE(d->world().find(placed).is_valid());
 
-    // Only pictures and sounds that are assets, at a real point.
+    // Only pictures, sounds and models that are assets, at a real point.
     CHECK_FALSE(d->place_asset("logic/main.drules", 1.0, 1.0, error).is_valid());
-    CHECK(error == "Only pictures (PNG) and sounds (WAV, Ogg, FLAC, MP3) can be placed in the "
-                   "scene; logic/main.drules is neither.");
+    CHECK(error == "Only pictures (PNG), sounds (WAV, Ogg, FLAC, MP3) and models (glTF) can be "
+                   "placed in the scene; logic/main.drules is none of them.");
     CHECK_FALSE(d->place_asset("art/nothing.png", 1.0, 1.0, error).is_valid());
     CHECK(error == "There is no asset art/nothing.png in assets/.");
     CHECK_FALSE(d->place_asset("art/hero.png", std::nan(""), 1.0, error).is_valid());

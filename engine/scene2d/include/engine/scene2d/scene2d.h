@@ -8,6 +8,7 @@
 // See docs/dev/scene2d.md.
 
 #include "engine/assets/assets.h"
+#include "engine/assets/gltf.h"
 #include "engine/foundation/guid.h"
 #include "engine/foundation/reflect.h"
 #include "engine/render/render.h"
@@ -288,6 +289,19 @@ private:
 /// whole numbers have no decimals.
 [[nodiscard]] std::string format_heights(const std::vector<std::vector<double>>& heights);
 
+/// "Model": a 3D model (a glTF asset, ".gltf" or ".glb") standing at the position in the
+/// Diorama style, as HD-2D games set their characters among 3D scenery: houses, trees,
+/// bridges. Its ground is the position; its model units are tiles times `scale`. Not drawn
+/// in Classic 2D.
+struct Model3D {
+    std::string model;   ///< The GUID of a glTF asset.
+    double scale = 1.0;  ///< Tiles to a model unit.
+    double turn = 0.0;   ///< Degrees about the up axis, clockwise seen from above.
+    double height = 0.0; ///< Tiles above the ground.
+    bool visible = true;
+    bool casts_shadow = true; ///< In the sun's shadows.
+};
+
 /// "Parallax": a Sprite that scrolls slower (or faster) than the map as the camera moves, and
 /// repeats to fill the view: far hills, clouds, a sky, in Classic 2D (plan/02 D11).
 struct Parallax {
@@ -315,8 +329,8 @@ struct Light {
 };
 
 /// Registers Transform2D ("transform_2d"), Sprite ("sprite"), SpriteAnimation
-/// ("sprite_animation"), Tilemap ("tilemap"), Light ("light") and Parallax ("parallax") with their
-/// editor metadata.
+/// ("sprite_animation"), Tilemap ("tilemap"), Light ("light"), Parallax ("parallax") and
+/// Model3D ("model_3d") with their editor metadata.
 void register_types(reflect::Registry& registry);
 /// Makes them all usable as components of `world`. register_types() must have run first.
 bool register_components(world::World& world);
@@ -472,6 +486,16 @@ public:
     /// Classic 2D's lights. Made once; null if it cannot be.
     const render::Texture* light_falloff();
 
+    /// A model read from a glTF asset, with a texture for each of its meshes (its own, or
+    /// plain white for its colour alone).
+    struct LoadedModel {
+        assets::Model model;
+        std::vector<const render::Texture*> textures; ///< One for each mesh.
+    };
+    /// The model of a glTF asset (its buffers and pictures read beside it), read once and
+    /// kept; null, with last_error(), if it cannot be read.
+    const LoadedModel* model(Guid asset);
+
     [[nodiscard]] std::size_t size() const noexcept { return textures_.size(); }
     [[nodiscard]] const std::string& last_error() const noexcept { return last_error_; }
 
@@ -485,6 +509,11 @@ private:
     std::unique_ptr<render::Texture> falloff_;
     /// Recoloured textures, by "<guid> <recolor>".
     std::unordered_map<std::string, std::unique_ptr<render::Texture>> recolored_;
+    /// Models, and the textures their meshes own; a model that cannot be read is kept as
+    /// null so it is not read again every frame.
+    std::unordered_map<Guid, std::unique_ptr<LoadedModel>, GuidHash> models_;
+    std::vector<std::unique_ptr<render::Texture>> model_textures_;
+    std::unique_ptr<render::Texture> white_;
     std::string last_error_;
 };
 

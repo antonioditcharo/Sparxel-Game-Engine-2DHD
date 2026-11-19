@@ -2046,3 +2046,113 @@ TEST_CASE("Hit and hurt boxes: one's hit box on another's hurt box, placed as dr
     w.get<scene2d::Transform2D>(slime)->x = 5.0;
     CHECK(scene2d::hit_contacts(w, sheets, 8).empty());
 }
+
+TEST_CASE("Models: a glTF asset stands in the Diorama, turned, scaled and sun-lit") {
+    const Fixture f;
+    // A flat square two units across, with its buffer in a file beside it, in a folder.
+    fs::create_directories(f.folder.path / "models");
+    {
+        const float positions[12] = {-1, 0, -1, 1, 0, -1, 1, 0, 1, -1, 0, 1};
+        const float normals[12] = {0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0};
+        const std::uint16_t indices[6] = {0, 1, 2, 0, 2, 3};
+        std::ofstream bin(f.folder.path / "models" / "square.bin", std::ios::binary);
+        bin.write(reinterpret_cast<const char*>(positions), sizeof positions);
+        bin.write(reinterpret_cast<const char*>(normals), sizeof normals);
+        bin.write(reinterpret_cast<const char*>(indices), sizeof indices);
+        std::ofstream gltf(f.folder.path / "models" / "square.gltf", std::ios::binary);
+        gltf << R"({"asset": {"version": "2.0"}, "scenes": [{"nodes": [0]}], "nodes": [{"mesh": 0}],
+            "meshes": [{"primitives": [{"attributes": {"POSITION": 0, "NORMAL": 1}, "indices": 2,
+                                        "material": 0}]}],
+            "materials": [{"pbrMetallicRoughness": {"baseColorFactor": [0, 1, 0, 1]}}],
+            "buffers": [{"byteLength": 108, "uri": "square.bin"}],
+            "bufferViews": [{"buffer": 0, "byteOffset": 0, "byteLength": 48},
+                            {"buffer": 0, "byteOffset": 48, "byteLength": 48},
+                            {"buffer": 0, "byteOffset": 96, "byteLength": 12}],
+            "accessors": [{"bufferView": 0, "componentType": 5126, "count": 4, "type": "VEC3"},
+                          {"bufferView": 1, "componentType": 5126, "count": 4, "type": "VEC3"},
+                          {"bufferView": 2, "componentType": 5123, "count": 6, "type": "SCALAR"}]})";
+    }
+    assets::AssetDatabase db(f.folder.path);
+    db.refresh();
+    const assets::AssetRecord* square = db.find("models/square.gltf");
+    REQUIRE(square != nullptr);
+
+    const auto w = f.make_world();
+    const world::Entity e = w->create("square");
+    scene2d::Transform2D* at = w->add<scene2d::Transform2D>(e);
+    at->x = 0.5;
+    at->y = 0.5;
+    scene2d::Model3D* model = w->add<scene2d::Model3D>(e);
+    model->model = square->guid.to_string();
+    model->height = 1.0;
+    // It is described for the editor.
+    const reflect::TypeInfo* type = f.registry.find_type<scene2d::Model3D>();
+    REQUIRE(type != nullptr);
+    CHECK(type->meta.display_name == "Model");
+    CHECK(type->find_property("turn")->unit == reflect::Unit::Degrees);
+
+    render::Device* device = gpu();
+    if (device == nullptr) {
+        return;
+    }
+    constexpr std::uint32_t size = 64;
+    const auto target = device->create_render_target(size, size);
+    const auto renderer = render::WorldRenderer::create(*device);
+    REQUIRE(target != nullptr);
+    REQUIRE(renderer != nullptr);
+    scene2d::TextureCache textures(*device, db);
+    const scene2d::TextureCache::LoadedModel* loaded = textures.model(square->guid);
+    REQUIRE(loaded != nullptr);
+    CHECK(loaded->model.meshes.size() == 1);
+    CHECK(loaded->textures.size() == 1);
+
+    scene2d::DioramaCamera camera;
+    camera.x = 0.5;
+    camera.y = 0.5;
+    camera.pitch = 89.0;
+    camera.distance = 10.0;
+    camera.ppu = 2;
+    scene2d::DioramaLight light;
+    light.ambient = 1.0F;
+    light.diffuse = 0.0F;
+    const scene2d::DrawStats stats =
+        scene2d::draw_diorama(*w, textures, *renderer, *target, camera, f.background, light);
+    CHECK(stats.drawn == 2);
+    CHECK(stats.missing == 0);
+    std::vector<std::uint8_t> pixels = target->read_pixels();
+    // The square's middle, seen from above: green; far from it, the background.
+    const Color middle = pixel(pixels, size, size / 2, size / 2);
+    CAPTURE(middle);
+    CHECK(middle.g > 200);
+    CHECK(middle.r < 40);
+    CHECK(pixel(pixels, size, 1, 1) == f.background);
+    // Scaled down to nothing much, its middle stays and its edge goes.
+    const auto green_across = [&](const std::vector<std::uint8_t>& image) {
+        int count = 0;
+        for (std::uint32_t x = 0; x < size; ++x) {
+            count += pixel(image, size, x, size / 2).g > 200 ? 1 : 0;
+        }
+        return count;
+    };
+    const int wide = green_across(pixels);
+    model = w->get<scene2d::Model3D>(e);
+    model->scale = 0.5;
+    scene2d::draw_diorama(*w, textures, *renderer, *target, camera, f.background, light);
+    pixels = target->read_pixels();
+    CAPTURE(wide);
+    CHECK(std::abs((green_across(pixels) * 2) - wide) <= 2);
+    // Turned 45 degrees, it is wider across its diagonal.
+    model->scale = 1.0;
+    model->turn = 45.0;
+    scene2d::draw_diorama(*w, textures, *renderer, *target, camera, f.background, light);
+    pixels = target->read_pixels();
+    CHECK(green_across(pixels) > wide + (wide / 4));
+    // Hidden, or a model that is not there, draws nothing.
+    model->visible = false;
+    CHECK(scene2d::draw_diorama(*w, textures, *renderer, *target, camera, f.background, light)
+              .drawn == 0);
+    model->visible = true;
+    model->model = Guid::generate().to_string();
+    CHECK(scene2d::draw_diorama(*w, textures, *renderer, *target, camera, f.background, light)
+              .missing == 1);
+}
