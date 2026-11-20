@@ -345,6 +345,12 @@ void register_behaviours(reflect::Registry& registry) {
         .step(0.25)
         .unit(reflect::Unit::Tiles)
         .tooltip("How near it walks to what it clicks before using it.");
+    click.property<&PointAndClick::verb>("verb").tooltip(
+        "What the next click on a thing does: look at, talk to, pick up. The thing hears "
+        "\"acted on\" with it; then it is empty again. Empty: a plain use.");
+    click.property<&PointAndClick::holding>("holding").tooltip(
+        "An item carried, held to use on the next thing clicked: the thing hears \"used "
+        "with\" with it; then the hand is empty again.");
 
     registry.add_type<Links>("links")
         .display_name("Links")
@@ -485,6 +491,14 @@ void register_behaviours(reflect::Registry& registry) {
     interactable.event<std::string>("interacted", {"who"})
         .text("When {who} interacts with it")
         .tooltip("Happens when the player presses Interact while facing it, close by.");
+    interactable.event<std::string, std::string>("acted_on", {"who", "verb"})
+        .text("When {who} does {verb} to it")
+        .tooltip("The player clicked it with a verb chosen (Point and Click's Verb): look at, "
+                 "talk to.");
+    interactable.event<std::string, std::string>("used_with", {"who", "item"})
+        .text("When {who} uses {item} on it")
+        .tooltip("The player clicked it holding an item they carry (Point and Click's "
+                 "Holding): a key on a door.");
 
     auto source = registry.add_type<SoundSource>("sound_source")
                       .display_name("Sound Source")

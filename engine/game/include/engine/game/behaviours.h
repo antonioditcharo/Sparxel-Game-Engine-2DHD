@@ -322,6 +322,15 @@ struct Interactable {
 struct PointAndClick {
     bool enabled = true;
     double reach = 1.25; ///< How near, in tiles, it walks to what it clicks before using it.
+    /// The verb the next click on a thing is (plan/02 F6, as Adventure Game Studio's): "look
+    /// at", "talk to", "pick up"; the thing hears "acted_on" with it instead of
+    /// "interacted", and the verb is used up. Empty: a plain use. Set by logic, say from a
+    /// Screen Button.
+    std::string verb;
+    /// An item the player carries, held to use on the next thing clicked: the thing hears
+    /// "used_with" with it, and the hand is empty again. Empty: nothing held; an item not
+    /// carried is let go.
+    std::string holding;
     // Not saved: a walk is clicked again after loading.
     std::vector<std::array<double, 2>> path; ///< Points still to reach, nearest first.
     Guid going_to;                           ///< The Interactable it walks to; invalid for none.

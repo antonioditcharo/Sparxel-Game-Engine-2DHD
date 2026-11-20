@@ -1938,9 +1938,28 @@ void Runtime::step() {
     }
     for (const auto& [mover, thing] : clicked_to) {
         const std::vector<std::string> who = names_of(*r.world, mover);
-        const std::array<reflect::Value, 1> by{
-            reflect::Value{who.empty() ? std::string() : who.back()}};
-        emit(*r.vm, *r.world, thing, "interacted", by);
+        const std::string by_name = who.empty() ? std::string() : who.back();
+        // An item held is used on it; else the verb chosen is done to it; else it is used.
+        PointAndClick* click = r.world->get<PointAndClick>(mover);
+        std::string item = click != nullptr ? click->holding : std::string();
+        const std::string verb = click != nullptr ? click->verb : std::string();
+        if (click != nullptr) {
+            click->holding.clear();
+            click->verb.clear();
+        }
+        if (!item.empty() && !r.inventory.has(item)) {
+            item.clear(); // not carried: let go
+        }
+        if (!item.empty()) {
+            const std::array<reflect::Value, 2> args{reflect::Value{by_name}, reflect::Value{item}};
+            emit(*r.vm, *r.world, thing, "used_with", args);
+        } else if (!verb.empty()) {
+            const std::array<reflect::Value, 2> args{reflect::Value{by_name}, reflect::Value{verb}};
+            emit(*r.vm, *r.world, thing, "acted_on", args);
+        } else {
+            const std::array<reflect::Value, 1> by{reflect::Value{by_name}};
+            emit(*r.vm, *r.world, thing, "interacted", by);
+        }
     }
     update_camera(r.camera, *r.world, dt);
     // Large worlds: the Streamed Scenes near the player loaded, those left behind taken
@@ -3525,6 +3544,20 @@ std::string Runtime::hud_value(std::string_view name) const {
     if (kind == "timer") {
         return std::to_string(
             static_cast<int>(std::ceil(r.save_object.time_left(std::string(of)))));
+    }
+    if (kind == "verb" || kind == "holding") {
+        // The player's Point and Click: the verb chosen, or the item held, in words.
+        std::string words;
+        if (const reflect::TypeInfo* type = r.world->registry().find_type<PointAndClick>()) {
+            r.world->each(*type, [&](world::Entity, reflect::ObjectRef ref) {
+                const auto* click = ref.as<PointAndClick>();
+                if (words.empty() && click != nullptr) {
+                    words = kind == "verb" ? click->verb : click->holding;
+                }
+            });
+        }
+        std::replace(words.begin(), words.end(), '_', ' ');
+        return words;
     }
     if (kind == "pointing") {
         // The name of what the pointer is over, in words: "old_door" reads "old door".

@@ -5300,6 +5300,114 @@ TEST_CASE("Clicking a chest in a running game walks the hero to it and opens it"
     CHECK(std::hypot(hero->x - 1.5, hero->y - 1.0) <= 1.25 + 1e-6);
 }
 
+TEST_CASE("Point and Click verbs and items: look at it, use a key on it") {
+    const Project project;
+    {
+        reflect::Registry registry;
+        game::register_types(registry);
+        world::World w(registry);
+        REQUIRE(scene2d::register_components(w));
+        REQUIRE(game::register_behaviour_components(w));
+        const world::Entity hero = w.create("hero");
+        w.add<scene2d::Transform2D>(hero);
+        w.add<game::TopDownMover>(hero);
+        w.add<game::PointAndClick>(hero)->verb = "look_at";
+        const world::Entity painting = w.create("painting");
+        scene2d::Transform2D* at = w.add<scene2d::Transform2D>(painting);
+        at->x = 1.5;
+        at->y = 1.0;
+        w.add<game::Interactable>(painting);
+        write_json(project.folder.path / "assets/maps/room.dscene", serialize::scene_to_json(w));
+        std::vector<serialize::Issue> issues;
+        std::optional<game::ProjectSettings> settings =
+            game::read_project(project.folder.path, issues);
+        REQUIRE(settings.has_value());
+        if (!settings) {
+            return;
+        }
+        settings->start_scene = "maps/room.dscene";
+        write_json(project.folder.path / game::project_file, game::project_to_json(*settings));
+        logic::LogicAsset rules;
+        rules.name = "room";
+        rules.rules.push_back(logic::Rule{
+            logic::BlockId{1},
+            "",
+            "game_start",
+            {},
+            {ir::do_action(2, "inventory", "give", {Project::text("key"), Project::whole(1)})},
+            {}});
+        rules.rules.push_back(logic::Rule{logic::BlockId{3},
+                                          "painting",
+                                          "acted_on",
+                                          {},
+                                          {ir::log(4, ir::event_value("verb"))},
+                                          {}});
+        rules.rules.push_back(logic::Rule{logic::BlockId{5},
+                                          "painting",
+                                          "used_with",
+                                          {},
+                                          {ir::log(6, ir::event_value("item"))},
+                                          {}});
+        rules.rules.push_back(logic::Rule{logic::BlockId{7},
+                                          "painting",
+                                          "interacted",
+                                          {},
+                                          {ir::log(8, Project::text("used"))},
+                                          {}});
+        write_json(project.folder.path / "assets/logic/room.drules",
+                   serialize::logic_to_json(rules));
+    }
+    // The painting's area is under pixel (28, 20) with the hero at the start: clicked three
+    // times, the hero put back between, the camera given time to follow.
+    input::Recording replay;
+    for (const std::uint64_t at : {2U, 122U, 242U}) {
+        replay.record_pointer(at, input::Pointer{28.0, 20.0});
+        replay.record(at, input::Binding::mouse(input::MouseButton::Left), true);
+        replay.record(at + 1, input::Binding::mouse(input::MouseButton::Left), false);
+    }
+    const auto runtime = project.open(no_graphics(&replay));
+    const auto click_of = [&runtime]() -> game::PointAndClick& {
+        return *runtime->world().get<game::PointAndClick>(
+            runtime->world().find_named("hero").at(0));
+    };
+    runtime->step();
+    CHECK(runtime->hud_value("verb") == "look at");
+    // First, with the verb "look at": the painting hears it, and the verb is used up.
+    for (int i = 0; i < 60; ++i) {
+        runtime->step();
+    }
+    std::vector<std::string> log = runtime->log();
+    CHECK(std::count(log.begin(), log.end(), "look_at") == 1);
+    CHECK(click_of().verb.empty());
+    CHECK(runtime->hud_value("verb").empty());
+    const auto back_to_start = [&runtime] {
+        scene2d::Transform2D* hero =
+            runtime->world().get<scene2d::Transform2D>(runtime->world().find_named("hero").at(0));
+        hero->x = 0.0;
+        hero->y = 0.0;
+    };
+    // Then holding the key the player carries: used with it, and the hand empties.
+    back_to_start();
+    click_of().holding = "key";
+    CHECK(runtime->hud_value("holding") == "key");
+    for (int i = 0; i < 120; ++i) {
+        runtime->step();
+    }
+    log = runtime->log();
+    CHECK(std::count(log.begin(), log.end(), "key") == 1);
+    CHECK(click_of().holding.empty());
+    // Holding something not carried: let go, and a plain use.
+    back_to_start();
+    click_of().holding = "rope";
+    for (int i = 0; i < 120; ++i) {
+        runtime->step();
+    }
+    log = runtime->log();
+    CHECK(std::count(log.begin(), log.end(), "rope") == 0);
+    CHECK(std::count(log.begin(), log.end(), "used") == 1);
+    CHECK(click_of().holding.empty());
+}
+
 TEST_CASE("Links: a lever's events open a gate and say so; broken links are reported") {
     const Project project;
     {

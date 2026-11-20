@@ -459,6 +459,16 @@ is over** shows with the HUD value `{pointing}`: the Interactable's name in word
 (*old_key* reads *old key*), empty over nothing, for an adventure's *Look at …* line.
 (`click_to_walk()`, `steer_point_and_click()`, `interactable_at()`.)
 
+**Verbs and items** (`plan/02` F6): Point and Click's *Verb* (`verb`) is what the next
+click on a thing does: with *look at* chosen (by a Screen Button's Rule, say), the thing
+hears **"acted on"** with who and the verb (*When [who] does [verb] to it*) in place of
+"interacted". Its *Holding* (`holding`) is an item the player carries, held to use on the
+next thing clicked (picked from a Screen List of what they carry, say): the thing hears
+**"used with"** with who and the item (*When [who] uses [item] on it*), a key on a door.
+Either is used up by the click, leaving a plain use for the next; an item held but not
+carried is let go, and the click is a plain use. The HUD values `{verb}` and `{holding}`
+show them in words, for a *{verb} {pointing}* line. Interact pressed by keys is a plain use.
+
 ### Large worlds
 
 A world too large for one scene is made of scenes laid side by side (`plan/02` C13;
@@ -842,6 +852,7 @@ named by path (`maps/cave.dscene`) or GUID.
 | Screen Buttons | A click on *Buy* tells its Rule; one on *Sell*, turned off, does nothing; neither walks the hero (Point and Click); the size of a button with no size of its own fits 30 pixels of words in 38 × 14. In the editor, a button shows in the scene view as a box wider than tall and is dragged 10 pixels across |
 | Screen Sliders and Lists | `slider_fraction()` halfway for 5 of 0 to 10; `slider_value_at()` on a step (3 at 0.26), at the ends past them, any value with step 0, the other way round, and nothing where the ends meet; `list_items()` trimmed with empties left out; `list_size()` 36 × 30 for three lines; `list_row_at()` none on the frame or below the last. Played with a recorded mouse: a slider pressed at its left end and dragged to the middle and past its right end is let go at 10, its Rule hearing three changes, the pointer passing over it afterwards none; a click on the bag's second choice says *Ether* and selects it; a click on a list turned off does nothing; the hero walks nowhere |
 | Point and Click | Clicked across the middle wall, the hero walks round its foot to the point; a chest found under a point and nothing elsewhere; clicked, the chest is walked up to within reach, turned to (facing down) and used once; the move keys end a walk; turned off, clicks do nothing. In a running game, a recorded pointer over the chest names it *old chest*, and a click walks the hero within reach and its Rule hears the hero |
+| Verbs and items | Played with a recorded mouse: with the verb *look at*, a click on a painting says *look_at* to its *acted on* Rule, the verb used up and `{verb}` empty again (*look at* before); holding the key the player was given, the next click says *key* to its *used with* Rule (`{holding}` *key* before) and the hand empties; holding a rope not carried, the click is a plain use and the rope is let go |
 | Scripts | A script's *game_start* function logs and sets the hero's speed to 7 as the game starts, and its *elder.interacted* function logs who talked; a script that does not compile is one issue, at its file and line, and the Rules still run |
 | Links | Read: three links with a comment, spaces and a blank line, one with no value; an empty text; five lines that are not links, each said with its line. In a running game: a lever's two links, when it is interacted with, turn the gate's body off and show *The gate opens.*; another scene's plate whose third line cannot be read, and a bell with no *entered* event, each told by name and nothing else told; a plate's link to an action the gate does not have and one with *maybe* for a yes or no, told exactly, while its good link turns the gate back on when left |
 | Reduced flashing | A hurt with flashes off changes neither the flash nor the alpha for a second, and hurts all the same |
