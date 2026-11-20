@@ -53,7 +53,7 @@ void add_issues(std::vector<serialize::Issue>& out, std::string_view file,
 }
 
 /// The entries a project file may have; anything else is reported and ignored.
-constexpr std::array<std::string_view, 41> known_project_keys{"format",
+constexpr std::array<std::string_view, 42> known_project_keys{"format",
                                                               "version",
                                                               "name",
                                                               "start_scene",
@@ -93,7 +93,8 @@ constexpr std::array<std::string_view, 41> known_project_keys{"format",
                                                               "box_frame_edge",
                                                               "ui",
                                                               "music_while_talking",
-                                                              "minimap"};
+                                                              "minimap",
+                                                              "scaling"};
 
 } // namespace
 
@@ -520,6 +521,21 @@ std::optional<ProjectSettings> project_from_json(const serialize::Json& doc,
             ok = false;
         }
     }
+    if (const auto scaling = doc.find("scaling"); scaling != doc.end()) {
+        const std::string name = scaling->is_string() ? scaling->get<std::string>() : std::string();
+        if (name == "pixel") {
+            settings.scaling = render::Scaling::Pixel;
+        } else if (name == "sharp") {
+            settings.scaling = render::Scaling::Sharp;
+        } else if (name == "smooth") {
+            settings.scaling = render::Scaling::Smooth;
+        } else {
+            issues.push_back(serialize::Issue{file + "/scaling",
+                                              "The scaling must be \"pixel\", \"sharp\" or "
+                                              "\"smooth\"."});
+            ok = false;
+        }
+    }
     if (const auto style = doc.find("render_style"); style != doc.end()) {
         const std::string name = style->is_string() ? style->get<std::string>() : std::string();
         if (name == "classic_2d") {
@@ -557,6 +573,9 @@ serialize::Json project_to_json(const ProjectSettings& settings) {
                                      {"plate", color_to_hex(settings.ui.plate)}};
     }
     json["render_style"] = settings.style == RenderStyle::Diorama ? "diorama" : "classic_2d";
+    if (settings.scaling != render::Scaling::Pixel) {
+        json["scaling"] = settings.scaling == render::Scaling::Sharp ? "sharp" : "smooth";
+    }
     json["camera_pitch"] = settings.camera_pitch;
     json["camera_distance"] = settings.camera_distance;
     json["camera_fov"] = settings.camera_fov;
@@ -1303,6 +1322,9 @@ std::unique_ptr<Runtime> Runtime::open(const fs::path& root, const RuntimeOption
             r.window = r.device->create_window(
                 options.window_title.empty() ? r.settings.name : options.window_title,
                 static_cast<std::uint32_t>(fit.width), static_cast<std::uint32_t>(fit.height));
+            if (r.window != nullptr) {
+                r.window->set_scaling(r.settings.scaling);
+            }
         }
         if (r.settings.style == RenderStyle::Diorama) {
             r.world_renderer = render::WorldRenderer::create(*r.device);

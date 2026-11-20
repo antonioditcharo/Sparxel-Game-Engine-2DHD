@@ -91,6 +91,16 @@ std::vector<std::uint8_t> pixels = target->read_pixels();            // waits fo
   (`plan/04` §3). `fit_integer()` computes that placement. For example, 320 × 180 fills
   1920 × 1080 at exactly 6×, and sits at 4× with a 43-pixel border in 1366 × 768. A
   window smaller than the image shows it at 1×, centred and cropped.
+- **Filling the window** (`Window::set_scaling()`, `fit_window()`; `plan/02` D9): *Sharp*
+  fills it keeping the picture's shape: first a whole number of times larger (the next
+  above what fits) with nearest pixels, into a texture kept for it, then smoothly down to
+  the size that fits, so every pixel stays the same size and its edges crisp, with no
+  borders but along one side; *Smooth* stretches it there smoothly in one pass, for
+  painted art. A window smaller than the picture shrinks it instead of cropping. The
+  mouse maps through the same placement (`Placement::factor`), so clicks land where they
+  are seen. Tested: 320 × 180 filling 1000 × 600 at 3.125 times, 1000 × 562 centred; the
+  window's middle under image pixel (160, 89.9), the border on none; presenting small and
+  large images in both, on Vulkan.
 - A **headless** device runs on SDL's offscreen video driver, which offers Vulkan
   surfaces only. So it can show windows with Vulkan, but not with Direct3D 12, whose
   swapchain needs a real window handle (checked in SDL 3.4.18's source).

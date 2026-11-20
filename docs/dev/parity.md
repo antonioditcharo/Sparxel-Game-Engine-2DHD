@@ -20,7 +20,7 @@
 | A. Project and workflow | 6 | 6 | 0 (+1 later) |
 | B. Pixel art | 5 | 9 | 0 (+1 later) |
 | C. World building | 4 | 10 | 0 |
-| D. Rendering and the look | 4 | 11 | 0 (+1 later) |
+| D. Rendering and the look | 5 | 10 | 0 (+1 later) |
 | E. No-code logic | 5 | 6 | 0 (+1 later) |
 | F. Genre kits | 5 | 1 | 0 |
 | G. Story | 5 | 2 | 0 (+1 later) |
@@ -28,7 +28,7 @@
 | I. Physics | 3 | 2 | 0 |
 | J. Audio | 2 | 4 | 0 (+1 later) |
 | K. UI | 5 | 2 | 0 |
-| **All** | **48** | **54** | **0** (+6 later) |
+| **All** | **49** | **53** | **0** (+6 later) |
 
 The strongest areas match or pass their references: the RPG kit and window skins (RPG
 Maker), auto-tiles and tile variants (RPG Maker, LDtk), no-code Rules with tags, *it*,
@@ -107,7 +107,7 @@ action kits (GameMaker), audio mixing (zones, reverb), and team features.
 | D6 | Post-processing | Unity URP | **Partial**: tilt-shift, bloom, grading, vignette, fog; no SSAO, grain, CRT |
 | D7 | Look presets | Octopath | **Partial**: seven presets, previewed by hovering; no zone or time blending |
 | D8 | Texel density | | **Partial**: one PPU for the project, every sprite pixel-snapped; no checker for art drawn at another density |
-| D9 | Filtering modes | | **Partial**: nearest; crisp-AA and bilinear not yet |
+| D9 | Filtering modes | | **Done**: nearest pixels inside the game, shown pixel-perfect, filling the window sharp (whole-number nearest, then smoothed to fit) or smooth |
 | D10 | Camera rigs | Unity Cinemachine | **Partial**: follow, dead zone, look-ahead, shake, smoothing, limits; no rails or cutscene cameras |
 | D11 | Parallax and skyboxes | GameMaker | **Partial**: parallax pictures in Classic 2D, scrolling at any speed and repeating; no pixel skyboxes for the Diorama style |
 | D12 | Pixel particles | GameMaker | **Done**: fire, smoke, rain, snow, dust, magic, sparks |

@@ -62,6 +62,10 @@ enum class RenderStyle : std::uint8_t {
 struct ProjectSettings {
     std::string name;
     RenderStyle style = RenderStyle::Classic2D;
+    /// How the picture fills a larger window (plan/02 D9): pixel-perfect with borders, or
+    /// filling it sharp or smooth. In the project file, "scaling": "pixel", "sharp" or
+    /// "smooth".
+    render::Scaling scaling = render::Scaling::Pixel;
     std::uint32_t ppu = 16;    ///< Pixels per world unit (tile), 8 to 64 (plan/04 §2).
     std::uint32_t width = 320; ///< The internal resolution, upscaled pixel-perfect.
     std::uint32_t height = 180;

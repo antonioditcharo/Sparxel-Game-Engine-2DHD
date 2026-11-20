@@ -335,6 +335,30 @@ TEST_CASE("Images are placed in windows pixel-perfect") {
     CHECK(render::fit_integer(320, 180, 700, 2000).scale == 2);
 }
 
+TEST_CASE("Images fill windows sharp or smooth, keeping their shape") {
+    // Pixel-perfect is fit_integer().
+    CHECK(render::fit_window(render::Scaling::Pixel, 320, 180, 1366, 768) ==
+          render::fit_integer(320, 180, 1366, 768));
+    // 320 x 180 filling 1000 x 600: 3.125 times, 1000 x 562, centred down.
+    const render::Placement sharp = render::fit_window(render::Scaling::Sharp, 320, 180, 1000, 600);
+    CHECK(sharp.factor == doctest::Approx(3.125));
+    CHECK(sharp.width == 1000);
+    CHECK(sharp.height == 562);
+    CHECK(sharp.x == 0);
+    CHECK(sharp.y == 19);
+    CHECK(render::fit_window(render::Scaling::Smooth, 320, 180, 1000, 600) == sharp);
+    // Window points map to the image through the factor.
+    const std::optional<std::array<double, 2>> middle =
+        render::image_point(sharp, 500.0, 300.0, 320, 180);
+    REQUIRE(middle.has_value());
+    CHECK(middle.value_or(std::array<double, 2>{})[0] == doctest::Approx(160.0));
+    CHECK(middle.value_or(std::array<double, 2>{})[1] == doctest::Approx(281.0 / 3.125));
+    CHECK_FALSE(render::image_point(sharp, 500.0, 10.0, 320, 180).has_value()); // the border
+    // Smaller than the image: shrunk to fit, not cropped.
+    CHECK(render::fit_window(render::Scaling::Sharp, 320, 180, 160, 90).factor ==
+          doctest::Approx(0.5));
+}
+
 TEST_CASE("A window presents a target") {
     render::Device* device = gpu();
     if (device == nullptr) {
@@ -361,6 +385,16 @@ TEST_CASE("A window presents a target") {
     for (int frame = 0; frame < 3; ++frame) {
         CHECK(window->present(*small, render::Color{0, 0, 0, 255}));
         CHECK(window->present(*large, render::Color{0, 0, 0, 255})); // cropped
+    }
+    // Filling the window, sharp and smooth: presented, and the sharp texture made again as
+    // the image changes.
+    for (const render::Scaling scaling : {render::Scaling::Sharp, render::Scaling::Smooth}) {
+        window->set_scaling(scaling);
+        CHECK(window->scaling() == scaling);
+        for (int frame = 0; frame < 2; ++frame) {
+            CHECK(window->present(*small, render::Color{0, 0, 0, 255}));
+            CHECK(window->present(*large, render::Color{0, 0, 0, 255}));
+        }
     }
     CHECK(device->create_window("No size", 0, 10) == nullptr);
 }

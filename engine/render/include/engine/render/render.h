@@ -136,6 +136,9 @@ struct Placement {
     std::int64_t y = 0;
     std::uint64_t width = 0; ///< The image's size in the window: its size times scale.
     std::uint64_t height = 0;
+    /// Window pixels to an image pixel when it is not a whole number (a filling Scaling);
+    /// 0 when it is `scale`.
+    double factor = 0.0;
 
     friend bool operator==(const Placement&, const Placement&) = default;
 };
@@ -143,6 +146,20 @@ struct Placement {
 [[nodiscard]] Placement fit_integer(std::uint32_t image_width, std::uint32_t image_height,
                                     std::uint32_t window_width,
                                     std::uint32_t window_height) noexcept;
+
+/// How a game's image is shown in a window larger than it (plan/02 D9).
+enum class Scaling : std::uint8_t {
+    Pixel,  ///< Pixel-perfect: the largest whole-number size that fits, with borders.
+    Sharp,  ///< Fills the window (keeping its shape): scaled up by a whole number with
+            ///< nearest pixels, then smoothly down to fit, so pixels stay even and crisp.
+    Smooth, ///< Fills the window, smoothly stretched: soft, for painted art.
+};
+
+/// Where an image lands in a window under `scaling`: fit_integer() for Pixel; otherwise as
+/// large as fits keeping its shape, centred, with `factor` its window pixels per pixel.
+[[nodiscard]] Placement fit_window(Scaling scaling, std::uint32_t image_width,
+                                   std::uint32_t image_height, std::uint32_t window_width,
+                                   std::uint32_t window_height) noexcept;
 
 /// The point of an image placed by `place` under the window pixel (x, y), in the image's
 /// pixels; nothing outside the image of `image_width` x `image_height`.
@@ -163,10 +180,13 @@ public:
     [[nodiscard]] std::uint32_t width() const;
     [[nodiscard]] std::uint32_t height() const;
 
-    /// Shows `image` pixel-perfect (see fit_integer()), with `letterbox` around it. Returns
-    /// false, with the device's last_error() set, if presenting failed. A minimised window
-    /// shows nothing and returns true.
+    /// Shows `image` as its Scaling says (set_scaling(); pixel-perfect by default, see
+    /// fit_window()), with `letterbox` around it. Returns false, with the device's
+    /// last_error() set, if presenting failed. A minimised window shows nothing and returns
+    /// true.
     bool present(const RenderTarget& image, Color letterbox);
+    void set_scaling(Scaling scaling) noexcept { scaling_ = scaling; }
+    [[nodiscard]] Scaling scaling() const noexcept { return scaling_; }
     /// The point of an image of `image_width` x `image_height` presented here (as present()
     /// places it) under the window point (x, y), as SDL gives the mouse, in the image's
     /// pixels; nothing outside the image.
@@ -180,6 +200,7 @@ private:
     explicit Window(std::unique_ptr<Native> native);
 
     std::unique_ptr<Native> native_;
+    Scaling scaling_ = Scaling::Pixel;
 };
 
 /// The GPU. Every object it creates must be destroyed before it.

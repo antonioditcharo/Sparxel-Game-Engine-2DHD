@@ -634,6 +634,22 @@ TEST_CASE("Party Followers walk in line in the leader's footsteps, round corners
     CHECK(w.get<scene2d::Transform2D>(mage)->y == doctest::Approx(3.0));
 }
 
+TEST_CASE("The project's scaling: read, written, and refused when unknown") {
+    std::vector<serialize::Issue> issues;
+    serialize::Json json = game::project_to_json(game::ProjectSettings{});
+    CHECK_FALSE(json.contains("scaling")); // pixel-perfect is the default, left out
+    json["scaling"] = "sharp";
+    const std::optional<game::ProjectSettings> sharp = game::project_from_json(json, issues);
+    REQUIRE(sharp.has_value());
+    CHECK(issues.empty());
+    CHECK(sharp.value_or(game::ProjectSettings{}).scaling == engine::render::Scaling::Sharp);
+    CHECK(game::project_to_json(sharp.value_or(game::ProjectSettings{}))["scaling"] == "sharp");
+    json["scaling"] = "blurry";
+    CHECK_FALSE(game::project_from_json(json, issues).has_value());
+    REQUIRE_FALSE(issues.empty());
+    CHECK(issues.back().message == "The scaling must be \"pixel\", \"sharp\" or \"smooth\".");
+}
+
 TEST_CASE("Mirrored walk animations: three rows, right drawn as left flipped") {
     game::TopDownMover mover;
     game::WalkAnimation walk;

@@ -227,6 +227,13 @@ void ProjectPanel::build() {
            now.style == game::RenderStyle::Diorama ? 1 : 0, [](Settings& s, int i) {
                s.style = i == 1 ? game::RenderStyle::Diorama : game::RenderStyle::Classic2D;
            });
+    choice(picture, tr("In a larger window"), "scaling",
+           {tr("Pixel-perfect, with borders"), tr("Fill it, sharp"), tr("Fill it, smooth")},
+           static_cast<int>(now.scaling), [](Settings& s, int i) {
+               s.scaling = i == 2   ? engine::render::Scaling::Smooth
+                           : i == 1 ? engine::render::Scaling::Sharp
+                                    : engine::render::Scaling::Pixel;
+           });
     number(
         picture, tr("Width"), "width", 16, 7680, 16, 0,
         [](const Settings& s) { return static_cast<double>(s.width); },

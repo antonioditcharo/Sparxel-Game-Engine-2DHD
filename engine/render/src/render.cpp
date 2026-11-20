@@ -430,14 +430,43 @@ Placement fit_integer(std::uint32_t image_width, std::uint32_t image_height,
     return placement;
 }
 
+Placement fit_window(Scaling scaling, std::uint32_t image_width, std::uint32_t image_height,
+                     std::uint32_t window_width, std::uint32_t window_height) noexcept {
+    const Placement integer = fit_integer(image_width, image_height, window_width, window_height);
+    if (scaling == Scaling::Pixel || image_width == 0 || image_height == 0 || window_width == 0 ||
+        window_height == 0) {
+        return integer;
+    }
+    Placement placement = integer;
+    const double factor =
+        std::min(static_cast<double>(window_width) / static_cast<double>(image_width),
+                 static_cast<double>(window_height) / static_cast<double>(image_height));
+    placement.factor = factor;
+    placement.width = static_cast<std::uint64_t>(std::floor(image_width * factor));
+    placement.height = static_cast<std::uint64_t>(std::floor(image_height * factor));
+    placement.x =
+        (static_cast<std::int64_t>(window_width) - static_cast<std::int64_t>(placement.width)) / 2;
+    placement.y =
+        (static_cast<std::int64_t>(window_height) - static_cast<std::int64_t>(placement.height)) /
+        2;
+    return placement;
+}
+
 struct Window::Native {
     Device* owner{nullptr};
     SDL_Window* window{nullptr};
+    /// Sharp scaling: the image at a whole-number size, before it is smoothed to fit.
+    SDL_GPUTexture* sharp{nullptr};
+    std::uint32_t sharp_width = 0;
+    std::uint32_t sharp_height = 0;
 };
 
 Window::Window(std::unique_ptr<Native> native) : native_(std::move(native)) {}
 
 Window::~Window() {
+    if (native_->sharp != nullptr) {
+        SDL_ReleaseGPUTexture(native_->owner->native().device, native_->sharp);
+    }
     SDL_ReleaseWindowFromGPUDevice(native_->owner->native().device, native_->window);
     SDL_DestroyWindow(native_->window);
 }
@@ -448,7 +477,7 @@ std::optional<std::array<double, 2>> image_point(const Placement& place, double 
     if (place.scale == 0 || !std::isfinite(x) || !std::isfinite(y)) {
         return std::nullopt;
     }
-    const double scale = static_cast<double>(place.scale);
+    const double scale = place.factor > 0.0 ? place.factor : static_cast<double>(place.scale);
     const double ix = (x - static_cast<double>(place.x)) / scale;
     const double iy = (y - static_cast<double>(place.y)) / scale;
     if (ix < 0.0 || iy < 0.0 || ix >= static_cast<double>(image_width) ||
@@ -470,7 +499,7 @@ std::optional<std::array<double, 2>> Window::to_image(double x, double y, std::u
         points_w > 0 ? static_cast<double>(pixels_w) / static_cast<double>(points_w) : 1.0;
     const double density_y =
         points_h > 0 ? static_cast<double>(pixels_h) / static_cast<double>(points_h) : 1.0;
-    const Placement place = fit_integer(image_width, image_height, pixels_w, pixels_h);
+    const Placement place = fit_window(scaling_, image_width, image_height, pixels_w, pixels_h);
     return image_point(place, x * density_x, y * density_y, image_width, image_height);
 }
 
@@ -505,7 +534,62 @@ bool Window::present(const RenderTarget& image, Color letterbox) {
         SDL_CancelGPUCommandBuffer(commands);
         return false;
     }
-    if (swapchain != nullptr) {
+    const SDL_FColor clear{
+        static_cast<float>(letterbox.r) / 255.0F, static_cast<float>(letterbox.g) / 255.0F,
+        static_cast<float>(letterbox.b) / 255.0F, static_cast<float>(letterbox.a) / 255.0F};
+    const Placement filled =
+        fit_window(scaling_, image.width(), image.height(), swap_width, swap_height);
+    if (swapchain != nullptr && filled.factor > 0.0 && filled.width > 0 && filled.height > 0) {
+        // Filling the window. Sharp: first a whole number of times larger, nearest; then
+        // smoothly to the size that fits. Smooth: straight there, smoothly.
+        SDL_GPUBlitInfo blit{};
+        blit.source.texture = image.native().texture;
+        blit.source.w = image.width();
+        blit.source.h = image.height();
+        if (scaling_ == Scaling::Sharp) {
+            const auto times = static_cast<std::uint32_t>(std::max(1.0, std::ceil(filled.factor)));
+            const std::uint32_t w = image.width() * times;
+            const std::uint32_t h = image.height() * times;
+            if (native_->sharp == nullptr || native_->sharp_width != w ||
+                native_->sharp_height != h) {
+                if (native_->sharp != nullptr) {
+                    SDL_ReleaseGPUTexture(device, native_->sharp);
+                }
+                SDL_GPUTextureCreateInfo info{};
+                info.type = SDL_GPU_TEXTURETYPE_2D;
+                info.format = SDL_GetGPUSwapchainTextureFormat(device, native_->window);
+                info.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COLOR_TARGET;
+                info.width = w;
+                info.height = h;
+                info.layer_count_or_depth = 1;
+                info.num_levels = 1;
+                native_->sharp = SDL_CreateGPUTexture(device, &info);
+                native_->sharp_width = native_->sharp == nullptr ? 0 : w;
+                native_->sharp_height = native_->sharp == nullptr ? 0 : h;
+            }
+            if (native_->sharp != nullptr) {
+                SDL_GPUBlitInfo up = blit;
+                up.destination.texture = native_->sharp;
+                up.destination.w = w;
+                up.destination.h = h;
+                up.load_op = SDL_GPU_LOADOP_DONT_CARE;
+                up.filter = SDL_GPU_FILTER_NEAREST;
+                SDL_BlitGPUTexture(commands, &up);
+                blit.source.texture = native_->sharp;
+                blit.source.w = w;
+                blit.source.h = h;
+            }
+        }
+        blit.destination.texture = swapchain;
+        blit.destination.x = static_cast<std::uint32_t>(std::max<std::int64_t>(filled.x, 0));
+        blit.destination.y = static_cast<std::uint32_t>(std::max<std::int64_t>(filled.y, 0));
+        blit.destination.w = static_cast<std::uint32_t>(filled.width);
+        blit.destination.h = static_cast<std::uint32_t>(filled.height);
+        blit.load_op = SDL_GPU_LOADOP_CLEAR;
+        blit.clear_color = clear;
+        blit.filter = SDL_GPU_FILTER_LINEAR;
+        SDL_BlitGPUTexture(commands, &blit);
+    } else if (swapchain != nullptr) {
         const Placement place = fit_integer(image.width(), image.height(), swap_width, swap_height);
         // The part of the image inside the window, in image pixels, and where it lands.
         const std::int64_t scale = place.scale;
@@ -528,9 +612,7 @@ bool Window::present(const RenderTarget& image, Color letterbox) {
         blit.destination.w = blit.source.w * place.scale;
         blit.destination.h = blit.source.h * place.scale;
         blit.load_op = SDL_GPU_LOADOP_CLEAR; // clears the whole window to the letterbox colour
-        blit.clear_color = SDL_FColor{
-            static_cast<float>(letterbox.r) / 255.0F, static_cast<float>(letterbox.g) / 255.0F,
-            static_cast<float>(letterbox.b) / 255.0F, static_cast<float>(letterbox.a) / 255.0F};
+        blit.clear_color = clear;
         blit.filter = SDL_GPU_FILTER_NEAREST;
         if (blit.source.w > 0 && blit.source.h > 0) {
             SDL_BlitGPUTexture(commands, &blit);

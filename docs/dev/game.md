@@ -61,6 +61,7 @@ MyGame/
 | `width`, `height` | The internal resolution, upscaled pixel-perfect | 320 × 180; 16 to 7680 × 4320 |
 | `background` | The clear colour, `[red, green, blue]` | `[20, 24, 40]` |
 | `render_style` | `"classic_2d"`, flat 2D, or `"diorama"`, the same world in 3D ([scene2d.md](scene2d.md) §7) | `"classic_2d"` |
+| `scaling` | How the picture fills a larger window: `"pixel"` (the default, left out: pixel-perfect, whole-number sizes with borders), `"sharp"` (fills it, pixels kept even and crisp) or `"smooth"` (fills it, smoothly stretched) ([rendering.md](rendering.md) §4). The Project view's *In a larger window* |
 | `gravity` | For Physics Bodies, `[across, down]` in tiles per second squared ([physics.md](physics.md)) | `[0, 0]`, each -1000 to 1000 |
 | `camera_pitch`, `camera_distance`, `camera_fov` | The Diorama camera, which follows the hero: degrees looking down, tiles away, and vertical field of view | 35 (5 to 85), 12 (1 to 200), 30 (5 to 90) |
 | `camera_clamp` | The camera stops at the map's edges (§3, Drawing) | `true` |
@@ -894,4 +895,5 @@ named by path (`maps/cave.dscene`) or GUID.
 2. **Play in the editor, further:** gamepads there, and pausing to inspect and change the
    playing world (F6 plays in the editor's window today: [editor.md](editor.md)).
 | Mirrored walk | With *Mirrored right*, standing facing down, left, right and up shows frames 1, 4, 4 flipped (scale −2) and 7; turned back left, unflipped; off, right is row 2 (frame 7) and the scale is left alone |
+| The project's scaling | Left out of the project file when pixel-perfect; `"sharp"` read back as Sharp and written again; `"blurry"` refused (*The scaling must be "pixel", "sharp" or "smooth".*) |
 | Party Followers | Standing in a row to the hero's left, nobody moves until the hero walks; the hero walks 3 tiles right then 3 down: the mage (place 1) and the thief (2) end exactly 1 and 2 tiles behind on the column it walked down, the mage facing down and walking, not cutting the corner; when the hero stops, so does the line; the thief turned off stays, while the mage follows to the corner; `player_position()` is the hero's |
