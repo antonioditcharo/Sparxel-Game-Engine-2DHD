@@ -2513,3 +2513,66 @@ TEST_CASE("Baked lighting: lights and their shadows baked into map corners, and 
     CHECK(at_point(1.2F, -0.002F, 1.2F, unbaked).r < 40);
     CHECK(at_point(1.0F, 0.5F, 2.0F, unbaked).b < 40);
 }
+
+TEST_CASE("Large maps: the Diorama style draws only the tiles around the camera") {
+    scene2d::DioramaCamera camera;
+    camera.pitch = 60.0;
+    camera.distance = 12.0;
+    camera.ppu = 2;
+    const double reach = scene2d::diorama_draw_reach(camera, 1.0);
+    CHECK(reach > 16.0);
+    CHECK(reach < scene2d::max_view_tiles);
+    camera.yaw = 30.0; // turned: never limited by the view, so the most
+    CHECK(scene2d::diorama_draw_reach(camera, 1.0) == scene2d::max_view_tiles);
+    camera.yaw = 0.0;
+
+    render::Device* device = gpu();
+    if (device == nullptr) {
+        return;
+    }
+    const Fixture f;
+    // A map 400 tiles square, and one 20 square: around the camera they look the same.
+    const auto make = [&](std::uint32_t side) {
+        auto w = f.make_world();
+        const world::Entity ground = w->create("ground");
+        scene2d::Transform2D* at = w->add<scene2d::Transform2D>(ground);
+        at->x = -static_cast<double>(side) / 2.0;
+        at->y = -static_cast<double>(side) / 2.0;
+        scene2d::Tilemap* map = w->add<scene2d::Tilemap>(ground);
+        map->tileset = f.red_image.to_string();
+        std::string row = "0";
+        for (std::uint32_t i = 1; i < side; ++i) {
+            row += ",0";
+        }
+        map->tiles = row;
+        for (std::uint32_t i = 1; i < side; ++i) {
+            map->tiles += "\n" + row;
+        }
+        return w;
+    };
+    const auto huge = make(400);
+    const auto small = make(20);
+    constexpr std::uint32_t size = 64;
+    const auto target = device->create_render_target(size, size);
+    const auto renderer = render::WorldRenderer::create(*device);
+    REQUIRE(target != nullptr);
+    REQUIRE(renderer != nullptr);
+    scene2d::TextureCache textures(*device, f.db);
+    scene2d::DioramaLight light;
+    light.block_shadow = 0.0F;
+    const scene2d::DrawStats drawn =
+        scene2d::draw_diorama(*huge, textures, *renderer, *target, camera, f.background, light);
+    // At most the square within reach, far fewer than the map's 160 000 tiles.
+    const auto across = static_cast<std::size_t>((2.0 * reach) + 2.0);
+    CAPTURE(drawn.drawn);
+    CHECK(drawn.drawn <= across * across);
+    CHECK(drawn.drawn < 160000 / 4);
+    const std::vector<std::uint8_t> from_huge = target->read_pixels();
+    scene2d::draw_diorama(*small, textures, *renderer, *target, camera, f.background, light);
+    const std::vector<std::uint8_t> from_small = target->read_pixels();
+    // The middle of the picture, the ground near the camera, is the same.
+    CHECK(pixel(from_huge, size, size / 2, size / 2) ==
+          pixel(from_small, size, size / 2, size / 2));
+    CHECK(pixel(from_huge, size, size / 2, size - 2) ==
+          pixel(from_small, size, size / 2, size - 2));
+}

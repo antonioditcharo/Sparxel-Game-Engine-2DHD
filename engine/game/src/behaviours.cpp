@@ -5,6 +5,7 @@
 #include "engine/game/links.h"
 #include "engine/game/logic_world.h"
 #include "engine/game/particles.h"
+#include "engine/game/streaming.h"
 #include "engine/game/tactics.h"
 
 #include <algorithm>
@@ -24,6 +25,7 @@ void register_behaviours(reflect::Registry& registry) {
     register_hud(registry);
     register_combat(registry);
     register_tactics(registry);
+    register_streaming(registry);
     registry.add_type<Tags>("tags")
         .display_name("Tags")
         .category("General")
@@ -621,7 +623,7 @@ bool register_behaviour_components(world::World& world) {
     const bool hud = register_hud_components(world);
     const bool combat = register_combat_components(world) && world.register_component<Links>() &&
                         world.register_component<PointAndClick>() &&
-                        register_tactics_components(world);
+                        register_tactics_components(world) && register_streaming_components(world);
     return mover && walker && particles && prefab && encounter && walk && body && trigger &&
            interactable && simulated && sound && jumping && enemy && hud && combat;
 }

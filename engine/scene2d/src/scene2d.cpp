@@ -2707,6 +2707,16 @@ double terrain_height(const world::World& world, double x, double y, std::uint32
     return top;
 }
 
+double diorama_draw_reach(const DioramaCamera& camera, double aspect) noexcept {
+    const Box view = diorama_view_extent(camera, aspect);
+    const double widest = std::max(
+        {std::abs(view.left), std::abs(view.right), std::abs(view.top), std::abs(view.bottom)});
+    if (!std::isfinite(widest)) {
+        return max_view_tiles;
+    }
+    return std::min((widest * 1.5) + 16.0, max_view_tiles);
+}
+
 std::optional<render::SunShadow> diorama_sun_shadow(const world::World& world,
                                                     const DioramaCamera& camera,
                                                     const DioramaLight& light) {
@@ -2795,6 +2805,9 @@ DrawStats draw_diorama(const world::World& world, TextureCache& textures,
     const Orbit o = orbit(camera);
     const double ppu = static_cast<double>(std::max<std::uint32_t>(camera.ppu, 1));
     const std::vector<render::PointLight> lights = diorama_lights(world, camera.x, camera.y);
+    // Only the tiles around where the camera looks are drawn, however large the map.
+    const double draw_reach = diorama_draw_reach(camera, static_cast<double>(target.width()) /
+                                                             static_cast<double>(target.height()));
     renderer.begin(target, clear, view_projection, eye, fog, lights);
     // Normal maps take the sun at each pixel: as brightness() lights faces.
     renderer.set_sun_light(light.sun, light.ambient, light.diffuse);
@@ -3002,8 +3015,20 @@ DrawStats draw_diorama(const world::World& world, TextureCache& textures,
                         skirt(se, ne, east_light, {1, 0, 0});
                     }
                 };
-                for (std::uint32_t y = 0; y < grid->height; ++y) {
-                    for (std::uint32_t x = 0; x < grid->width; ++x) {
+                // The cells within reach of the camera's point.
+                const auto cells = [&](double from, double origin, std::uint32_t count) {
+                    const double first = std::floor((from - draw_reach - origin) / tile);
+                    const double last = std::ceil((from + draw_reach - origin) / tile);
+                    const auto clamp = [count](double v) {
+                        return static_cast<std::uint32_t>(
+                            std::clamp(v, 0.0, static_cast<double>(count)));
+                    };
+                    return std::pair{clamp(first), clamp(last)};
+                };
+                const auto [x_from, x_to] = cells(camera.x, x0, grid->width);
+                const auto [y_from, y_to] = cells(camera.y, z0, grid->height);
+                for (std::uint32_t y = y_from; y < y_to; ++y) {
+                    for (std::uint32_t x = x_from; x < x_to; ++x) {
                         const std::int32_t number = grid->at(x, y);
                         if (number < 0 || static_cast<std::uint64_t>(number) >= tiles) {
                             continue;

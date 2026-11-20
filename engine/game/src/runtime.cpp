@@ -8,6 +8,7 @@
 #include "engine/game/localization.h"
 #include "engine/game/logic_world.h"
 #include "engine/game/shop.h"
+#include "engine/game/streaming.h"
 #include "engine/logic/compiler.h"
 #include "engine/ui/text.h"
 
@@ -896,6 +897,8 @@ struct Runtime::Impl {
     std::unique_ptr<audio::AudioEngine> audio_engine;
     AudioObject audio_object;
     std::vector<std::string> problems;
+    /// Streamed Scenes near the player (large worlds).
+    SceneStreamer streamer;
     /// What the entities of the project's other scenes are made of, by each name logic can
     /// use for them, so Rules about them compile while another scene is played.
     std::map<std::string, std::vector<const reflect::TypeInfo*>, std::less<>> elsewhere;
@@ -1787,6 +1790,32 @@ void Runtime::step() {
         emit(*r.vm, *r.world, thing, "interacted", by);
     }
     update_camera(r.camera, *r.world, dt);
+    // Large worlds: the Streamed Scenes near the player loaded, those left behind taken
+    // away.
+    if (const std::optional<std::array<double, 2>> at = player_position(*r.world)) {
+        const SceneStreamer::Changes streamed = r.streamer.update(
+            *r.world, (*at)[0], (*at)[1],
+            [&r](std::string_view scene, std::string& error) -> std::optional<serialize::Json> {
+                const std::optional<Guid> guid = Guid::parse(scene);
+                const assets::AssetRecord* record =
+                    guid ? r.assets.find(*guid) : r.assets.find(scene);
+                if (record == nullptr || !record->path.ends_with(".dscene")) {
+                    error = "there is no scene " + std::string(scene) + " in assets/.";
+                    return std::nullopt;
+                }
+                const std::optional<std::vector<std::uint8_t>> bytes = r.assets.read(record->guid);
+                std::vector<serialize::Issue> found;
+                std::optional<serialize::Json> json =
+                    bytes ? parse_bytes(*bytes, found) : std::nullopt;
+                if (!json) {
+                    error = record->path + " cannot be read.";
+                }
+                return json;
+            });
+        for (const std::string& problem : streamed.problems) {
+            r.problems.push_back("Streamed Scene " + problem);
+        }
+    }
     // Encounters: the distance the player walked counts inside Encounter Areas.
     if (const std::optional<std::array<double, 2>> now = player_position(*r.world)) {
         if (r.player_was && !talking && !r.battle_screen && !r.shop_screen && !r.menu.open()) {

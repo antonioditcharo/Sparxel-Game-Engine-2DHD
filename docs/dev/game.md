@@ -459,6 +459,34 @@ is over** shows with the HUD value `{pointing}`: the Interactable's name in word
 (*old_key* reads *old key*), empty over nothing, for an adventure's *Look at …* line.
 (`click_to_walk()`, `steer_point_and_click()`, `interactable_at()`.)
 
+### Large worlds
+
+A world too large for one scene is made of scenes laid side by side (`plan/02` C13;
+`engine/game/streaming.h`), as Godot and Unity stream levels. A **Streamed Scene**
+(`SceneStream`, *World* in the inspector) names another scene (`scene`) and stands where
+that scene's point (0, 0) goes, with the area it covers (`width` and `height`, tiles
+right of and down from it). While the player is within `reach` tiles of that area
+(`distance_to_area()`) the runtime keeps it loaded (`SceneStreamer`, every step after the
+camera); once they are further than reach and 4 tiles more (`stream_margin`, so walking
+along the edge does not load and drop it again and again), it is taken away. Turned off,
+or removed, it goes too.
+
+- **What comes in:** the scene's entities with a Position, its top-level ones moved by
+  the stream's position (children keep theirs, relative to them). Its player (a Top-down
+  Mover with no Walker), its screen items (no Position) and its own Streamed Scenes stay
+  out. A name taken already is numbered (*tree_2*), so Rules about the main scene's
+  things still mean them.
+- **What it remembers:** each entity brought in carries a hidden **Streamed from**
+  (`StreamedFrom`) naming its stream, so saved games keep them and know what to take away
+  after loading, and nothing loads twice. What happens to them while loaded (a coin
+  picked up) is forgotten when they are taken away: put what must last in the main scene.
+- **Problems:** a scene that cannot be read is said once in the game's problems
+  (*Streamed Scene cave: there is no scene maps/cave.dscene in assets/.*) and tried again
+  only when its `scene` changes.
+- **Drawing large maps:** the Diorama style draws only the tiles near where the camera
+  looks (`diorama_draw_reach()`, [scene2d.md](scene2d.md) §7), so one map may be very
+  large as well.
+
 ### Health and combat
 
 **Health** (`health`, combat.h) is what hit boxes take away: the boxes drawn per frame in
@@ -809,6 +837,7 @@ named by path (`maps/cave.dscene`) or GUID.
 | Falling and jumping | `fall()` on its own: pressed against the floor it is on the ground; a jump rises between 2.8 and 3 tiles and lands in 44 to 48 steps (0.77 s); held, it does not jump again in the air; a ceiling a tile up stops the rise and it falls back; it falls no faster than 20 tiles a second; gravity that is not a number moves nothing. In a world: a hero with Jumping falls onto a solid floor and stands on it; Down does nothing; Right walks 2 tiles in half a second facing right; Space and Up jump it off the floor and it lands again; it lands on a Solid Body's top and falls back to the floor walking off it; disabled, it neither walks nor jumps but still falls |
 | Slopes | A hero walking right up a slope onto the ground a tile up, standing on it, and back down onto the floor, on the ground at every step |
 | Health and combat | A rock that is not an enemy hurts nothing; a slime tagged enemy takes 2, makes the hero safe (a second hit does nothing) and pushes it exactly a tile away in 0.15 s, the keys not moving it meanwhile, then walking again; it blinks, and its alpha is as it was after; the flash starts at the hurt and is gone 0.12 s later; the next hit defeats it: half dissolved after 0.2 s, hidden and whole after 0.4, no knockback, not walking, and a defeated hero hurts nothing; revived, it is shown at full health; spikes with no Health take 1; healing stops at the most; NaN and negative hurts change nothing; tag lists. Knockback stops exactly at a wall. In a running game, one hit on a slime with 1 health: "hit" and "hits" once, "hurt" before "defeated", and the slime hidden |
+| Large worlds | `distance_to_area()` inside, beside, past a corner and above an area, and with a width that is not a number. A forest laid in at (40, 0): nothing read while the player is 40 tiles off; within reach, loaded once, its tree at (42, 3) named *tree_2* beside the main scene's tree, its house moved and the door under it with it, its player, screen item and own stream left out (three entities, all Streamed from it); within the margin kept; well beyond, taken away and the main tree kept; turned off, away. Saved and loaded into a new world with a new streamer: not loaded twice, and taken away when the player is far. A scene that cannot be read: one problem, then none, read once; pointed at the forest, loaded; `clear()` takes all away |
 | Tactics | Tiles from positions and back; steps apart; damage, at least 1. Reach: its own tile first, not ending on its own side's unit but through it, not onto the other side's or the wall, not across the wall by the long way, not 4 steps away. Targets beside, none out of range, and with range 2. A battle by keys and a click: the player's turn first, the cursor on the knight, chosen, moved 4 right, the slime clicked and hit for 3; the enemies' turn, the slime striking back for 3; the second turn, attacking from where it stands, the slime defeated, hidden, and the battle won, with its events in order. Cancel goes back; an ogre walks 4 towards the waiting knight, then beside it and defeats it: lost |
 | Screen Buttons | A click on *Buy* tells its Rule; one on *Sell*, turned off, does nothing; neither walks the hero (Point and Click); the size of a button with no size of its own fits 30 pixels of words in 38 × 14. In the editor, a button shows in the scene view as a box wider than tall and is dragged 10 pixels across |
 | Point and Click | Clicked across the middle wall, the hero walks round its foot to the point; a chest found under a point and nothing elsewhere; clicked, the chest is walked up to within reach, turned to (facing down) and used once; the move keys end a walk; turned off, clicks do nothing. In a running game, a recorded pointer over the chest names it *old chest*, and a click walks the hero within reach and its Rule hears the hero |

@@ -416,6 +416,12 @@ the style ([game.md](game.md) §2).
   setting, and the editor makes both ([assets.md](assets.md) §7). The texture cache
   finds them once (`normal_map()`, `glow_map()`) and looks again when assets change; a
   map of another size is not used. Classic 2D does not use them yet.
+- **Large maps** (`plan/02` C13): only the tiles within `diorama_draw_reach()` of the
+  point the camera looks at are drawn, across and down: the view's extent half again,
+  for its far corners, and 16 tiles more for tall blocks and hills, at most 160
+  (`max_view_tiles`; a turned camera always 160). A map of any size then costs only the
+  tiles around the camera; scenes streamed in as the player walks make larger worlds
+  still ([game.md](game.md), *Large worlds*).
 - **Depth** sorts everything; there is no draw order to manage. **Fog** fades distant
   things into the haze.
 - **Rays** (`diorama_ray()`, `ground_hit()`): the ray from the eye through any point of the
@@ -461,6 +467,7 @@ the others run anywhere:
 | A sprite's corners | `sprite_corners()` upright; a quarter turn clockwise, exactly, and the same at -270; 45 degrees; flipped across and twice as tall; a rotation or scale that is not a number counts as none |
 | Turned, scaled and flipped (GPU) | A picture red on the left and blue on the right, at exact pixels: upright; flipped (blue on the left); a quarter turn about its feet (red on top, standing to the right of them), the same at -270; twice as wide; half as tall; a NaN rotation drawn upright. In the Diorama style, points a quarter and three quarters of a tile above the feet show the sprite; at half height only the lower one; turned upside down, neither |
 | Lighting maps (GPU) | `red_normal.png` and `red_glow.png` beside the red picture are found; a normal map of another size, and a glow map that is not there, are not; drawn, one sprite has relief and glows and the other not; the normal map removed and the change applied, neither |
+| Large maps (GPU) | `diorama_draw_reach()` beyond 16 and within 160 for a camera at 60 degrees, 160 turned; a map 400 tiles square draws at most the square within reach, under a quarter of its 160 000 tiles, and the ground in the middle and at the bottom of the picture is the same as a map 20 square |
 | Baked lighting | Unbaked, a lamp is live and there is nothing to bake; baked, it is not live, the bake changes one map and then nothing; under the lamp a tile up and reaching 8, (1 − 1/64)² of white; three tiles off, 0.225; weaker further; nothing off the map; a probe at a corner is that corner, halfway between two is between them, off the map nothing. A wall two tiles tall on another map: the corner behind it is in shadow, one past its end lit, the corner beside it 0.85 open, an open corner 1. On the GPU, in the dark: the ground under the lamp bright red, a sprite near it lit blue by its probe; both dark without the bake |
 | Smooth terrain | `surface_at()` on a hill of one raised corner: 2 at the top, 1 halfway, 0.5 either side of a tile's diagonal, 0 at the foot, the map's height for NaN; as blocks, each cell's own height. `terrain_height()` and `ground_top()` on the hill, 0 off the map and for blocks; a ray through a point of the south slope meets the hill there, where the flat ground lies further up the map. On the GPU, with the sun in the east: the east slope brighter than the west, a sprite standing on the top (blue half a tile above it, the sky there on flat ground), eight triangles and a sprite drawn, and eight skirts once the map's edges are raised |
 | Models (GPU) | A flat square in `models/square.gltf` with its buffer beside it, green, seen from above under even light: green in the middle and the background in the corner; two triangles drawn; half the width at scale 0.5; wider than a quarter more turned 45 degrees; nothing hidden; a missing model counted |

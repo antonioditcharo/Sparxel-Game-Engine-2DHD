@@ -749,6 +749,13 @@ struct Ray {
 /// corners. Infinite all round for a turned camera (yaw not 0), which is never limited.
 [[nodiscard]] Box diorama_view_extent(const DioramaCamera& camera, double aspect) noexcept;
 
+/// How far from the point a Diorama camera looks at draw_diorama() draws tiles, in tiles
+/// across and down (plan/02 C13): the view's extent, half again for the far corners, and
+/// 16 tiles more for tall blocks and hills, but never more than max_view_tiles. So a map
+/// of any size costs only the tiles around the camera.
+[[nodiscard]] double diorama_draw_reach(const DioramaCamera& camera, double aspect) noexcept;
+constexpr double max_view_tiles = 160.0;
+
 /// The point lights draw_diorama() uses: every enabled Light with a Position, at its
 /// height above the ground, nearest to the map point (x, y) first (ties by GUID), at most
 /// render::max_point_lights of them.
