@@ -262,6 +262,7 @@ cycle. Set the Sprite's frame size to one cell of the sheet.
 | `frames_per_second` | Speed of the cycle while walking (default 6) |
 | `standing_frame` | The frame shown when standing still, counted from 0 (default 1, the middle) |
 | `ping_pong` (advanced) | Back and forth, 0-1-2-1, rather than starting over, 0-1-2-0 (default on) |
+| `mirror_right` (*Mirrored right*) | The sheet has three rows, down, left and up; facing right shows the left row flipped (the Sprite's *Scale across* turned negative, and back as it turns away), so a character is drawn facing one way only (`plan/02` B8) |
 
 While walking, the row's frames cycle in fixed steps; on stopping, the standing frame of
 the row shows and the cycle starts again next time. Do not combine it with an Animation
@@ -880,3 +881,4 @@ named by path (`maps/cave.dscene`) or GUID.
    nearest, at random); tags, *it*, *For each*, *who* and *is tagged* are done (§5).
 2. **Play in the editor, further:** gamepads there, and pausing to inspect and change the
    playing world (F6 plays in the editor's window today: [editor.md](editor.md)).
+| Mirrored walk | With *Mirrored right*, standing facing down, left, right and up shows frames 1, 4, 4 flipped (scale −2) and 7; turned back left, unflipped; off, right is row 2 (frame 7) and the scale is left alone |

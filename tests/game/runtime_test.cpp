@@ -562,6 +562,28 @@ TEST_CASE("Characters face the way they walk") {
     CHECK(facing_for(Facing::Left, 1.0, 1.0) == Facing::Right);
 }
 
+TEST_CASE("Mirrored walk animations: three rows, right drawn as left flipped") {
+    game::TopDownMover mover;
+    game::WalkAnimation walk;
+    walk.mirror_right = true;
+    scene2d::Sprite sprite;
+    sprite.scale_x = 2.0;
+    const auto standing = [&](game::Facing facing) {
+        mover.facing = facing;
+        game::update_walk(mover, walk, sprite, 1.0 / 60.0);
+        return std::pair{sprite.frame, sprite.scale_x};
+    };
+    // Down row 0, left row 1, right row 1 flipped, up row 2: the middle frame of each.
+    CHECK(standing(game::Facing::Down) == std::pair{1U, 2.0});
+    CHECK(standing(game::Facing::Left) == std::pair{4U, 2.0});
+    CHECK(standing(game::Facing::Right) == std::pair{4U, -2.0});
+    CHECK(standing(game::Facing::Up) == std::pair{7U, 2.0});
+    CHECK(standing(game::Facing::Left) == std::pair{4U, 2.0}); // turned back unflipped
+    // Off: four rows, the scale left alone.
+    walk.mirror_right = false;
+    CHECK(standing(game::Facing::Right) == std::pair{7U, 2.0});
+}
+
 TEST_CASE("Walk animations cycle the facing row and stand still on the standing frame") {
     game::TopDownMover mover;
     game::WalkAnimation walk; // 3 frames per direction, 6 per second, back and forth

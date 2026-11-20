@@ -310,6 +310,10 @@ void register_behaviours(reflect::Registry& registry) {
         .flags(reflect::property_flag::advanced)
         .display_name("Back and forth")
         .tooltip("Step through the frames and back (1, 2, 3, 2) instead of starting over.");
+    walk.property<&WalkAnimation::mirror_right>("mirror_right")
+        .display_name("Mirrored right")
+        .tooltip("The sheet has three rows, down, left and up: facing right shows the left "
+                 "row flipped.");
     walk.property<&WalkAnimation::elapsed>("elapsed")
         .unit(reflect::Unit::Seconds)
         .flags(reflect::property_flag::hidden)
@@ -738,7 +742,15 @@ Facing facing_for(Facing current, double dx, double dy) noexcept {
 void update_walk(const TopDownMover& mover, WalkAnimation& walk, scene2d::Sprite& sprite,
                  double seconds) {
     const std::uint32_t count = std::max<std::uint32_t>(walk.frames_per_direction, 1);
-    const auto row = static_cast<std::uint32_t>(mover.facing);
+    auto row = static_cast<std::uint32_t>(mover.facing);
+    if (walk.mirror_right) {
+        // Down, left, up: right is left, flipped.
+        const bool right = mover.facing == Facing::Right;
+        row = mover.facing == Facing::Up ? 2U : (right ? 1U : row);
+        if (std::isfinite(sprite.scale_x) && sprite.scale_x != 0.0) {
+            sprite.scale_x = right ? -std::abs(sprite.scale_x) : std::abs(sprite.scale_x);
+        }
+    }
     std::uint32_t column = std::min(walk.standing_frame, count - 1);
     if (mover.moving) {
         if (std::isfinite(seconds) && seconds > 0.0) {

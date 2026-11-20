@@ -197,6 +197,9 @@ struct WalkAnimation {
     std::uint32_t standing_frame = 1; ///< Counted from 0 within the row.
     /// Back and forth (0, 1, 2, 1, 0, …) rather than starting over (0, 1, 2, 0, …).
     bool ping_pong = true;
+    /// Mirrored (plan/02 B8): the sheet has three rows, down, left and up, and facing right
+    /// shows the left row flipped, so a character is drawn facing one way only.
+    bool mirror_right = false;
     double elapsed = 0.0; ///< Seconds walked since the last stop (hidden).
 };
 

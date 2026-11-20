@@ -67,7 +67,7 @@ action kits (GameMaker), audio mixing (zones, reverb), and team features.
 | B5 | Animation timeline | Aseprite | **Done**: frames with their own times, tags with forward, backward and ping-pong, onion skin, playback |
 | B6 | Frame events | Spine | **Done**: named on frames in Sprite Studio, kept in the sheet, sent to Rules as the frame comes |
 | B7 | Hitboxes and pivots per frame | GameMaker | **Partial**: a hit and a hurt box per frame, drawn in Sprite Studio, raising *hit* and *hits* in the game; one pivot per sprite, not per frame |
-| B8 | Directional sets | RPG Maker character sheets | **Partial**: 4-direction walk rows (Walk Animation); no 8 directions or mirroring |
+| B8 | Directional sets | RPG Maker character sheets | **Partial**: 4-direction walk rows (Walk Animation), or three rows with right mirrored from left; no 8 directions |
 | B9 | Lighting maps | Sprite Illuminator | **Partial**: normal maps made (rounded, bumpy, by cell) and glow maps, lighting sprites and tiles in the Diorama style; no normal brush, specular or roughness, nor Classic 2D |
 | B10 | Slices and 9-slice | Aseprite | **Partial**: 9-slice drawing (Screen Pictures, box frames); slices not authored in Sprite Studio |
 | B11 | Atlas packing | Unity, GameMaker | **Done**: pictures packed into shared atlas pages as they load, batching sprites and tiles from different pictures; nothing to manage |
