@@ -207,6 +207,25 @@ struct WalkAnimation {
 void update_walk(const TopDownMover& mover, WalkAnimation& walk, scene2d::Sprite& sprite,
                  double seconds);
 
+/// "Party Follower" (plan/02 H4, as RPG Maker's caterpillar): walks in line behind a
+/// leader, in its footsteps: `place` 1 just behind it, 2 behind that, each `spacing` tiles
+/// apart along the way it walked, so the party turns corners as it did and does not cut
+/// through walls. Facing and walking as it moves (a Top-down Mover and Walk Animation on it
+/// show it), passing through other characters; never the player.
+struct PartyFollower {
+    std::string leader = "hero"; ///< The name of the one at the front.
+    std::int64_t place = 1;      ///< 1 just behind the leader, 2 behind that, ...
+    double spacing = 1.0;        ///< Tiles between each in the line.
+    bool enabled = true;
+    // Not saved: begun again from where each stands after loading.
+    std::vector<std::array<double, 2>> trail; ///< Where the leader walked, oldest first.
+    double step_dx = 0.0; ///< How far it moves this step, for move_characters().
+    double step_dy = 0.0;
+};
+
+/// Works out where each Party Follower goes this step, along its leader's trail.
+void line_up(world::World& world);
+
 /// "Solid Body": blocks Top-down Movers, like a wall that can stand anywhere (a villager,
 /// a crate, a sign).
 struct Body {

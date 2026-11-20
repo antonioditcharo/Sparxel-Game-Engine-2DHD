@@ -356,6 +356,21 @@ void register_behaviours(reflect::Registry& registry) {
         "An item carried, held to use on the next thing clicked: the thing hears \"used "
         "with\" with it; then the hand is empty again.");
 
+    auto follower = registry.add_type<PartyFollower>("party_follower")
+                        .display_name("Party Follower")
+                        .category("Movement")
+                        .tooltip("Walks in line behind a leader, in its footsteps, as a party "
+                                 "follows its hero in an RPG.");
+    follower.property<&PartyFollower::leader>("leader").tooltip("Who is at the front: a name.");
+    follower.property<&PartyFollower::place>("place").range(1.0, 64.0).tooltip(
+        "1 just behind the leader, 2 behind that, and so on.");
+    follower.property<&PartyFollower::spacing>("spacing")
+        .range(0.25, 8.0)
+        .step(0.25)
+        .unit(reflect::Unit::Tiles)
+        .tooltip("How far apart they walk.");
+    follower.property<&PartyFollower::enabled>("enabled").tooltip("Off, it stays where it is.");
+
     registry.add_type<Links>("links")
         .display_name("Links")
         .category("Events")
@@ -608,7 +623,8 @@ std::optional<std::array<double, 2>> player_position(const world::World& world) 
     world.each(*mover_type, [&](world::Entity entity, reflect::ObjectRef) {
         const scene2d::Transform2D* transform = world.get<scene2d::Transform2D>(entity);
         const Walker* walker = world.get<Walker>(entity);
-        if (!found && transform != nullptr && (walker == nullptr || !walker->enabled)) {
+        if (!found && transform != nullptr && (walker == nullptr || !walker->enabled) &&
+            world.get<PartyFollower>(entity) == nullptr) {
             found = std::array<double, 2>{transform->x, transform->y};
         }
     });
@@ -628,7 +644,8 @@ bool register_behaviour_components(world::World& world) {
     const bool particles = world.register_component<ParticleEmitter>();
     const bool prefab = world.register_component<PrefabLink>();
     const bool encounter = world.register_component<EncounterArea>();
-    const bool walk = world.register_component<WalkAnimation>();
+    const bool walk =
+        world.register_component<WalkAnimation>() && world.register_component<PartyFollower>();
     const bool body = world.register_component<Body>();
     const bool trigger = world.register_component<Trigger>();
     const bool interactable = world.register_component<Interactable>();
@@ -873,6 +890,68 @@ void move_platforms(world::World& world, double seconds, std::uint32_t ppu) {
     });
 }
 
+void line_up(world::World& world) {
+    const reflect::TypeInfo* type = world.registry().find_type<PartyFollower>();
+    if (type == nullptr) {
+        return;
+    }
+    world.each(*type, [&](world::Entity entity, reflect::ObjectRef ref) {
+        PartyFollower* follower = ref.as<PartyFollower>();
+        const scene2d::Transform2D* at = world.get<scene2d::Transform2D>(entity);
+        if (follower == nullptr || at == nullptr) {
+            return;
+        }
+        follower->step_dx = 0.0;
+        follower->step_dy = 0.0;
+        const std::vector<world::Entity> leaders = world.find_named(follower->leader);
+        const scene2d::Transform2D* lead =
+            leaders.empty() ? nullptr : world.get<scene2d::Transform2D>(leaders.front());
+        if (!follower->enabled || lead == nullptr || leaders.front() == entity ||
+            !std::isfinite(lead->x) || !std::isfinite(lead->y)) {
+            follower->trail.clear();
+            return;
+        }
+        std::vector<std::array<double, 2>>& trail = follower->trail;
+        // Begun from where it stands, then each place the leader walks to.
+        if (trail.empty()) {
+            trail.push_back({at->x, at->y});
+        }
+        const std::array<double, 2> now{lead->x, lead->y};
+        if (std::hypot(now[0] - trail.back()[0], now[1] - trail.back()[1]) > 0.01) {
+            trail.push_back(now);
+        }
+        // The point `behind` tiles back along the trail from the leader.
+        const double spacing =
+            std::isfinite(follower->spacing) ? std::clamp(follower->spacing, 0.25, 8.0) : 1.0;
+        const double behind =
+            spacing * static_cast<double>(std::clamp<std::int64_t>(follower->place, 1, 64));
+        double left = behind;
+        std::array<double, 2> spot = trail.front();
+        std::size_t kept_from = 0;
+        bool found = false;
+        for (std::size_t i = trail.size() - 1; i > 0; --i) {
+            const std::array<double, 2>& a = trail[i];
+            const std::array<double, 2>& b = trail[i - 1];
+            const double length = std::hypot(a[0] - b[0], a[1] - b[1]);
+            if (length >= left && length > 0.0) {
+                const double f = left / length;
+                spot = {a[0] + ((b[0] - a[0]) * f), a[1] + ((b[1] - a[1]) * f)};
+                kept_from = i - 1;
+                found = true;
+                break;
+            }
+            left -= length;
+        }
+        if (!found) {
+            return; // the leader has not walked far enough yet: it waits
+        }
+        // Only behind the point it stands on is forgotten.
+        trail.erase(trail.begin(), trail.begin() + static_cast<std::ptrdiff_t>(kept_from));
+        follower->step_dx = spot[0] - at->x;
+        follower->step_dy = spot[1] - at->y;
+    });
+}
+
 void move_characters(world::World& world, const input::InputState& input, double seconds,
                      std::uint32_t ppu) {
     const reflect::TypeInfo* mover_type = world.registry().find_type<TopDownMover>();
@@ -919,6 +998,22 @@ void move_characters(world::World& world, const input::InputState& input, double
         }
         WalkAnimation* walk = world.get<WalkAnimation>(entity);
         scene2d::Sprite* sprite = world.get<scene2d::Sprite>(entity);
+        // A Party Follower steps where line_up() put it, through other characters.
+        if (const PartyFollower* follower = world.get<PartyFollower>(entity);
+            follower != nullptr && follower->enabled) {
+            const double fx = follower->step_dx;
+            const double fy = follower->step_dy;
+            mover->moving = std::hypot(fx, fy) > 1e-6;
+            if (mover->moving) {
+                mover->facing = facing_for(mover->facing, fx, fy);
+                transform->x += fx;
+                transform->y += fy;
+            }
+            if (walk != nullptr && sprite != nullptr) {
+                update_walk(*mover, *walk, *sprite, seconds);
+            }
+            return;
+        }
         // A mover with a dynamic Physics Body is moved by the simulation (PhysicsLink).
         const PhysicsBody* simulated = world.get<PhysicsBody>(entity);
         const bool by_physics =

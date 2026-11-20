@@ -158,8 +158,9 @@ SceneStreamer::Changes SceneStreamer::update(world::World& world, double x, doub
                 continue;
             }
             const Walker* walker = world.get<Walker>(e);
-            const bool player =
-                world.get<TopDownMover>(e) != nullptr && (walker == nullptr || !walker->enabled);
+            const bool player = world.get<TopDownMover>(e) != nullptr &&
+                                (walker == nullptr || !walker->enabled) &&
+                                world.get<PartyFollower>(e) == nullptr;
             if (player || world.get<scene2d::Transform2D>(e) == nullptr ||
                 world.get<SceneStream>(e) != nullptr) {
                 static_cast<void>(world.destroy(e));

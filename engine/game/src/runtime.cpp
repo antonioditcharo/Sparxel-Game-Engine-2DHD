@@ -1939,6 +1939,7 @@ void Runtime::step() {
     const std::vector<world::Entity> arrived = steer_walkers(
         *r.world, dt, r.settings.ppu, talking || r.fading != Impl::Fade::None, &sightings);
     move_platforms(*r.world, dt, r.settings.ppu);
+    line_up(*r.world); // the party in line behind its leader
     move_characters(*r.world, moves, dt, r.settings.ppu);
     for (const world::Entity entity : arrived) {
         emit(*r.vm, *r.world, entity, "arrived");
@@ -3479,7 +3480,8 @@ void Runtime::footsteps(double walked, std::array<double, 2> at) {
     const TopDownMover* player = nullptr;
     r.world->each(*mover_type, [&](world::Entity e, reflect::ObjectRef ref) {
         const Walker* walker = r.world->get<Walker>(e);
-        if (player == nullptr && (walker == nullptr || !walker->enabled)) {
+        if (player == nullptr && (walker == nullptr || !walker->enabled) &&
+            r.world->get<PartyFollower>(e) == nullptr) {
             player = ref.as<TopDownMover>();
         }
     });

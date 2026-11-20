@@ -562,6 +562,78 @@ TEST_CASE("Characters face the way they walk") {
     CHECK(facing_for(Facing::Left, 1.0, 1.0) == Facing::Right);
 }
 
+TEST_CASE("Party Followers walk in line in the leader's footsteps, round corners") {
+    reflect::Registry registry;
+    game::register_types(registry);
+    world::World w(registry);
+    REQUIRE(scene2d::register_components(w));
+    REQUIRE(game::register_behaviour_components(w));
+    const world::Entity hero = w.create("hero");
+    w.add<scene2d::Transform2D>(hero);
+    w.add<game::TopDownMover>(hero);
+    const auto follower = [&](const char* name, std::int64_t place) {
+        const world::Entity e = w.create(name);
+        scene2d::Transform2D* at = w.add<scene2d::Transform2D>(e);
+        at->x = -static_cast<double>(place); // standing in a row to the left at first
+        w.add<game::TopDownMover>(e);
+        w.add<game::WalkAnimation>(e);
+        w.add<scene2d::Sprite>(e);
+        game::PartyFollower* line = w.add<game::PartyFollower>(e);
+        line->place = place;
+        return e;
+    };
+    const world::Entity mage = follower("mage", 1);
+    const world::Entity thief = follower("thief", 2);
+    // The followers are never the player.
+    const std::optional<std::array<double, 2>> player = game::player_position(w);
+    REQUIRE(player.has_value());
+    CHECK(player.value_or(std::array<double, 2>{9, 9}) == std::array<double, 2>{0.0, 0.0});
+
+    const input::InputState still(input::InputMap::rpg_preset());
+    const auto step = [&] {
+        game::line_up(w);
+        game::move_characters(w, still, 1.0 / 60.0, 16);
+    };
+    // Standing: nobody moves.
+    step();
+    CHECK(w.get<scene2d::Transform2D>(mage)->x == -1.0);
+    CHECK_FALSE(w.get<game::TopDownMover>(mage)->moving);
+    // The hero walks 3 tiles right, then 3 down, a twentieth of a tile a step.
+    for (int i = 0; i < 60; ++i) {
+        w.get<scene2d::Transform2D>(hero)->x += 0.05;
+        step();
+    }
+    for (int i = 0; i < 60; ++i) {
+        w.get<scene2d::Transform2D>(hero)->y += 0.05;
+        step();
+    }
+    const scene2d::Transform2D* m = w.get<scene2d::Transform2D>(mage);
+    const scene2d::Transform2D* t = w.get<scene2d::Transform2D>(thief);
+    // One and two tiles behind along the way the hero went: both on the column it walked
+    // down, not cutting the corner.
+    CHECK(m->x == doctest::Approx(3.0).epsilon(0.001));
+    CHECK(m->y == doctest::Approx(2.0).epsilon(0.001));
+    CHECK(t->x == doctest::Approx(3.0).epsilon(0.001));
+    CHECK(t->y == doctest::Approx(1.0).epsilon(0.001));
+    CHECK(w.get<game::TopDownMover>(mage)->facing == game::Facing::Down);
+    CHECK(w.get<game::TopDownMover>(mage)->moving);
+    // The hero stops: the line stops behind it.
+    step();
+    step();
+    CHECK_FALSE(w.get<game::TopDownMover>(thief)->moving);
+    // Turned off, or with no leader, it stays.
+    w.get<game::PartyFollower>(thief)->enabled = false;
+    const double thief_y = w.get<scene2d::Transform2D>(thief)->y;
+    for (int i = 0; i < 10; ++i) {
+        w.get<scene2d::Transform2D>(hero)->x += 0.1;
+        step();
+    }
+    CHECK(w.get<scene2d::Transform2D>(thief)->y == thief_y);
+    // The mage followed: a tile behind the hero, now at the corner it turned.
+    CHECK(w.get<scene2d::Transform2D>(mage)->x == doctest::Approx(3.0));
+    CHECK(w.get<scene2d::Transform2D>(mage)->y == doctest::Approx(3.0));
+}
+
 TEST_CASE("Mirrored walk animations: three rows, right drawn as left flipped") {
     game::TopDownMover mover;
     game::WalkAnimation walk;

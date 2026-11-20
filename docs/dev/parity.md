@@ -24,11 +24,11 @@
 | E. No-code logic | 5 | 6 | 0 (+1 later) |
 | F. Genre kits | 5 | 1 | 0 |
 | G. Story | 5 | 2 | 0 (+1 later) |
-| H. Characters | 3 | 2 | 0 |
+| H. Characters | 4 | 1 | 0 |
 | I. Physics | 3 | 2 | 0 |
 | J. Audio | 2 | 4 | 0 (+1 later) |
 | K. UI | 5 | 2 | 0 |
-| **All** | **47** | **55** | **0** (+6 later) |
+| **All** | **48** | **54** | **0** (+6 later) |
 
 The strongest areas match or pass their references: the RPG kit and window skins (RPG
 Maker), auto-tiles and tile variants (RPG Maker, LDtk), no-code Rules with tags, *it*,
@@ -164,7 +164,7 @@ action kits (GameMaker), audio mixing (zones, reverb), and team features.
 | H1 | Character asset | RPG Maker | **Partial**: prefabs gather sprite, collision, behaviours; no one-place editor |
 | H2 | NPC behaviours | RPG Maker | **Done**: wander, patrol, follow, walk to |
 | H3 | Enemy AI presets | | **Done**: Walkers that stand, wander or patrol, and chase or flee on seeing the player past walls; enemies on the map that start battles |
-| H4 | Party followers | RPG Maker | **Partial**: *Follow* walks behind; no caterpillar of the party |
+| H4 | Party followers | RPG Maker | **Done**: *Follow* walks behind, and Party Followers walk in line in the leader's footsteps, round corners, a place each |
 | H5 | Pathfinding | Godot | **Done** for grids (A*); navmesh not yet |
 
 ## I. Physics

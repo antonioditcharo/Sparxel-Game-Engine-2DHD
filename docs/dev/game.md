@@ -268,6 +268,18 @@ While walking, the row's frames cycle in fixed steps; on stopping, the standing 
 the row shows and the cycle starts again next time. Do not combine it with an Animation
 on the same entity: the Animation runs later in the step and would win.
 
+### Party Followers (a party walking in line)
+
+A **Party Follower** (`party_follower`; `plan/02` H4, as RPG Maker's caterpillar) walks
+behind a *Leader* (`leader`, a name: *hero*) in its footsteps: *Place* (`place`) 1 just
+behind it, 2 behind that, each *Spacing* (`spacing`, 1 tile) apart along the way the
+leader walked, so the line turns corners where it did and does not cut through walls
+(`line_up()`, each step before characters move). With a Top-down Mover and a Walk
+Animation, it faces and walks as it goes; it passes through other characters, and it is
+never taken for the player. It waits until the leader has walked as far as its place;
+turned off, or with no leader of that name, it stays where it is. Its trail is not saved:
+after loading, the line forms again from where each stands.
+
 ### Walker (characters who walk by themselves)
 
 A **Walker** (`walker`) on an entity with a Top-down Mover makes it walk by itself rather
@@ -882,3 +894,4 @@ named by path (`maps/cave.dscene`) or GUID.
 2. **Play in the editor, further:** gamepads there, and pausing to inspect and change the
    playing world (F6 plays in the editor's window today: [editor.md](editor.md)).
 | Mirrored walk | With *Mirrored right*, standing facing down, left, right and up shows frames 1, 4, 4 flipped (scale −2) and 7; turned back left, unflipped; off, right is row 2 (frame 7) and the scale is left alone |
+| Party Followers | Standing in a row to the hero's left, nobody moves until the hero walks; the hero walks 3 tiles right then 3 down: the mage (place 1) and the thief (2) end exactly 1 and 2 tiles behind on the column it walked down, the mage facing down and walking, not cutting the corner; when the hero stops, so does the line; the thief turned off stays, while the mage follows to the corner; `player_position()` is the hero's |

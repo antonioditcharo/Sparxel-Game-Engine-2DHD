@@ -150,7 +150,8 @@ void update_camera(CameraObject& camera, const world::World& world, double secon
             if (const reflect::TypeInfo* type = world.registry().find_type<TopDownMover>()) {
                 world.each(*type, [&](world::Entity e, reflect::ObjectRef) {
                     const Walker* walker = world.get<Walker>(e);
-                    if (!entity.is_valid() && (walker == nullptr || !walker->enabled)) {
+                    if (!entity.is_valid() && (walker == nullptr || !walker->enabled) &&
+                        world.get<PartyFollower>(e) == nullptr) {
                         entity = e;
                     }
                 });

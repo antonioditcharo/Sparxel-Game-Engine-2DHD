@@ -139,7 +139,8 @@ void DebugMenu::go_to(world::Entity target) {
     if (mover != nullptr) {
         w->each(*mover, [&](world::Entity e, reflect::ObjectRef) {
             const Walker* walker = w->get<Walker>(e);
-            if (!player.is_valid() && (walker == nullptr || !walker->enabled)) {
+            if (!player.is_valid() && (walker == nullptr || !walker->enabled) &&
+                w->get<PartyFollower>(e) == nullptr) {
                 player = e;
             }
         });
