@@ -75,6 +75,11 @@ struct ProjectSettings {
     std::string language;
     /// The languages "Collect texts to translate" makes columns for: "fr, de".
     std::string languages;
+    /// Fonts by language (plan/02 G7), for letters the game's font lacks: "ja:
+    /// fonts/ja.png, ko: fonts/ko.png". Each picture's letters, in order, are in the text
+    /// file of the same name beside it (fonts/ja.txt); without one, printable ASCII. A
+    /// language with none uses the game's font.
+    std::string language_fonts;
     /// The style guide's palette (plan/02 A11): the colours the game's art keeps to,
     /// "#1a1c2c #5d275d ...". New sprites start with it, and Check the project notes
     /// pictures with colours outside it. Empty: no palette is kept to.
@@ -158,6 +163,11 @@ struct ProjectSettings {
 [[nodiscard]] std::optional<ProjectSettings>
 project_from_json(const serialize::Json& json, std::vector<serialize::Issue>& issues);
 [[nodiscard]] serialize::Json project_to_json(const ProjectSettings& settings);
+
+/// The language fonts of ProjectSettings::language_fonts: language to picture, in order;
+/// entries without a colon or a picture are left out.
+[[nodiscard]] std::vector<std::pair<std::string, std::string>>
+parse_language_fonts(std::string_view text);
 
 /// The lighting a game starts with: the project's.
 [[nodiscard]] LightingObject starting_lighting(const ProjectSettings& settings);

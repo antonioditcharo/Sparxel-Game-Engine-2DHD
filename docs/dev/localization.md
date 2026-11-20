@@ -57,6 +57,17 @@ What is collected, each once, in the order found:
 
 ## 3. Playing in another language
 
+**Fonts by language** (`language_fonts`, the Project view's *Fonts by language*): for
+letters the game's font lacks, a font picture per language, *ja: fonts/ja.png, ko:
+fonts/ko.png* (`parse_language_fonts()`). Each picture's letters, in order, are in the
+text file of the same name beside it (`fonts/ja.txt`); without one, printable ASCII. While
+that language is shown, from the start or picked on the Options page, the game draws its
+words in that font; a language without one uses the game's font. A picture that cannot be
+used is said once in the game's problems, and the game's font is shown. Tested: entries
+parsed with spaces trimmed and broken ones left out; in Japanese, the font's letters drawn
+in the words' colour; in the game's own language, the built-in font, drawn differently; a
+missing picture, the game's font and one problem naming it.
+
 Messages and questions are shown translated as they come; each answer is translated on its
 own; speakers' name plates and the menus' choices are translated where they are drawn. A
 text without a translation shows as written, so a half-translated game still plays.
@@ -73,5 +84,4 @@ language would overflow. `[tags]` of rich text and `{names}` stay as they are.
 
 1. **Everything else translated**: item, skill and enemy names from the data tables, the
    battle's messages, and the rest of the menus' words.
-2. **Fonts per language**, for letters the built-in pixel font lacks (accents, kana).
-3. **An in-editor view** of each text where it is used.
+2. **An in-editor view** of each text where it is used.

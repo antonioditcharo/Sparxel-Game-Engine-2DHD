@@ -62,6 +62,7 @@ MyGame/
 | `background` | The clear colour, `[red, green, blue]` | `[20, 24, 40]` |
 | `render_style` | `"classic_2d"`, flat 2D, or `"diorama"`, the same world in 3D ([scene2d.md](scene2d.md) §7) | `"classic_2d"` |
 | `scaling` | How the picture fills a larger window: `"pixel"` (the default, left out: pixel-perfect, whole-number sizes with borders), `"sharp"` (fills it, pixels kept even and crisp) or `"smooth"` (fills it, smoothly stretched) ([rendering.md](rendering.md) §4). The Project view's *In a larger window* |
+| `language_fonts` | Fonts by language: `"ja: fonts/ja.png, ko: fonts/ko.png"`, each picture's letters in the `.txt` of the same name beside it ([localization.md](localization.md) §3) |
 | `gravity` | For Physics Bodies, `[across, down]` in tiles per second squared ([physics.md](physics.md)) | `[0, 0]`, each -1000 to 1000 |
 | `camera_pitch`, `camera_distance`, `camera_fov` | The Diorama camera, which follows the hero: degrees looking down, tiles away, and vertical field of view | 35 (5 to 85), 12 (1 to 200), 30 (5 to 90) |
 | `camera_clamp` | The camera stops at the map's edges (§3, Drawing) | `true` |

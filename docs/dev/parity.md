@@ -23,12 +23,12 @@
 | D. Rendering and the look | 5 | 10 | 0 (+1 later) |
 | E. No-code logic | 5 | 6 | 0 (+1 later) |
 | F. Genre kits | 5 | 1 | 0 |
-| G. Story | 5 | 2 | 0 (+1 later) |
+| G. Story | 6 | 1 | 0 (+1 later) |
 | H. Characters | 4 | 1 | 0 |
 | I. Physics | 3 | 2 | 0 |
 | J. Audio | 2 | 4 | 0 (+1 later) |
 | K. UI | 5 | 2 | 0 |
-| **All** | **49** | **53** | **0** (+6 later) |
+| **All** | **50** | **52** | **0** (+6 later) |
 
 The strongest areas match or pass their references: the RPG kit and window skins (RPG
 Maker), auto-tiles and tile variants (RPG Maker, LDtk), no-code Rules with tags, *it*,
@@ -154,7 +154,7 @@ action kits (GameMaker), audio mixing (zones, reverb), and team features.
 | G4 | Text effects | RPG Maker | **Done**: colour, wave, shake, speed, pauses |
 | G5 | Quests | | **Done**: stages, journal |
 | G6 | Story outline | | **Partial** (conversations, flags; no chapters view) |
-| G7 | Localization | Unity Localization | **Partial**: tables, CSV and XLIFF for translation tools, pseudo language, the player's choice; no per-language fonts |
+| G7 | Localization | Unity Localization | **Done**: tables, CSV and XLIFF for translation tools, a font per language, the pseudo language, the player's choice |
 | G8 | ink and Yarn import | | Later |
 
 ## H. Characters

@@ -280,6 +280,10 @@ void ProjectPanel::build() {
                tr("Language codes, separated by commas (fr, de): Game > Collect texts to "
                   "translate makes a column for each"),
                now.languages, &Settings::languages);
+    text_field(tr("Fonts by language"), "language_fonts",
+               tr("For letters the game's font lacks: ja: fonts/ja.png, ko: fonts/ko.png. Each "
+                  "picture's letters, in order, go in the .txt of the same name beside it"),
+               now.language_fonts, &Settings::language_fonts);
 
     // The style guide: the colours the game's art keeps to.
     QFormLayout* style = group(tr("Style guide"));

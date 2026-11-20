@@ -4965,6 +4965,92 @@ TEST_CASE("A project's own font draws its words; a missing one falls back, sayin
     CHECK(fallback->draw());
 }
 
+TEST_CASE("Fonts by language: the language's own font, its letters beside it") {
+    CHECK(game::parse_language_fonts(" ja: fonts/ja.png , ko:fonts/ko.png, bad, x:") ==
+          std::vector<std::pair<std::string, std::string>>{{"ja", "fonts/ja.png"},
+                                                           {"ko", "fonts/ko.png"}});
+    if (test_support::gpu() == nullptr) {
+        return;
+    }
+    const Project project;
+    {
+        // The same one-letter font as above, for "ja": "A" a solid block 4 by 6, its
+        // letters in art/ja.txt.
+        assets::Image strip;
+        strip.width = 5;
+        strip.height = 6;
+        for (std::uint32_t y = 0; y < 6; ++y) {
+            for (std::uint32_t x = 0; x < 5; ++x) {
+                if (x == 0) {
+                    strip.rgba.insert(strip.rgba.end(), {255, 0, 255, 255});
+                } else {
+                    strip.rgba.insert(strip.rgba.end(), {0, 0, 0, 255});
+                }
+            }
+        }
+        const std::vector<std::uint8_t> png = assets::encode_png(strip);
+        std::ofstream(project.folder.path / "assets/art/ja.png", std::ios::binary)
+            .write(reinterpret_cast<const char*>(png.data()), // NOLINT
+                   static_cast<std::streamsize>(png.size()));
+        std::ofstream(project.folder.path / "assets/art/ja.txt", std::ios::binary) << "A\n";
+        reflect::Registry registry;
+        game::register_types(registry);
+        world::World w(registry);
+        REQUIRE(scene2d::register_components(w));
+        REQUIRE(game::register_behaviour_components(w));
+        game::ScreenText* text = w.add<game::ScreenText>(w.create("label"));
+        text->text = "AA";
+        text->x = 0.0;
+        text->y = 0.0;
+        write_json(project.folder.path / "assets/maps/words.dscene", serialize::scene_to_json(w));
+    }
+    const auto with = [&project](const std::string& language, const std::string& fonts) {
+        std::vector<serialize::Issue> issues;
+        std::optional<game::ProjectSettings> settings =
+            game::read_project(project.folder.path, issues);
+        REQUIRE(settings.has_value());
+        if (!settings) {
+            return;
+        }
+        settings->start_scene = "maps/words.dscene";
+        settings->width = 64;
+        settings->height = 36;
+        settings->language = language;
+        settings->language_fonts = fonts;
+        write_json(project.folder.path / game::project_file, game::project_to_json(*settings));
+    };
+    game::RuntimeOptions options;
+    options.headless = true;
+    const auto drawn = [&project, &options] {
+        const auto runtime = project.open(options);
+        REQUIRE(runtime->target() != nullptr);
+        runtime->step();
+        REQUIRE(runtime->draw());
+        return std::tuple{runtime->target()->read_pixels(), runtime->problems(),
+                          runtime->settings().ui.text};
+    };
+    // In Japanese: two solid blocks, as the font draws "A".
+    with("ja", "ja: art/ja.png");
+    const auto [japanese, no_problems, words] = drawn();
+    CHECK(no_problems.empty());
+    CHECK(pixel(japanese, 64, 1, 2) == words);
+    CHECK(pixel(japanese, 64, 3, 5) == words);
+    CHECK(pixel(japanese, 64, 8, 2) == words);
+    // In the game's own language: the built-in font, which draws something else.
+    with("", "ja: art/ja.png");
+    const auto [own, none, own_words] = drawn();
+    static_cast<void>(own_words);
+    CHECK(none.empty());
+    CHECK(own != japanese);
+    // A language font that is not there: the game's font, said once.
+    with("ja", "ja: art/missing.png");
+    const auto [fallen, problems, fallen_words] = drawn();
+    static_cast<void>(fallen_words);
+    CHECK(fallen == own);
+    REQUIRE(problems.size() == 1);
+    CHECK(problems[0].find("art/missing.png for ja") != std::string::npos);
+}
+
 TEST_CASE("A box frame: every box drawn with the project's picture, its corners crisp") {
     if (test_support::gpu() == nullptr) {
         return;

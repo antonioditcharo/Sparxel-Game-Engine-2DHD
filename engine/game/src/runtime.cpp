@@ -53,7 +53,7 @@ void add_issues(std::vector<serialize::Issue>& out, std::string_view file,
 }
 
 /// The entries a project file may have; anything else is reported and ignored.
-constexpr std::array<std::string_view, 42> known_project_keys{"format",
+constexpr std::array<std::string_view, 43> known_project_keys{"format",
                                                               "version",
                                                               "name",
                                                               "start_scene",
@@ -94,7 +94,8 @@ constexpr std::array<std::string_view, 42> known_project_keys{"format",
                                                               "ui",
                                                               "music_while_talking",
                                                               "minimap",
-                                                              "scaling"};
+                                                              "scaling",
+                                                              "language_fonts"};
 
 } // namespace
 
@@ -255,6 +256,37 @@ std::size_t message_pages(const DialogueObject& dialogue, const ProjectSettings&
 // Project settings
 // ---------------------------------------------------------------------------------------
 
+std::vector<std::pair<std::string, std::string>> parse_language_fonts(std::string_view text) {
+    std::vector<std::pair<std::string, std::string>> out;
+    const auto trim = [](std::string_view v) {
+        while (!v.empty() && (v.front() == ' ' || v.front() == '\t')) {
+            v.remove_prefix(1);
+        }
+        while (!v.empty() && (v.back() == ' ' || v.back() == '\t')) {
+            v.remove_suffix(1);
+        }
+        return std::string(v);
+    };
+    std::size_t start = 0;
+    while (start <= text.size()) {
+        const std::size_t comma = text.find(',', start);
+        const std::string_view entry = text.substr(
+            start, comma == std::string_view::npos ? std::string_view::npos : comma - start);
+        if (const std::size_t colon = entry.find(':'); colon != std::string_view::npos) {
+            std::string language = trim(entry.substr(0, colon));
+            std::string picture = trim(entry.substr(colon + 1));
+            if (!language.empty() && !picture.empty()) {
+                out.emplace_back(std::move(language), std::move(picture));
+            }
+        }
+        if (comma == std::string_view::npos) {
+            break;
+        }
+        start = comma + 1;
+    }
+    return out;
+}
+
 std::optional<ProjectSettings> read_project(const fs::path& root,
                                             std::vector<serialize::Issue>& issues) {
     const std::string file(project_file);
@@ -350,6 +382,7 @@ std::optional<ProjectSettings> project_from_json(const serialize::Json& doc,
     text("start_scene", settings.start_scene, true);
     text("language", settings.language, false);
     text("languages", settings.languages, false);
+    text("language_fonts", settings.language_fonts, false);
     text("palette", settings.palette, false);
     text("font", settings.font, false);
     text("font_characters", settings.font_characters, false);
@@ -562,6 +595,9 @@ serialize::Json project_to_json(const ProjectSettings& settings) {
     json["start_scene"] = settings.start_scene;
     if (!settings.language.empty()) {
         json["language"] = settings.language;
+    }
+    if (!settings.language_fonts.empty()) {
+        json["language_fonts"] = settings.language_fonts;
     }
     if (!settings.languages.empty()) {
         json["languages"] = settings.languages;
@@ -969,7 +1005,74 @@ struct Runtime::Impl {
     /// The hit-box contacts of the last step (attacker, target), so each is said once.
     std::set<std::pair<std::uint64_t, std::uint64_t>> hitting;
     std::unique_ptr<render::Texture> font;              ///< The font's atlas.
-    ui::PixelFont font_face = ui::PixelFont::builtin(); ///< The project's font, or the built-in.
+    ui::PixelFont font_face = ui::PixelFont::builtin(); ///< The font shown now.
+    ui::PixelFont game_font = ui::PixelFont::builtin(); ///< The project's font, or the built-in.
+    std::string font_language; ///< The language font_face is for ("" for the game's).
+
+    /// A font picture of assets/ with `characters` (empty: its .txt beside it, else
+    /// printable ASCII); nothing, with `error`, if it cannot be used.
+    std::optional<ui::PixelFont> load_font(const std::string& picture, std::string characters,
+                                           bool letters_beside, std::string& error) {
+        const assets::AssetRecord* record = assets.find(picture);
+        const std::optional<std::vector<std::uint8_t>> bytes =
+            record != nullptr ? assets.read(record->guid) : std::nullopt;
+        if (!bytes.has_value()) {
+            error = "there is no such picture in assets/";
+            return std::nullopt;
+        }
+        std::optional<assets::Image> strip = assets::decode_png(bytes.value(), error);
+        if (!strip.has_value()) {
+            return std::nullopt;
+        }
+        if (letters_beside && characters.empty() && picture.size() > 4) {
+            const std::string text = picture.substr(0, picture.size() - 4) + ".txt";
+            if (const assets::AssetRecord* letter_file = assets.find(text)) {
+                if (const auto read = assets.read(letter_file->guid)) {
+                    characters.assign(read->begin(), read->end());
+                    while (!characters.empty() &&
+                           (characters.back() == '\n' || characters.back() == '\r')) {
+                        characters.pop_back();
+                    }
+                }
+            }
+        }
+        return ui::PixelFont::from_strip(strip.value().rgba, strip.value().width,
+                                         strip.value().height, characters, error);
+    }
+
+    /// The font for the language shown now: its own (ProjectSettings::language_fonts), else
+    /// the game's; the font's letters sent to the GPU again when it changes. Problems go to
+    /// `problems`.
+    void choose_font() {
+        const std::string& language = translations.language();
+        std::string picture;
+        for (const auto& [code, file] : parse_language_fonts(settings.language_fonts)) {
+            if (code == language) {
+                picture = file;
+            }
+        }
+        const std::string wanted = picture.empty() ? std::string() : language;
+        if (wanted == font_language && (font != nullptr || device == nullptr)) {
+            return;
+        }
+        ui::PixelFont next = game_font;
+        if (!picture.empty()) {
+            std::string error;
+            if (std::optional<ui::PixelFont> loaded = load_font(picture, {}, true, error)) {
+                next = std::move(*loaded);
+            } else {
+                problems.push_back("The font " + picture + " for " + language +
+                                   " could not be used (" + error +
+                                   "), so the game's font is shown.");
+            }
+        }
+        font_face = std::move(next);
+        font_language = wanted;
+        if (device != nullptr) {
+            font = device->create_texture(font_face.atlas_width(), font_face.atlas_height(),
+                                          font_face.atlas());
+        }
+    }
     BoxFrame box_frame; ///< The boxes' picture (settings.box_frame), if any.
     /// Finds box_frame's texture again (when the game opens, and assets change).
     void find_box_frame() {
@@ -1347,22 +1450,9 @@ std::unique_ptr<Runtime> Runtime::open(const fs::path& root, const RuntimeOption
         r.textures = std::make_unique<scene2d::TextureCache>(*r.device, r.assets);
         // The project's font, if it has one that can be read; else the built-in.
         if (!r.settings.font.empty()) {
-            const assets::AssetRecord* record = r.assets.find(r.settings.font);
-            const std::optional<std::vector<std::uint8_t>> bytes =
-                record != nullptr ? r.assets.read(record->guid) : std::nullopt;
             std::string font_error;
-            std::optional<assets::Image> strip;
-            if (bytes.has_value()) {
-                strip = assets::decode_png(bytes.value(), font_error);
-            } else {
-                font_error = "there is no such picture in assets/";
-            }
-            std::optional<ui::PixelFont> font_loaded;
-            if (strip.has_value()) {
-                font_loaded = ui::PixelFont::from_strip(strip.value().rgba, strip.value().width,
-                                                        strip.value().height,
-                                                        r.settings.font_characters, font_error);
-            }
+            std::optional<ui::PixelFont> font_loaded =
+                r.load_font(r.settings.font, r.settings.font_characters, false, font_error);
             if (font_loaded.has_value()) {
                 r.font_face = std::move(font_loaded.value());
             } else {
@@ -1372,8 +1462,15 @@ std::unique_ptr<Runtime> Runtime::open(const fs::path& root, const RuntimeOption
                                                       "), so the built-in font is shown."});
             }
         }
-        const ui::PixelFont& font = r.font_face;
-        r.font = r.device->create_texture(font.atlas_width(), font.atlas_height(), font.atlas());
+        r.game_font = r.font_face;
+        r.font_language.clear();
+        r.font = nullptr;
+        r.choose_font(); // the language's own font, if it has one
+        if (r.font == nullptr) {
+            const ui::PixelFont& font = r.font_face;
+            r.font =
+                r.device->create_texture(font.atlas_width(), font.atlas_height(), font.atlas());
+        }
         r.find_box_frame();
         const std::array<std::uint8_t, 4> white{255, 255, 255, 255};
         r.white = r.device->create_texture(1, 1, white);
@@ -4002,6 +4099,7 @@ void Runtime::apply_options() {
     // The player's language, else the game's own.
     r.translations.set_language(r.menu.options().language.empty() ? r.settings.language
                                                                   : r.menu.options().language);
+    r.choose_font();
     if (r.audio_engine != nullptr) {
         r.audio_engine->set_player_volume(audio::Bus::Music, r.menu.options().music);
         r.audio_engine->set_player_volume(audio::Bus::Sounds, r.menu.options().sounds);
