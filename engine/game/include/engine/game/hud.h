@@ -11,6 +11,7 @@
 #include "engine/world/world.h"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -85,6 +86,51 @@ struct ScreenButton {
     bool enabled = true;
     bool visible = true;
 };
+
+/// "Screen Slider": a value the player sets by dragging a knob along a line with the mouse
+/// (a volume, a difficulty, how much to buy): from `least` to `most` in `step`s. Its Rules
+/// hear "changed" with the new value; logic reads and sets `value` as any property.
+struct ScreenSlider {
+    double value = 5.0;
+    double least = 0.0;
+    double most = 10.0;
+    double step = 1.0; ///< 0 for any value between.
+    ScreenAnchor anchor = ScreenAnchor::TopLeft;
+    double x = 4.0;
+    double y = 4.0;
+    double width = 64.0; ///< Pixels along the line.
+    bool enabled = true;
+    bool visible = true;
+};
+
+/// How far along its line a slider's value is, 0 to 1 (0 if `least` and `most` meet).
+[[nodiscard]] double slider_fraction(const ScreenSlider& slider) noexcept;
+/// The value at `fraction` (0 to 1, clamped) of the line: between least and most, on a step.
+[[nodiscard]] double slider_value_at(const ScreenSlider& slider, double fraction) noexcept;
+
+/// "Screen List": choices one under another that the player picks with the mouse (an
+/// item to use, a save to load, a place to travel to). `items` is the choices separated by
+/// commas, with values in braces as Screen Text's; the one picked is lit and is
+/// `selected` (from 0; -1 for none), and its Rules hear "picked" with the choice's words.
+struct ScreenList {
+    std::string items = "First, Second, Third";
+    std::int64_t selected = -1;
+    ScreenAnchor anchor = ScreenAnchor::TopLeft;
+    double x = 4.0;
+    double y = 4.0;
+    double width = 0.0; ///< Pixels; 0 fits the widest choice.
+    bool enabled = true;
+    bool visible = true;
+};
+
+/// A list's choices: its items split at commas, each trimmed, empty ones left out.
+[[nodiscard]] std::vector<std::string> list_items(std::string_view items);
+/// A list's size for `count` choices, the widest `words_width` pixels, each line
+/// `line_height` tall: 3 pixels round them, a line each.
+[[nodiscard]] std::array<float, 2> list_size(const ScreenList& list, float words_width,
+                                             float line_height, std::size_t count) noexcept;
+/// Which choice a point `down` pixels below the list's top is on: -1 above or below them.
+[[nodiscard]] std::int64_t list_row_at(float down, float line_height, std::size_t count) noexcept;
 
 /// A button's size: its own, or the words (`words_width` pixels wide, `line_height` tall)
 /// with 4 pixels round them.

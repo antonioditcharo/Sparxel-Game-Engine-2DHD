@@ -329,6 +329,21 @@ void SceneView::paint_hud(QPainter& painter, QPoint origin_at, int s) const {
             return engine::game::button_size(
                 *button, static_cast<float>(metrics.horizontalAdvance(words) / s), 9.0F);
         }
+        if (const auto* slider = world.get<engine::game::ScreenSlider>(e);
+            slider != nullptr && slider->visible) {
+            return std::array<float, 2>{static_cast<float>(std::max(slider->width, 8.0)), 9.0F};
+        }
+        if (const auto* list = world.get<engine::game::ScreenList>(e);
+            list != nullptr && list->visible) {
+            const std::vector<std::string> items = engine::game::list_items(list->items);
+            double widest = 0.0;
+            for (const std::string& item : items) {
+                widest = std::max<double>(widest,
+                                          metrics.horizontalAdvance(QString::fromStdString(item)));
+            }
+            return engine::game::list_size(*list, static_cast<float>(widest / s), 9.0F,
+                                           items.size());
+        }
         if (const auto* label = world.get<engine::game::ScreenText>(e);
             label != nullptr && label->visible) {
             const QString words =
@@ -485,6 +500,58 @@ void SceneView::paint_hud(QPainter& painter, QPoint origin_at, int s) const {
             painter.fillRect(at.adjusted(s, s, -s, -s), QColor(18, 20, 40));
             painter.setPen(button->enabled ? Qt::white : QColor(150, 155, 170));
             painter.drawText(at, Qt::AlignCenter, words);
+        });
+    }
+    // Screen Sliders: the line, filled to the knob.
+    if (const auto* type = world.registry().find_type<engine::game::ScreenSlider>()) {
+        world.each(*type, [&](engine::world::Entity e, engine::reflect::ObjectRef ref) {
+            const auto* slider = ref.as<engine::game::ScreenSlider>();
+            if (hidden.contains(e.id) || slider == nullptr || !slider->visible) {
+                return;
+            }
+            const auto w = static_cast<float>(std::max(slider->width, 8.0));
+            const QRectF at = position(e, type, slider->anchor, slider->x, slider->y, w, 9.0F);
+            const double f = engine::game::slider_fraction(*slider);
+            const double middle = at.center().y();
+            painter.fillRect(QRectF(at.left(), middle - s, at.width(), 2 * s),
+                             QColor(230, 232, 240));
+            painter.fillRect(
+                QRectF(at.left() + ((at.width() - (4 * s)) * f), at.top(), 4 * s, at.height()),
+                slider->enabled ? Qt::white : QColor(150, 155, 170));
+        });
+    }
+    // Screen Lists: a box of choices, the one picked lit.
+    if (const auto* type = world.registry().find_type<engine::game::ScreenList>()) {
+        world.each(*type, [&](engine::world::Entity e, engine::reflect::ObjectRef ref) {
+            const auto* list = ref.as<engine::game::ScreenList>();
+            if (hidden.contains(e.id) || list == nullptr || !list->visible) {
+                return;
+            }
+            const std::vector<std::string> items = engine::game::list_items(list->items);
+            double widest = 0.0;
+            for (const std::string& item : items) {
+                widest = std::max<double>(widest,
+                                          metrics.horizontalAdvance(QString::fromStdString(item)));
+            }
+            const std::array<float, 2> size =
+                engine::game::list_size(*list, static_cast<float>(widest / s), 9.0F, items.size());
+            const QRectF at = position(e, type, list->anchor, list->x, list->y, size[0], size[1]);
+            painter.fillRect(at, QColor(230, 232, 240));
+            painter.fillRect(at.adjusted(s, s, -s, -s), QColor(18, 20, 40));
+            for (std::size_t i = 0; i < items.size(); ++i) {
+                const QRectF row(at.left() + (3 * s),
+                                 at.top() + ((3.0 + (9.0 * static_cast<double>(i))) * s),
+                                 at.width() - (6 * s), 9 * s);
+                const bool picked = static_cast<std::int64_t>(i) == list->selected;
+                if (picked) {
+                    painter.fillRect(row, QColor(60, 64, 96));
+                }
+                painter.setPen(!list->enabled ? QColor(150, 155, 170)
+                               : picked       ? QColor(255, 210, 122)
+                                              : Qt::white);
+                painter.drawText(row, Qt::AlignLeft | Qt::AlignVCenter,
+                                 QString::fromStdString(items[i]));
+            }
         });
     }
     for (const HudItem& item : hud_items_) {

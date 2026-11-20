@@ -899,6 +899,8 @@ struct Runtime::Impl {
     std::vector<std::string> problems;
     /// Streamed Scenes near the player (large worlds).
     SceneStreamer streamer;
+    /// The Screen Slider being dragged, while the click is held.
+    Guid dragging;
     /// What the entities of the project's other scenes are made of, by each name logic can
     /// use for them, so Rules about them compile while another scene is played.
     std::map<std::string, std::vector<const reflect::TypeInfo*>, std::less<>> elsewhere;
@@ -1399,6 +1401,22 @@ HudPlaces hud_places(const Runtime::Impl& r,
             return button_size(*button, static_cast<float>(ui::measure(font, words)),
                                static_cast<float>(font.line_height()));
         }
+        if (const auto* slider = r.world->get<ScreenSlider>(e);
+            slider != nullptr && slider->visible) {
+            return std::array<float, 2>{std::isfinite(slider->width)
+                                            ? static_cast<float>(std::max(slider->width, 8.0))
+                                            : 64.0F,
+                                        static_cast<float>(font.line_height())};
+        }
+        if (const auto* list = r.world->get<ScreenList>(e); list != nullptr && list->visible) {
+            const std::vector<std::string> items = list_items(fill(list->items));
+            int widest = 0;
+            for (const std::string& item : items) {
+                widest = std::max(widest, ui::measure(font, r.translations.translate(item)));
+            }
+            return list_size(*list, static_cast<float>(widest),
+                             static_cast<float>(font.line_height()), items.size());
+        }
         if (const auto* label = r.world->get<ScreenText>(e); label != nullptr && label->visible) {
             const std::string words = r.translations.translate(fill(label->text));
             const int size = label->size >= 2 ? 2 : 1;
@@ -1469,6 +1487,81 @@ std::vector<ButtonPlace> button_places(const Runtime::Impl& r, const HudPlaces& 
                 : screen_place(button->anchor, button->x, button->y, size[0], size[1], sw, sh);
         out.push_back(
             ButtonPlace{e, button, render::Rect{at[0], at[1], size[0], size[1]}, std::move(words)});
+    });
+    return out;
+}
+
+/// A Screen Slider as the screen shows it: its line's length and a line's height.
+struct SliderPlace {
+    world::Entity entity;
+    const ScreenSlider* slider = nullptr;
+    render::Rect rect;
+};
+
+std::vector<SliderPlace> slider_places(const Runtime::Impl& r, const HudPlaces& places) {
+    std::vector<SliderPlace> out;
+    const reflect::TypeInfo* type = r.world->registry().find_type<ScreenSlider>();
+    if (type == nullptr) {
+        return out;
+    }
+    const auto sw = static_cast<float>(r.settings.width);
+    const auto sh = static_cast<float>(r.settings.height);
+    r.world->each(*type, [&](world::Entity e, reflect::ObjectRef ref) {
+        const auto* slider = ref.as<ScreenSlider>();
+        if (slider == nullptr || !slider->visible || places.hidden.contains(e.id)) {
+            return;
+        }
+        const float w =
+            std::isfinite(slider->width) ? static_cast<float>(std::max(slider->width, 8.0)) : 64.0F;
+        const auto h = static_cast<float>(r.font_face.line_height());
+        const auto found = places.laid.find(e.id);
+        const std::array<float, 2> at =
+            found != places.laid.end()
+                ? found->second
+                : screen_place(slider->anchor, slider->x, slider->y, w, h, sw, sh);
+        out.push_back(SliderPlace{e, slider, render::Rect{at[0], at[1], w, h}});
+    });
+    return out;
+}
+
+/// A Screen List as the screen shows it: where, and its choices' words.
+struct ListPlace {
+    world::Entity entity;
+    const ScreenList* list = nullptr;
+    render::Rect rect;
+    std::vector<std::string> words;
+};
+
+std::vector<ListPlace> list_places(const Runtime::Impl& r, const HudPlaces& places,
+                                   const std::function<std::string(const std::string&)>& fill) {
+    std::vector<ListPlace> out;
+    const reflect::TypeInfo* type = r.world->registry().find_type<ScreenList>();
+    if (type == nullptr) {
+        return out;
+    }
+    const auto sw = static_cast<float>(r.settings.width);
+    const auto sh = static_cast<float>(r.settings.height);
+    r.world->each(*type, [&](world::Entity e, reflect::ObjectRef ref) {
+        const auto* list = ref.as<ScreenList>();
+        if (list == nullptr || !list->visible || places.hidden.contains(e.id)) {
+            return;
+        }
+        std::vector<std::string> words;
+        int widest = 0;
+        for (const std::string& item : list_items(fill(list->items))) {
+            words.push_back(r.translations.translate(item));
+            widest = std::max(widest, ui::measure(r.font_face, words.back()));
+        }
+        const std::array<float, 2> size =
+            list_size(*list, static_cast<float>(widest),
+                      static_cast<float>(r.font_face.line_height()), words.size());
+        const auto found = places.laid.find(e.id);
+        const std::array<float, 2> at =
+            found != places.laid.end()
+                ? found->second
+                : screen_place(list->anchor, list->x, list->y, size[0], size[1], sw, sh);
+        out.push_back(
+            ListPlace{e, list, render::Rect{at[0], at[1], size[0], size[1]}, std::move(words)});
     });
     return out;
 }
@@ -1762,6 +1855,66 @@ void Runtime::step() {
                         emit(*r.vm, *r.world, placed.entity, "clicked");
                     }
                     break;
+                }
+            }
+        }
+        // Screen Sliders are dragged, and Screen Lists picked from.
+        {
+            const auto fill = [this](const std::string& text) {
+                return fill_values(text, [this](std::string_view name) { return hud_value(name); });
+            };
+            const HudPlaces places = hud_places(r, fill);
+            const bool pointer = r.state.pointer().has_value();
+            const input::Pointer at_pointer = r.state.pointer().value_or(input::Pointer{});
+            if (r.state.pressed("click")) {
+                for (const SliderPlace& placed : slider_places(r, places)) {
+                    if (pointing_at(r, placed.rect)) {
+                        on_button = true;
+                        if (placed.slider->enabled) {
+                            r.dragging = r.world->guid(placed.entity);
+                        }
+                        break;
+                    }
+                }
+                for (const ListPlace& placed : list_places(r, places, fill)) {
+                    if (on_button || !pointing_at(r, placed.rect) || !pointer) {
+                        continue;
+                    }
+                    on_button = true;
+                    const std::int64_t row = list_row_at(
+                        static_cast<float>(at_pointer.y) - placed.rect.y,
+                        static_cast<float>(r.font_face.line_height()), placed.words.size());
+                    if (placed.list->enabled && row >= 0) {
+                        if (auto* list = r.world->get<ScreenList>(placed.entity)) {
+                            list->selected = row;
+                        }
+                        const std::array<reflect::Value, 1> choice{
+                            reflect::Value{placed.words[static_cast<std::size_t>(row)]}};
+                        emit(*r.vm, *r.world, placed.entity, "picked", choice);
+                    }
+                }
+            }
+            if (r.dragging.is_valid()) {
+                const world::Entity held = r.world->find(r.dragging);
+                if (!r.state.held("click") || !held.is_valid() || !pointer) {
+                    r.dragging = Guid{};
+                } else {
+                    for (const SliderPlace& placed : slider_places(r, places)) {
+                        if (placed.entity != held || !placed.slider->enabled) {
+                            continue;
+                        }
+                        auto* slider = r.world->get<ScreenSlider>(held);
+                        if (slider == nullptr) {
+                            continue;
+                        }
+                        const double now = slider_value_at(*slider, (at_pointer.x - placed.rect.x) /
+                                                                        placed.rect.w);
+                        if (now != slider->value) {
+                            slider->value = now;
+                            const std::array<reflect::Value, 1> value{reflect::Value{now}};
+                            emit(*r.vm, *r.world, held, "changed", value);
+                        }
+                    }
                 }
             }
         }
@@ -3611,6 +3764,56 @@ void Runtime::draw_hud() {
                       : over                  ? r.settings.ui.highlight
                                               : r.settings.ui.text,
                       1);
+    }
+    // Screen Sliders: a line in the menus' colours, filled to a knob, lit under the
+    // pointer or while dragged.
+    for (const SliderPlace& placed : slider_places(r, places)) {
+        const render::Rect& line = placed.rect;
+        const bool on = placed.slider->enabled;
+        const bool lit = on && (pointing_at(r, line) || r.dragging == r.world->guid(placed.entity));
+        const auto f = static_cast<float>(slider_fraction(*placed.slider));
+        const float middle = std::floor(line.y + (line.h / 2.0F)) - 1.0F;
+        r.sprites->draw(*r.white, one, render::Rect{line.x, middle, line.w, 2.0F},
+                        r.settings.ui.border);
+        r.sprites->draw(*r.white, one,
+                        render::Rect{line.x, middle, std::floor((line.w - 4.0F) * f), 2.0F},
+                        on ? r.settings.ui.highlight : r.settings.ui.dim);
+        const float knob = std::floor(line.x + ((line.w - 4.0F) * f));
+        r.sprites->draw(*r.white, one, render::Rect{knob, line.y, 4.0F, line.h},
+                        !on   ? r.settings.ui.dim
+                        : lit ? r.settings.ui.highlight
+                              : r.settings.ui.text);
+    }
+    // Screen Lists: a box of choices, the one picked on a lit row, the one under the
+    // pointer in the highlight.
+    for (const ListPlace& placed : list_places(r, places, fill)) {
+        const render::Rect& box = placed.rect;
+        const auto line_h = static_cast<float>(font.line_height());
+        r.sprites->draw(*r.white, one, box, r.settings.ui.border);
+        r.sprites->draw(*r.white, one,
+                        render::Rect{box.x + 1.0F, box.y + 1.0F, box.w - 2.0F, box.h - 2.0F},
+                        r.settings.ui.box);
+        const bool pointer = r.state.pointer().has_value();
+        const input::Pointer at_pointer = r.state.pointer().value_or(input::Pointer{});
+        const std::int64_t under =
+            pointer && pointing_at(r, box)
+                ? list_row_at(static_cast<float>(at_pointer.y) - box.y, line_h, placed.words.size())
+                : -1;
+        for (std::size_t i = 0; i < placed.words.size(); ++i) {
+            const float row_y = box.y + 3.0F + (static_cast<float>(i) * line_h);
+            const auto index = static_cast<std::int64_t>(i);
+            if (index == placed.list->selected) {
+                r.sprites->draw(*r.white, one,
+                                render::Rect{box.x + 1.0F, row_y, box.w - 2.0F, line_h},
+                                r.settings.ui.border);
+            }
+            ui::draw_text(*r.sprites, *r.font, font, placed.words[i], box.x + 3.0F, row_y,
+                          !placed.list->enabled ? r.settings.ui.dim
+                          : index == under || index == placed.list->selected
+                              ? r.settings.ui.highlight
+                              : r.settings.ui.text,
+                          1);
+        }
     }
     if (const reflect::TypeInfo* type = r.world->registry().find_type<ScreenText>()) {
         r.world->each(*type, [&](world::Entity e, reflect::ObjectRef ref) {

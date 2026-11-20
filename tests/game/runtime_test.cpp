@@ -5131,6 +5131,116 @@ TEST_CASE("Screen Buttons are clicked with the mouse: Rules hear it, and the her
           std::array<float, 2>{38.0F, 14.0F});
 }
 
+TEST_CASE("Screen Sliders and Lists: values along a line, choices in rows") {
+    game::ScreenSlider slider;
+    CHECK(game::slider_fraction(slider) == doctest::Approx(0.5));
+    CHECK(game::slider_value_at(slider, 0.26) == 3.0); // on a step
+    CHECK(game::slider_value_at(slider, -1.0) == 0.0);
+    CHECK(game::slider_value_at(slider, 9.0) == 10.0);
+    slider.step = 0.0;
+    CHECK(game::slider_value_at(slider, 0.25) == doctest::Approx(2.5));
+    slider.least = 10.0; // the other way round
+    slider.most = 0.0;
+    CHECK(game::slider_value_at(slider, 0.25) == doctest::Approx(7.5));
+    slider.most = 10.0;
+    CHECK(game::slider_fraction(slider) == 0.0); // least and most meet
+    CHECK(game::list_items(" Potion , Ether,, Phoenix down ") ==
+          std::vector<std::string>{"Potion", "Ether", "Phoenix down"});
+    CHECK(game::list_items("").empty());
+    CHECK(game::list_size(game::ScreenList{}, 30.0F, 8.0F, 3) ==
+          std::array<float, 2>{36.0F, 30.0F});
+    CHECK(game::list_row_at(2.0F, 8.0F, 3) == -1); // the frame
+    CHECK(game::list_row_at(3.0F, 8.0F, 3) == 0);
+    CHECK(game::list_row_at(12.0F, 8.0F, 3) == 1);
+    CHECK(game::list_row_at(27.0F, 8.0F, 3) == -1); // below the last
+}
+
+TEST_CASE("Screen Sliders are dragged and Screen Lists picked from, with the mouse") {
+    const Project project;
+    {
+        reflect::Registry registry;
+        game::register_types(registry);
+        world::World w(registry);
+        REQUIRE(scene2d::register_components(w));
+        REQUIRE(game::register_behaviour_components(w));
+        const world::Entity hero = w.create("hero");
+        w.add<scene2d::Transform2D>(hero);
+        w.add<game::TopDownMover>(hero);
+        w.add<game::PointAndClick>(hero);
+        // A volume slider from 0 to 10 along 64 pixels at (4, 4); lists at (4, 40) and
+        // (100, 40), the second turned off.
+        w.add<game::ScreenSlider>(w.create("volume"));
+        game::ScreenList* items = w.add<game::ScreenList>(w.create("bag"));
+        items->items = "Potion, Ether";
+        items->y = 40.0;
+        game::ScreenList* off = w.add<game::ScreenList>(w.create("locked"));
+        off->items = "Key";
+        off->x = 100.0;
+        off->y = 40.0;
+        off->enabled = false;
+        write_json(project.folder.path / "assets/maps/menu.dscene", serialize::scene_to_json(w));
+        std::vector<serialize::Issue> issues;
+        std::optional<game::ProjectSettings> settings =
+            game::read_project(project.folder.path, issues);
+        REQUIRE(settings.has_value());
+        if (!settings) {
+            return;
+        }
+        settings->start_scene = "maps/menu.dscene";
+        write_json(project.folder.path / game::project_file, game::project_to_json(*settings));
+        logic::LogicAsset rules;
+        rules.name = "menu";
+        rules.rules.push_back(logic::Rule{
+            logic::BlockId{1}, "volume", "changed", {}, {ir::log(2, Project::text("moved"))}, {}});
+        rules.rules.push_back(logic::Rule{
+            logic::BlockId{3}, "bag", "picked", {}, {ir::log(4, ir::event_value("choice"))}, {}});
+        rules.rules.push_back(logic::Rule{logic::BlockId{5},
+                                          "locked",
+                                          "picked",
+                                          {},
+                                          {ir::log(6, ir::event_value("choice"))},
+                                          {}});
+        write_json(project.folder.path / "assets/logic/menu.drules",
+                   serialize::logic_to_json(rules));
+    }
+    input::Recording replay;
+    const auto left = input::Binding::mouse(input::MouseButton::Left);
+    // Pressed on the slider's left end, dragged to the middle and past the right end, let
+    // go; then the pointer passes back over it with no button held.
+    replay.record_pointer(2, input::Pointer{4.5, 6.0});
+    replay.record(2, left, true);
+    replay.record_pointer(4, input::Pointer{36.0, 6.0});
+    replay.record_pointer(6, input::Pointer{200.0, 6.0});
+    replay.record(8, left, false);
+    replay.record_pointer(10, input::Pointer{10.0, 6.0});
+    // The bag's second row, then the turned-off list.
+    const double line = ui::PixelFont::builtin().line_height();
+    const auto click = [&](std::uint64_t at, double x, double y) {
+        replay.record_pointer(at, input::Pointer{x, y});
+        replay.record(at, left, true);
+        replay.record(at + 1, left, false);
+    };
+    click(14, 6.0, 40.0 + 3.0 + line + 1.0);
+    click(18, 102.0, 40.0 + 4.0);
+    const auto runtime = project.open(no_graphics(&replay));
+    for (int i = 0; i < 24; ++i) {
+        runtime->step();
+    }
+    const world::World& w = runtime->world();
+    const game::ScreenSlider* volume = w.get<game::ScreenSlider>(w.find_named("volume").at(0));
+    CHECK(volume->value == 10.0); // where it was let go
+    const std::vector<std::string>& log = runtime->log();
+    CHECK(std::count(log.begin(), log.end(), "moved") == 3); // 0, 5, then 10
+    CHECK(std::count(log.begin(), log.end(), "Ether") == 1);
+    CHECK(std::count(log.begin(), log.end(), "Potion") == 0);
+    CHECK(std::count(log.begin(), log.end(), "Key") == 0); // turned off
+    CHECK(w.get<game::ScreenList>(w.find_named("bag").at(0))->selected == 1);
+    CHECK(w.get<game::ScreenList>(w.find_named("locked").at(0))->selected == -1);
+    const scene2d::Transform2D* hero = w.get<scene2d::Transform2D>(w.find_named("hero").at(0));
+    CHECK(hero->x == 0.0); // the clicks were the widgets', not walks
+    CHECK(hero->y == 0.0);
+}
+
 TEST_CASE("Clicking a chest in a running game walks the hero to it and opens it") {
     const Project project;
     {

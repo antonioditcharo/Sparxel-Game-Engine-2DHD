@@ -322,7 +322,7 @@ void TacticsObject::play_enemy(world::World& world, world::Entity enemy, std::ui
             }
         }
         if (best.has_value()) {
-            const Tile chosen = *best;
+            const Tile chosen = best.value_or(Tile{});
             if (auto* to = world.get<scene2d::Transform2D>(enemy)) {
                 const auto [x, y] = stand_on(chosen);
                 to->x = x;

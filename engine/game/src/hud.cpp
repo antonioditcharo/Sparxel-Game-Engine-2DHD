@@ -300,6 +300,125 @@ void register_hud(reflect::Registry& registry) {
     button.event<>("clicked")
         .text("When it is clicked")
         .tooltip("The player clicked it with the mouse.");
+
+    auto slider = registry.add_type<ScreenSlider>("screen_slider")
+                      .display_name("Screen Slider")
+                      .category("Interface")
+                      .tooltip("A knob the player drags along a line with the mouse, setting a "
+                               "value: a volume, how many to buy. Its Rules hear \"changed\".");
+    slider.property<&ScreenSlider::value>("value").tooltip("Where the knob is now.");
+    slider.property<&ScreenSlider::least>("least").tooltip("The value at the left end.");
+    slider.property<&ScreenSlider::most>("most").tooltip("The value at the right end.");
+    slider.property<&ScreenSlider::step>("step")
+        .range(0.0, 1000000.0)
+        .tooltip("The value moves in steps of this; 0 for any value between.");
+    slider.property<&ScreenSlider::anchor>("anchor").display_name("Place").tooltip(
+        "The corner, side or middle of the screen it is fixed to.");
+    slider.property<&ScreenSlider::x>("x")
+        .range(-1000.0, 1000.0)
+        .step(1.0)
+        .tooltip("Pixels in from the place's side.");
+    slider.property<&ScreenSlider::y>("y")
+        .range(-1000.0, 1000.0)
+        .step(1.0)
+        .tooltip("Pixels in from the place's top or bottom.");
+    slider.property<&ScreenSlider::width>("width")
+        .range(8.0, 4000.0)
+        .step(1.0)
+        .tooltip("Pixels along the line.");
+    slider.property<&ScreenSlider::enabled>("enabled").tooltip("Off, it is dim and does not move.");
+    slider.property<&ScreenSlider::visible>("visible").tooltip("Hidden, for logic to show later.");
+    slider.event<double>("changed", {"value"})
+        .text("When it is moved to {value}")
+        .tooltip("The player dragged the knob to another value.");
+
+    auto list = registry.add_type<ScreenList>("screen_list")
+                    .display_name("Screen List")
+                    .category("Interface")
+                    .tooltip("Choices one under another that the player picks with the mouse: "
+                             "an item, a save, a place. Its Rules hear \"picked\".");
+    list.property<&ScreenList::items>("items").tooltip(
+        "The choices, separated by commas, with values in braces: Potion ({potion}), Ether.");
+    list.property<&ScreenList::selected>("selected")
+        .range(-1.0, 1000.0)
+        .tooltip("The choice picked, from 0 for the first; -1 for none.");
+    list.property<&ScreenList::anchor>("anchor").display_name("Place").tooltip(
+        "The corner, side or middle of the screen it is fixed to.");
+    list.property<&ScreenList::x>("x")
+        .range(-1000.0, 1000.0)
+        .step(1.0)
+        .tooltip("Pixels in from the place's side.");
+    list.property<&ScreenList::y>("y")
+        .range(-1000.0, 1000.0)
+        .step(1.0)
+        .tooltip("Pixels in from the place's top or bottom.");
+    list.property<&ScreenList::width>("width")
+        .range(0.0, 4000.0)
+        .step(1.0)
+        .tooltip("Pixels across; 0 fits the widest choice.");
+    list.property<&ScreenList::enabled>("enabled").tooltip("Off, it is dim and not picked from.");
+    list.property<&ScreenList::visible>("visible").tooltip("Hidden, for logic to show later.");
+    list.event<std::string>("picked", {"choice"})
+        .text("When {choice} is picked")
+        .tooltip("The player clicked one of its choices.");
+}
+
+double slider_fraction(const ScreenSlider& slider) noexcept {
+    const double span = slider.most - slider.least;
+    if (!std::isfinite(span) || span == 0.0 || !std::isfinite(slider.value)) {
+        return 0.0;
+    }
+    return std::clamp((slider.value - slider.least) / span, 0.0, 1.0);
+}
+
+double slider_value_at(const ScreenSlider& slider, double fraction) noexcept {
+    const double least = std::isfinite(slider.least) ? slider.least : 0.0;
+    const double most = std::isfinite(slider.most) ? slider.most : least;
+    const double f = std::isfinite(fraction) ? std::clamp(fraction, 0.0, 1.0) : 0.0;
+    double value = least + (f * (most - least));
+    if (std::isfinite(slider.step) && slider.step > 0.0) {
+        value = least + (std::round((value - least) / slider.step) * slider.step);
+    }
+    return std::clamp(value, std::min(least, most), std::max(least, most));
+}
+
+std::vector<std::string> list_items(std::string_view items) {
+    std::vector<std::string> out;
+    std::size_t start = 0;
+    while (start <= items.size()) {
+        const std::size_t comma = items.find(',', start);
+        const std::size_t end = comma == std::string_view::npos ? items.size() : comma;
+        std::string_view item = items.substr(start, end - start);
+        while (!item.empty() && item.front() == ' ') {
+            item.remove_prefix(1);
+        }
+        while (!item.empty() && item.back() == ' ') {
+            item.remove_suffix(1);
+        }
+        if (!item.empty()) {
+            out.emplace_back(item);
+        }
+        if (comma == std::string_view::npos) {
+            break;
+        }
+        start = comma + 1;
+    }
+    return out;
+}
+
+std::array<float, 2> list_size(const ScreenList& list, float words_width, float line_height,
+                               std::size_t count) noexcept {
+    const bool own = std::isfinite(list.width) && list.width > 0.0;
+    return {own ? static_cast<float>(list.width) : words_width + 6.0F,
+            (static_cast<float>(count) * line_height) + 6.0F};
+}
+
+std::int64_t list_row_at(float down, float line_height, std::size_t count) noexcept {
+    if (!(line_height > 0.0F) || !std::isfinite(down) || down < 3.0F) {
+        return -1;
+    }
+    const auto row = static_cast<std::int64_t>(std::floor((down - 3.0F) / line_height));
+    return row < static_cast<std::int64_t>(count) ? row : -1;
 }
 
 std::array<float, 2> button_size(const ScreenButton& button, float words_width,
@@ -315,7 +434,9 @@ bool register_hud_components(world::World& world) {
     const bool picture = world.register_component<ScreenPicture>();
     const bool layout = world.register_component<ScreenLayout>();
     const bool button = world.register_component<ScreenButton>();
-    return text && bar && picture && layout && button;
+    const bool widgets =
+        world.register_component<ScreenSlider>() && world.register_component<ScreenList>();
+    return text && bar && picture && layout && button && widgets;
 }
 
 } // namespace engine::game
