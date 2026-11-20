@@ -167,7 +167,7 @@ struct LookNumber {
     float min;
     float max;
 };
-constexpr std::array<LookNumber, 11> look_numbers{{
+constexpr std::array<LookNumber, 13> look_numbers{{
     {"focus_center", &render::Look::focus_center, 0.0F, 1.0F},
     {"focus_height", &render::Look::focus_height, 0.0F, 1.0F},
     {"blur", &render::Look::blur, 0.0F, 12.0F},
@@ -179,6 +179,8 @@ constexpr std::array<LookNumber, 11> look_numbers{{
     {"contrast", &render::Look::contrast, 0.0F, 2.0F},
     {"saturation", &render::Look::saturation, 0.0F, 2.0F},
     {"vignette", &render::Look::vignette, 0.0F, 1.0F},
+    {"grain", &render::Look::grain, 0.0F, 1.0F},
+    {"scanlines", &render::Look::scanlines, 0.0F, 1.0F},
 }};
 
 [[nodiscard]] std::string entry_path(const std::string& file, const std::string& key) {

@@ -2062,7 +2062,7 @@ bool Look::neutral() const noexcept {
     const bool no_tilt = !tilt_shift || !(blur >= 0.5F);
     return no_tilt && !(bloom > 0.0F) && exposure == 1.0F && contrast == 1.0F &&
            saturation == 1.0F && !(vignette > 0.0F) && tint_r == 1.0F && tint_g == 1.0F &&
-           tint_b == 1.0F;
+           tint_b == 1.0F && !(grain > 0.0F) && !(scanlines > 0.0F);
 }
 
 struct PostProcessor::Native {
@@ -2075,6 +2075,7 @@ struct PostProcessor::Native {
     SDL_GPUTexture* bright{nullptr};
     std::uint32_t width = 0;
     std::uint32_t height = 0;
+    std::uint32_t frame = 0; ///< Counts frames, for the grain.
 };
 
 PostProcessor::PostProcessor(Device& device, std::unique_ptr<Native> native)
@@ -2213,7 +2214,9 @@ bool PostProcessor::apply(const RenderTarget& source, RenderTarget& destination,
         return std::isfinite(value) ? std::clamp(value, low, high) : fallback;
     };
     const float half_band = clamped(look.focus_height, 0.0F, 1.0F, 0.35F) / 2.0F;
-    const std::array<float, 20> uniforms{static_cast<float>(source.width()),
+    // Grain moves on each frame.
+    n.frame = (n.frame + 1) % 100000U;
+    const std::array<float, 24> uniforms{static_cast<float>(source.width()),
                                          static_cast<float>(source.height()),
                                          0.0F,
                                          0.0F,
@@ -2233,6 +2236,10 @@ bool PostProcessor::apply(const RenderTarget& source, RenderTarget& destination,
                                          clamped(look.tint_r, 0.0F, 2.0F, 1.0F),
                                          clamped(look.tint_g, 0.0F, 2.0F, 1.0F),
                                          clamped(look.tint_b, 0.0F, 2.0F, 1.0F),
+                                         0.0F,
+                                         clamped(look.grain, 0.0F, 1.0F, 0.0F),
+                                         clamped(look.scanlines, 0.0F, 1.0F, 0.0F),
+                                         static_cast<float>(n.frame),
                                          0.0F};
 
     SDL_GPUCommandBuffer* commands = SDL_AcquireGPUCommandBuffer(n.device);

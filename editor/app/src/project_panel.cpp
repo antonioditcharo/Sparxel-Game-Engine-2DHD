@@ -648,6 +648,8 @@ void ProjectPanel::build() {
              LookField{"Contrast", "contrast", &engine::render::Look::contrast, 2},
              LookField{"Saturation", "saturation", &engine::render::Look::saturation, 2},
              LookField{"Vignette", "vignette", &engine::render::Look::vignette, 1},
+             LookField{"Film grain", "grain", &engine::render::Look::grain, 1},
+             LookField{"Scanlines", "scanlines", &engine::render::Look::scanlines, 1},
          }) {
         const auto member = field.member;
         number(

@@ -6,6 +6,7 @@
 
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -85,7 +86,8 @@ TEST_CASE("A Look is neutral until it changes something") {
              [](render::Look& l) { l.bloom = 0.5F; }, [](render::Look& l) { l.exposure = 1.1F; },
              [](render::Look& l) { l.contrast = 0.9F; },
              [](render::Look& l) { l.saturation = 1.2F; },
-             [](render::Look& l) { l.vignette = 0.3F; }}) {
+             [](render::Look& l) { l.vignette = 0.3F; }, [](render::Look& l) { l.grain = 0.2F; },
+             [](render::Look& l) { l.scanlines = 0.5F; }}) {
         render::Look changed;
         change(changed);
         CHECK_FALSE(changed.neutral());
@@ -210,6 +212,44 @@ TEST_CASE("Grading changes exposure, contrast and saturation, and the vignette t
     look = render::Look{};
     look.exposure = 100.0F;
     CHECK(near(pixel(frame.apply(look), 16, 5, 5), Color{255, 128, 255, 255}));
+}
+
+TEST_CASE("Scanlines darken every other row; grain is noise that moves each frame") {
+    render::Device* device = gpu();
+    if (device == nullptr) {
+        return;
+    }
+    Frame frame(*device, 16, 8,
+                [](std::uint32_t, std::uint32_t) { return Color{200, 200, 200, 255}; });
+    render::Look look;
+    look.scanlines = 1.0F;
+    const std::vector<std::uint8_t> lined = frame.apply(look);
+    // Even rows as they were; odd rows 35 % darker (200 to 130).
+    CHECK(pixel(lined, 16, 3, 0) == Color{200, 200, 200, 255});
+    CHECK(pixel(lined, 16, 3, 2) == Color{200, 200, 200, 255});
+    const Color odd = pixel(lined, 16, 3, 1);
+    CHECK(std::abs(static_cast<int>(odd.r) - 130) <= 1);
+    look.scanlines = 0.0F;
+    look.grain = 1.0F;
+    const std::vector<std::uint8_t> first = frame.apply(look);
+    const std::vector<std::uint8_t> second = frame.apply(look);
+    // Pixels differ from one another and from frame to frame, by at most 0.075 of white,
+    // and on average stay as they were.
+    int lowest = 255;
+    int highest = 0;
+    double sum = 0.0;
+    for (std::uint32_t y = 0; y < 8; ++y) {
+        for (std::uint32_t x = 0; x < 16; ++x) {
+            const int r = pixel(first, 16, x, y).r;
+            lowest = std::min(lowest, r);
+            highest = std::max(highest, r);
+            sum += r;
+            CHECK(std::abs(r - 200) <= 20);
+        }
+    }
+    CHECK(highest - lowest > 5);
+    CHECK(std::abs((sum / 128.0) - 200.0) < 4.0);
+    CHECK(first != second);
 }
 
 TEST_CASE("Post-processing needs a second target of the same size") {

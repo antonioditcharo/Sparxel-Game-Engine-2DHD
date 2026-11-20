@@ -104,7 +104,7 @@ action kits (GameMaker), audio mixing (zones, reverb), and team features.
 | D3 | Lights | Octopath | **Partial**: point lights in both styles with sun and moon, flickering as torches, candles or pulses, and baked lights; no spot or area lights, or cookies |
 | D4 | Sprite shadows | Octopath | **Done**: round or cast shadows, block shadows |
 | D5 | Time of day | Octopath | **Done**: a clock with dawns, dusks and nights |
-| D6 | Post-processing | Unity URP | **Partial**: tilt-shift, bloom, grading, vignette, fog; no SSAO, grain, CRT |
+| D6 | Post-processing | Unity URP | **Partial**: tilt-shift, bloom, grading, vignette, fog, film grain and CRT scanlines; no SSAO |
 | D7 | Look presets | Octopath | **Partial**: seven presets, previewed by hovering; no zone or time blending |
 | D8 | Texel density | | **Partial**: one PPU for the project, every sprite pixel-snapped; no checker for art drawn at another density |
 | D9 | Filtering modes | | **Done**: nearest pixels inside the game, shown pixel-perfect, filling the window sharp (whole-number nearest, then smoothed to fit) or smooth |

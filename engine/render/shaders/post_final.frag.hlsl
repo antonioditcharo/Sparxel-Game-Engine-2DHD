@@ -1,6 +1,6 @@
 // Post-processing, second pass: finishes both blurs vertically, adds the bloom, then grades
-// (exposure, contrast, saturation) and darkens the corners (vignette). With neutral
-// settings every pixel comes out as it went in.
+// (exposure, contrast, saturation), darkens the corners (vignette), and adds film grain
+// and CRT scanlines. With neutral settings every pixel comes out as it went in.
 
 Texture2D<float4> blurred : register(t0, space2);
 Texture2D<float4> bright : register(t1, space2);
@@ -14,7 +14,14 @@ cbuffer Look : register(b0, space3)
     float4 bloom; // x: threshold, y: intensity, z: radius (pixels)
     float4 grade; // x: exposure, y: contrast, z: saturation, w: vignette
     float4 tint;  // the light's colour: r, g, b multiplied
+    float4 film;  // x: grain, y: scanlines, z: the frame (for the grain)
 };
+
+// A number from 0 to 1 for a pixel and a frame, the same each time.
+float noise(int x, int y, float frame)
+{
+    return frac(sin(dot(float3(x, y, frame), float3(12.9898, 78.233, 37.719))) * 43758.5453);
+}
 
 float tilt_radius(float y)
 {
@@ -80,6 +87,14 @@ float4 main(float4 position : SV_Position) : SV_Target0
         // Squared distance from the centre, 1 at the corners.
         const float2 from_centre = ((position.xy) / size.xy - 0.5) * 2.0;
         c *= 1.0 - grade.w * saturate(dot(from_centre, from_centre) / 2.0);
+    }
+    if (film.x > 0.0)
+    {
+        c += film.x * 0.15 * (noise(x, y, film.z) - 0.5);
+    }
+    if (film.y > 0.0 && (y % 2) == 1)
+    {
+        c *= 1.0 - (0.35 * film.y);
     }
     return float4(saturate(c), 1.0);
 }

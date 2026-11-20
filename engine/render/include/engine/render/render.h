@@ -558,6 +558,10 @@ struct Look {
     float tint_r = 1.0F;
     float tint_g = 1.0F;
     float tint_b = 1.0F;
+    /// Film grain (plan/02 D6): a little noise, different every frame, 0 (none) to 1.
+    float grain = 0.0F;
+    /// CRT scanlines: every other row darkened, by up to 35 % at 1; 0 for none.
+    float scanlines = 0.0F;
 
     /// True if processing would change nothing, so it can be skipped.
     [[nodiscard]] bool neutral() const noexcept;

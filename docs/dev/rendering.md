@@ -267,6 +267,8 @@ the same size.
 | `bloom`, `bloom_threshold`, `bloom_radius` | Bright parts glow: what is brighter than the threshold spreads by the radius, added back times `bloom` | 0 to 2 (0: off), 0 to 1 (0.75), 0 to 16 px (6) |
 | `exposure`, `contrast`, `saturation` | Colour grading: brightness; around mid-grey; from grey (0) to vivid | 0 to 4, 0 to 2, 0 to 2 (all 1) |
 | `vignette` | Darkens towards the corners | 0 to 1 (0) |
+| `grain` | Film grain: a little noise on every pixel, different each frame (up to 0.075 of white either way) | 0 to 1 (0) |
+| `scanlines` | CRT scanlines: every other row of the picture darkened, by 35 % at 1 | 0 to 1 (0) |
 
 - **Two full-screen passes.** The first blurs along rows, by each row's tilt-shift radius
   and for bloom, into two targets at once; the second finishes both down the columns,
@@ -282,8 +284,10 @@ the same size.
   band's rows exactly and turns one-pixel black and white columns mid-grey far from it;
   bloom spreads a glow from a white dot that fades with distance, and none from a dim
   one below the threshold; exposure 1.5, contrast 0, saturation 0 (the luma) and the
-  vignette give the expected colours, and exposure 100 is clamped to 4; targets that are
-  the same or of different sizes are refused.
+  vignette give the expected colours, and exposure 100 is clamped to 4; scanlines at 1
+  leave even rows of grey 200 as they were and take odd ones to 130; grain at 1 moves
+  pixels by at most 20 either way, keeps their average, and differs from one frame to the
+  next; targets that are the same or of different sizes are refused.
 
 ## 9. Next increments
 
