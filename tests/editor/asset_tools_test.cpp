@@ -113,6 +113,56 @@ TEST_CASE("Renaming: a picture with its companions, and a scene with every refer
     CHECK(fs::exists(assets / "maps" / "town.dscene"));
 }
 
+TEST_CASE("Moving: a picture and a scene into other folders, references and GUIDs kept") {
+    const Sample s;
+    const fs::path assets = s.path / "assets";
+    fs::create_directories(assets / "art" / "people");
+    fs::create_directories(assets / ".sparxel");
+    // The folders offered: assets/ itself first, then each one, hidden ones left out.
+    const std::vector<std::string> folders = editor::asset_folders(s.path);
+    REQUIRE_FALSE(folders.empty());
+    CHECK(folders.front().empty());
+    CHECK(std::ranges::find(folders, "art/people") != folders.end());
+    CHECK(std::ranges::find(folders, "maps") != folders.end());
+    CHECK(std::ranges::none_of(folders, [](const std::string& f) { return f.starts_with("."); }));
+
+    std::ofstream(assets / "art" / "hero.sheet") << R"({"frame_width": 16})";
+    const std::string guid = read_all(assets / "art" / "hero.png.meta");
+    std::vector<std::string> changed;
+    std::string error;
+    REQUIRE(editor::move_asset(s.path, "art/hero.png", "art/people", changed, error));
+    CHECK(fs::exists(assets / "art" / "people" / "hero.png"));
+    CHECK(fs::exists(assets / "art" / "people" / "hero.sheet")); // with its companions
+    CHECK_FALSE(fs::exists(assets / "art" / "hero.png"));
+    CHECK(read_all(assets / "art" / "people" / "hero.png.meta") == guid);
+    CHECK(editor::find_asset_usages(s.path, "art/people/hero.png").size() == 2);
+
+    // A scene named by its path: moved to assets/ itself, every reference following.
+    changed.clear();
+    REQUIRE(editor::move_asset(s.path, "maps/village.dscene", "", changed, error));
+    CHECK(fs::exists(assets / "village.dscene"));
+    CHECK(read_all(s.path / "project.sparxel.json").find("\"village.dscene\"") !=
+          std::string::npos);
+    CHECK(editor::find_asset_usages(s.path, "maps/village.dscene").empty());
+    CHECK_FALSE(editor::find_asset_usages(s.path, "village.dscene").empty());
+
+    // Refused: where it is already, a folder that is not there or climbs out, a name in the
+    // way, a missing asset, a table the game reads by its path.
+    CHECK_FALSE(editor::move_asset(s.path, "village.dscene", "", changed, error));
+    CHECK(error == "It is in that folder already.");
+    CHECK_FALSE(editor::move_asset(s.path, "village.dscene", "nowhere", changed, error));
+    CHECK(error == "There is no folder nowhere in assets/.");
+    CHECK_FALSE(editor::move_asset(s.path, "village.dscene", "../..", changed, error));
+    std::ofstream(assets / "maps" / "village.dscene") << "{}";
+    CHECK_FALSE(editor::move_asset(s.path, "village.dscene", "maps", changed, error));
+    CHECK(error == "There is already a maps/village.dscene.");
+    CHECK_FALSE(editor::move_asset(s.path, "maps/nowhere.dscene", "art", changed, error));
+    fs::create_directories(assets / "data");
+    std::ofstream(assets / "data" / "party.dtable") << "{}";
+    CHECK_FALSE(editor::move_asset(s.path, "data/party.dtable", "art", changed, error));
+    CHECK(fs::exists(assets / "village.dscene"));
+}
+
 TEST_CASE("Renaming a table rewrites references with and without its extension") {
     const Sample s;
     const fs::path assets = s.path / "assets";

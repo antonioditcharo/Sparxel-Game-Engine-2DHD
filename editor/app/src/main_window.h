@@ -192,6 +192,8 @@ public:
     /// Saves, then renames the asset at `asset` (with its companions) to `name`, updating
     /// what names it, and opens the project again. False, saying why, if it cannot.
     bool rename_asset(const QString& asset, const QString& name);
+    /// The same, moving it into `folder` (relative to assets/, empty for assets/ itself).
+    bool move_asset(const QString& asset, const QString& folder);
     /// Saves, then writes the assets `chosen` (files or folders, relative to assets/) with
     /// everything they use as an asset pack in the folder `pack` (editor/core/asset_packs.h).
     /// False, saying why, if it cannot.

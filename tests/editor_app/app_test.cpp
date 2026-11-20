@@ -2547,6 +2547,17 @@ TEST_CASE("The Assets panel: searched, pictures as thumbnails, usages found, ren
     CHECK(editor::find_asset_usages(e.sample.path, "maps/road.dscene").empty());
     CHECK_FALSE(
         e.window.rename_asset(QStringLiteral("maps/forest.dscene"), QStringLiteral("village")));
+
+    // Moving it into another folder: it stays open where it now is, and what goes there
+    // follows; a folder that is not there is refused, saying so.
+    fs::create_directories(e.sample.path / "assets" / "maps" / "wild");
+    REQUIRE(e.window.move_asset(QStringLiteral("maps/forest.dscene"), QStringLiteral("maps/wild")));
+    CHECK(e.window.document()->scene_path() == "maps/wild/forest.dscene");
+    CHECK(fs::exists(e.sample.path / "assets" / "maps" / "wild" / "forest.dscene"));
+    CHECK_FALSE(editor::find_asset_usages(e.sample.path, "maps/wild/forest.dscene").empty());
+    CHECK(e.window.statusBar()->currentMessage().startsWith(QStringLiteral("Moved to maps/wild")));
+    CHECK_FALSE(
+        e.window.move_asset(QStringLiteral("maps/wild/forest.dscene"), QStringLiteral("nowhere")));
 }
 
 TEST_CASE("On-screen elements: clicked to select, dragged from their Place, in one undo") {

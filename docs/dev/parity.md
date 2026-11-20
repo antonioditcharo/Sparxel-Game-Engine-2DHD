@@ -45,7 +45,7 @@ action kits (GameMaker), audio mixing (zones, reverb), and team features.
 | A1 | Project hub | Godot's project manager | **Partial**: a start page with recent projects and the sample; no thumbnails of projects |
 | A2 | Project wizard | GDevelop's | **Partial**: name, one of eight templates and the game's size; the palette and pixels per tile are set after, in Project |
 | A3 | Templates | RPG Maker's sample games | **Done**: a playable game for each kind: top-down, Diorama, platformer, visual novel, RPG, action, point-and-click adventure and tactics |
-| A4 | Asset browser | Unity's Project window | **Partial**: thumbnails, search, find usages, safe rename (with companions and references); no tags, favourites or move between folders |
+| A4 | Asset browser | Unity's Project window | **Partial**: thumbnails, search, find usages, safe rename and move between folders (with companions and references); no tags or favourites |
 | A5 | Undo and redo everywhere | Godot | **Partial**: one history for scenes, logic and settings, Sprite Studio and the Story editor each their own; no visual history list |
 | A6 | Autosave and crash recovery | Unity | **Done**: unsaved work kept every minute and offered back after a crash |
 | A7 | Snapshots | GameMaker's backups | **Done**: named restore points with pictures (as copies, not Git) |

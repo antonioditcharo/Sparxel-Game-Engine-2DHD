@@ -118,6 +118,13 @@ finds `road.dscene`), opening folders to show what matched. **Right-click any as
   game reads by name (`data/party`, `data/enemies`, `data/items`, `data/skills`,
   `data/levels`, `data/states`, `data/achievements` and `data/translations`).
   A rename cannot be undone with Undo; take a snapshot first for a big one.
+- **Move to folder…**: one of the project's folders, or `assets/` itself (hidden ones,
+  starting with `.`, are not offered). The asset goes there with its `.meta` and its
+  companions, keeping its name, and every reference by path follows, as a rename's do;
+  the project is saved first and opened again after, in the same scene, where it now is
+  if it was the one moved. Refused: where it is already, a folder that is not there, a
+  file of the same name in the way, and the tables the game reads by name
+  (`move_asset()`, `asset_folders()`).
 - **Export as an asset pack…** (on a file or a folder; `plan/02` A12, as Unity's
   packages): a name and a place, and the pack is written as a folder
   `<name>.sparxelpack` holding `pack.json` (its format *sparxel.pack*, version 1, its name
@@ -137,7 +144,8 @@ in, and the window says which files (up to five). The project is saved first and
 again after, in the same scene. (`editor/core/asset_packs.h`: `pack_contents()`,
 `export_pack()`, `import_pack()`.)
 
-(`editor/core/asset_tools.h`: `find_asset_usages`, `asset_group`, `rename_asset`;
+(`editor/core/asset_tools.h`: `find_asset_usages`, `asset_group`, `rename_asset`,
+`move_asset`, `asset_folders`;
 `editor/app/src/asset_browser.h`: `AssetThumbnails`, `asset_filters`.)
 
 **Recolouring a sprite** (a palette swap). A Sprite's *Recolour* field has a
@@ -249,6 +257,7 @@ on *When a scene starts* run on arriving ([game.md](game.md) §8).
 | Logic as language | The sample's logic file found and read in full, line for line (its three Rules with their steps, the If and Otherwise, and the weather Brain's states, steps and timed transitions); every line traced to a block; conditions, all-of, not, waits, repeats, runs, Otherwise, event values and an unknown object read sensibly |
 | Placing assets | `place_asset()`: the hero's picture at (3.03, 4.94) becomes an entity "hero" at (3, 79/16) with a Sprite showing it, labelled *Place hero*, undone in one step; a logic file, a missing picture and a point that is not a number are refused with messages, recording nothing; a sound becomes an entity "chime" with a Sound Source repeating it (volume 1, range 8, playing) and no Sprite, which saves and reopens as placed; a `.glb` becomes an entity "hut" with a Model showing it at scale 1 and no Sprite, labelled *Place hut* |
 | Lighting maps | `make_normal_map()` writes `art/hero_normal.png` beside the hero, the picture's size; `make_glow_map()` writes `art/hero_glow.png`; a map of a map is refused (*art/hero_normal.png is a lighting map already.*), and a logic file is no picture. From the window, the same, saying what was made in the status bar, and why a map of a map was not |
+| Moving assets | `asset_folders()`: assets/ first, then each folder, none starting with `.`. The hero's picture into `art/people` with its sheet and GUID, both scenes still finding it; the village scene into assets/ itself, the project's settings and every use following; refused where it is already (*It is in that folder already.*), into a folder not there (*There is no folder nowhere in assets/.*) or climbing out, onto a file in the way (*There is already a maps/village.dscene.*), a missing asset, and a table the game reads. From the window, the scene being edited moved into `maps/wild` stays open there, what goes to it follows, the status bar says where; a folder not there is refused |
 | Smooth terrain | With *Smooth terrain* on, raising near the corner between the first four tiles raises that corner (2) and not a tile, the slope between halfway up; the map's far corner can be raised; smoothing the peak sets it to 0.5 (*Smooth ground*), undone in one step; off the map, or on a map that is not smooth terrain, Smooth does nothing |
 | Baked lighting | In the village, baking with no baked lights still shades the ground's corners beside the walls, as one undo step (*Bake lighting*), undone and redone; the same again changes and records nothing; with the lamp baked, saving bakes it, and the bake comes back when the project is opened again |
 | Editing logic | The elder's greeting: one value, its text, changed in place (two edits typed, one step); a number is refused for it. A Brain state's ambient light: its range from the registry refuses 3, takes 1. The actions offered, sorted by object. A chime added after the greeting with its default value, compiling; moved up; the first step not moved higher; deleted. A step under a Rule's header goes first; under a Brain, refused; an unknown object refused. Renaming the elder makes the compiler report its Rule; undoing everything returns the logic exactly; redo; saving writes the file and reopening reads the edit |

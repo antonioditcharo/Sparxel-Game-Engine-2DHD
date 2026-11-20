@@ -43,4 +43,16 @@ struct AssetUse {
 bool rename_asset(const std::filesystem::path& project, std::string_view asset,
                   std::string_view name, std::vector<std::string>& changed, std::string& error);
 
+/// Moves `asset` (relative to assets/), with its group, into `folder` (relative to
+/// assets/, "" for assets/ itself), keeping its name, and rewrites every reference to the
+/// moved files as rename_asset() does; their GUIDs stay. False, with `error` and nothing
+/// changed, if the folder is not one of the project's, it is there already, a file of the
+/// same name is in the way, or it is a table the game reads by its path.
+bool move_asset(const std::filesystem::path& project, std::string_view asset,
+                std::string_view folder, std::vector<std::string>& changed, std::string& error);
+
+/// The project's folders under assets/, relative to it, sorted ("" first, for assets/
+/// itself); folders whose names start with "." are left out.
+[[nodiscard]] std::vector<std::string> asset_folders(const std::filesystem::path& project);
+
 } // namespace editor

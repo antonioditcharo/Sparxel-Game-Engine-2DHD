@@ -936,6 +936,45 @@ bool MainWindow::rename_asset(const QString& asset, const QString& name) {
     return true;
 }
 
+bool MainWindow::move_asset(const QString& asset, const QString& folder) {
+    if (document_ == nullptr) {
+        return false;
+    }
+    if (document_->dirty() && !save()) {
+        return false;
+    }
+    // The scene being edited is opened again afterwards, where it now is.
+    const QString scene = text_of(document_->scene_path());
+    QString scene_after = scene;
+    for (const std::string& file : asset_group(document_->folder(), utf8_of(asset))) {
+        if (text_of(file) == scene) {
+            const QString name = QFileInfo(scene).fileName();
+            scene_after = folder.isEmpty() ? name : folder + '/' + name;
+        }
+    }
+    const fs::path project = document_->folder();
+    std::vector<std::string> changed;
+    std::string error;
+    if (!editor::move_asset(project, utf8_of(asset), utf8_of(folder), changed, error)) {
+        report(tr("Not moved: %1").arg(text_of(error)));
+        return false;
+    }
+    if (!open_project(project)) {
+        return false;
+    }
+    if (text_of(document_->scene_path()) != scene_after) {
+        open_scene(scene_after);
+    }
+    const QString where = folder.isEmpty() ? tr("assets") : folder;
+    statusBar()->showMessage(changed.empty()
+                                 ? tr("Moved to %1. What uses it still finds it.").arg(where)
+                                 : tr("Moved to %1, and %2 file(s) that named it updated.")
+                                       .arg(where)
+                                       .arg(changed.size()),
+                             8000);
+    return true;
+}
+
 bool MainWindow::export_asset_pack(const QStringList& chosen, const QString& pack,
                                    const QString& name) {
     if (document_ == nullptr || (document_->dirty() && !save())) {
@@ -1725,6 +1764,19 @@ void MainWindow::build_actions() {
                                                        QLineEdit::Normal, stem, &named);
             if (named && name != stem) {
                 rename_asset(relative, name);
+            }
+        });
+        menu.addAction(tr("Move to folder…"), this, [this, relative] {
+            QStringList folders;
+            for (const std::string& folder : asset_folders(document_->folder())) {
+                folders.append(folder.empty() ? tr("(assets)") : text_of(folder));
+            }
+            bool picked = false;
+            const QString chosen =
+                QInputDialog::getItem(this, tr("Move to folder"), tr("Move %1 to:").arg(relative),
+                                      folders, 0, false, &picked);
+            if (picked) {
+                move_asset(relative, chosen == tr("(assets)") ? QString() : chosen);
             }
         });
         offer_pack(menu, relative);

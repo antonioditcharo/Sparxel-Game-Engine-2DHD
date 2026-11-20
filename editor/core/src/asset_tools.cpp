@@ -192,45 +192,33 @@ std::vector<std::string> asset_group(const fs::path& project, std::string_view a
     return group;
 }
 
-bool rename_asset(const fs::path& project, std::string_view asset, std::string_view name,
-                  std::vector<std::string>& changed, std::string& error) {
+namespace {
+
+/// Moves `asset`'s group to `to_dir` (relative to assets/; the asset's own folder if
+/// none), each file named `stem` (its own name if empty), rewriting references.
+bool move_group(const fs::path& project, std::string_view asset,
+                const std::optional<fs::path>& to_dir, std::string_view stem,
+                std::vector<std::string>& changed, std::string& error) {
     const fs::path assets = project / "assets";
-    const fs::path path = native(asset);
     std::error_code failed;
-    if (asset.empty() || !fs::is_regular_file(assets / path, failed) ||
-        asset.find("..") != std::string_view::npos) {
-        error = "There is no such asset.";
-        return false;
-    }
-    const bool plain = !name.empty() && std::ranges::all_of(name, [](char c) {
-        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
-               c == '_' || c == '-' || c == ' ';
-    });
-    if (!plain || name.front() == ' ' || name.back() == ' ') {
-        error = "A name is letters, digits, spaces, - and _.";
-        return false;
-    }
-    if (asset.ends_with(".dtable") &&
-        std::ranges::find(reserved_tables, asset.substr(0, asset.size() - 7)) !=
-            reserved_tables.end()) {
-        error = "The game reads this table by its name, so it keeps it.";
-        return false;
-    }
     // Every file of the group, from and to; none of the new names may be taken.
     std::vector<std::pair<std::string, std::string>> moves;
     for (const std::string& from : asset_group(project, asset)) {
         const fs::path old_path = native(from);
-        fs::path to = old_path.parent_path() / native(name);
+        fs::path to = (to_dir ? *to_dir : old_path.parent_path()) /
+                      native(stem.empty() ? old_path.stem().string() : std::string(stem));
         to += old_path.extension();
         moves.emplace_back(from, generic(to));
-        if (fs::exists(assets / to, failed)) {
-            error = "There is already a " + generic(to) + ".";
-            return false;
-        }
     }
     if (moves.front().first == moves.front().second) {
-        error = "That is its name already.";
+        error = to_dir ? "It is in that folder already." : "That is its name already.";
         return false;
+    }
+    for (const auto& [from, to] : moves) {
+        if (fs::exists(assets / native(to), failed)) {
+            error = "There is already a " + to + ".";
+            return false;
+        }
     }
 
     // The references first, read before anything moves.
@@ -280,17 +268,92 @@ bool rename_asset(const fs::path& project, std::string_view asset, std::string_v
                            assets / native(moves[j].first + ".meta"), ignored);
             }
             changed.clear();
-            error = "The asset could not be renamed: " + failed.message();
+            error = std::string(to_dir ? "The asset could not be moved: "
+                                       : "The asset could not be renamed: ") +
+                    failed.message();
             return false;
         }
     }
     for (const auto& [file, text] : rewritten) {
         if (!write_whole(file, text)) {
-            error = "Renamed, but " + generic(file.filename()) + " could not be updated.";
+            error = std::string(to_dir ? "Moved" : "Renamed") + ", but " +
+                    generic(file.filename()) + " could not be updated.";
             return false;
         }
     }
     return true;
+}
+
+} // namespace
+
+bool rename_asset(const fs::path& project, std::string_view asset, std::string_view name,
+                  std::vector<std::string>& changed, std::string& error) {
+    const fs::path assets = project / "assets";
+    const fs::path path = native(asset);
+    std::error_code failed;
+    if (asset.empty() || !fs::is_regular_file(assets / path, failed) ||
+        asset.find("..") != std::string_view::npos) {
+        error = "There is no such asset.";
+        return false;
+    }
+    const bool plain = !name.empty() && std::ranges::all_of(name, [](char c) {
+        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+               c == '_' || c == '-' || c == ' ';
+    });
+    if (!plain || name.front() == ' ' || name.back() == ' ') {
+        error = "A name is letters, digits, spaces, - and _.";
+        return false;
+    }
+    if (asset.ends_with(".dtable") &&
+        std::ranges::find(reserved_tables, asset.substr(0, asset.size() - 7)) !=
+            reserved_tables.end()) {
+        error = "The game reads this table by its name, so it keeps it.";
+        return false;
+    }
+    return move_group(project, asset, std::nullopt, name, changed, error);
+}
+
+bool move_asset(const fs::path& project, std::string_view asset, std::string_view folder,
+                std::vector<std::string>& changed, std::string& error) {
+    const fs::path assets = project / "assets";
+    std::error_code failed;
+    if (asset.empty() || !fs::is_regular_file(assets / native(asset), failed) ||
+        asset.find("..") != std::string_view::npos) {
+        error = "There is no such asset.";
+        return false;
+    }
+    const auto folders = asset_folders(project);
+    if (folder.find("..") != std::string_view::npos ||
+        std::ranges::find(folders, std::string(folder)) == folders.end()) {
+        error = "There is no folder " + std::string(folder) + " in assets/.";
+        return false;
+    }
+    if (asset.ends_with(".dtable") &&
+        std::ranges::find(reserved_tables, asset.substr(0, asset.size() - 7)) !=
+            reserved_tables.end()) {
+        error = "The game reads this table by its name, so it keeps it.";
+        return false;
+    }
+    return move_group(project, asset, native(folder), {}, changed, error);
+}
+
+std::vector<std::string> asset_folders(const fs::path& project) {
+    std::vector<std::string> out{std::string()};
+    const fs::path assets = project / "assets";
+    std::error_code failed;
+    for (auto it = fs::recursive_directory_iterator(assets, failed);
+         !failed && it != fs::recursive_directory_iterator(); it.increment(failed)) {
+        const std::string name = it->path().filename().string();
+        if (it->is_directory(failed) && !name.empty() && name.front() == '.') {
+            it.disable_recursion_pending();
+            continue;
+        }
+        if (it->is_directory(failed)) {
+            out.push_back(generic(it->path().lexically_relative(assets)));
+        }
+    }
+    std::sort(out.begin(), out.end());
+    return out;
 }
 
 } // namespace editor
