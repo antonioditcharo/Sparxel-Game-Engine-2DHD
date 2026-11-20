@@ -67,11 +67,12 @@ replaces. Cancel goes back a step. Pieces are rows of `data/items` with a `slot`
 | **Language** | Left and Right go through *The game's own* and each language of `data/translations` ([localization.md](localization.md)) |
 | **Graphics** | Left and Right go through *High* (as the game was made), *Medium* (no bloom glow, no shadows from the sun's shadow map: soft round ones under characters instead) and *Low* (also no tilt-shift blur), for slower computers. The project's own look is not changed, only what this player's frames get |
 | **Flashing** | *On* or *Reduced*: no flashes of colour when something is hurt, no blinking while it is safe ([game.md](game.md), *Health and combat*), and no camera shakes, for players sensitive to flashing |
+| **Text size** | *Normal* or *Large*: messages' words twice the size (`ui::draw_rich()`'s scale), fewer to a line and two lines to a box on a 320 × 180 game, the pages turning as before; for players who find small text hard to read |
 | **Move up** … **Menu**, **Jump**, **Attack** | Each action's keys. Interact on one waits for a key (*press a key...*); the first key pressed becomes that action's only key (gamepad buttons stay as they were). An action that had that key loses it, and one left with no key takes the old keys of the action changed: the two swap |
 
 They are kept at once in `options.json` beside the save slots (volumes, text speed,
-language, `graphics` as `high`, `medium` or `low`, `flashing` as `on` or `reduced`, and
-each action's key codes), and read back when the game starts; a broken or missing file,
+language, `graphics` as `high`, `medium` or `low`, `flashing` as `on` or `reduced`,
+`text_size` as `normal` or `large`, and each action's key codes), and read back when the game starts; a broken or missing file,
 or a value it does not know, keeps the defaults.
 
 The title screen and the pause menu fade in over an eighth of a second when they open

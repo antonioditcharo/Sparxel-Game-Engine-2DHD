@@ -111,6 +111,7 @@ std::vector<std::string> GameMenu::choices(const SaveObject& saves) const {
                                                    : options_.graphics == 1 ? "Medium"
                                                                             : "Low"));
         out.push_back(std::string("Flashing  ") + (options_.reduced_flashing ? "Reduced" : "On"));
+        out.push_back(std::string("Text size  ") + (options_.text_size >= 2 ? "Large" : "Normal"));
         for (const auto& [action, keys] : options_.keys) {
             out.push_back(action_label(action) + "  " +
                           (waiting_ == action ? std::string("press a key...") : keys));
@@ -159,6 +160,8 @@ GameMenu::Result GameMenu::press(std::string_view action, const SaveObject& save
             options_.graphics = action == "move_right" ? (now + 2) % 3 : (now + 1) % 3;
         } else if (cursor_ == 5) {
             options_.reduced_flashing = !options_.reduced_flashing;
+        } else if (cursor_ == 6) {
+            options_.text_size = options_.text_size >= 2 ? 1 : 2;
         } else if (cursor_ == 3) {
             // The game's own, then each language of data/translations, round.
             std::vector<std::string> languages{std::string()};

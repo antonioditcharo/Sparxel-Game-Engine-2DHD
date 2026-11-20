@@ -63,12 +63,15 @@ public:
         /// No flashes of colour when something is hurt, no blinking while it is safe, and
         /// no camera shakes: for players sensitive to flashing.
         bool reduced_flashing = false;
+        /// 1 Normal; 2 Large: messages' words twice the size, for players who find them
+        /// hard to read (fewer to a line and a page).
+        int text_size = 1;
         /// Each action the player can rebind, with the names of its keys now.
         std::vector<std::pair<std::string, std::string>> keys;
     };
-    /// The Options page's first key line: Music, Sounds, Text speed, Language, Graphics and
-    /// Flashing come first.
-    static constexpr std::size_t first_key_line = 6;
+    /// The Options page's first key line: Music, Sounds, Text speed, Language, Graphics,
+    /// Flashing and Text size come first.
+    static constexpr std::size_t first_key_line = 7;
     /// What a choice asks the game to do.
     struct Result {
         enum class Kind : std::uint8_t { None, NewGame, Load, Save, Quit, Resume, Options, Rebind };

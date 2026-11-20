@@ -143,6 +143,7 @@ bottom. The text is white.
 | UTF-8 | Two- and four-byte characters; a character cut short and an invalid byte each replaced, and decoding continuing |
 | Wrapping | Breaks at spaces with whole words kept; line breaks kept; empty text one empty line; a word too wide broken into pieces that fit and join back to it; every line of a long text fits |
 | Exact pixels (GPU) | "Hi" drawn at (1, 1) in a colour: both sides and the bar of the H on their rows, the i's dot, gap, stem and foot where they belong, and the gaps inside and between the letters left dark |
+| Twice the size (GPU) | "Hi" as rich text drawn at scale 2 from (2, 2): the H's side two pixels wide and fourteen tall, its bar on two rows, the i's dot twice as far on (at 16 and 17), nothing below; the player's *Text size* uses it for messages ([menus.md](menus.md)) |
 | Talking | Interact at the elder runs its Rule, which says a line and waits until it is closed; the next Interact closes it without running the Interact Rule or talking again; then "closed" and the rest of the elder's Rule run |
 | Standing still | While the message is open, the hero does not move or walk, though Left is held; it walks the step after the message closes |
 | Pages and queueing | A long message takes exactly one Interact per wrapped line in a one-line box; a second message waits its turn; "closed" runs once, after the last |

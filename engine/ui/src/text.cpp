@@ -521,7 +521,8 @@ std::vector<std::size_t> line_starts(std::string_view plain,
 
 void draw_rich(render::SpriteRenderer& sprites, const render::Texture& atlas, const PixelFont& font,
                const RichText& rich, std::size_t begin, std::size_t end, float x, float y,
-               double seconds, std::size_t shown) {
+               double seconds, std::size_t shown, int scale) {
+    const auto times = static_cast<float>(std::max(scale, 1));
     float pen = x;
     std::size_t at = begin;
     end = std::min(end, rich.plain.size());
@@ -553,10 +554,12 @@ void draw_rich(render::SpriteRenderer& sprites, const render::Texture& atlas, co
         }
         if (c != U' ') {
             const render::Rect source = font.glyph(c);
-            sprites.draw(atlas, source, render::Rect{pen + dx, y + dy, source.w, source.h},
+            sprites.draw(atlas, source,
+                         render::Rect{pen + (dx * times), y + (dy * times), source.w * times,
+                                      source.h * times},
                          style.color);
         }
-        pen += static_cast<float>(font.advance(c));
+        pen += static_cast<float>(font.advance(c)) * times;
         at += length;
     }
 }

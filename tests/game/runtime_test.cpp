@@ -3049,6 +3049,8 @@ TEST_CASE("The Options page sets volumes, text speed, graphics and flashing, reb
     press(input::Key::Right); // Graphics: Medium
     press(input::Key::Down);
     press(input::Key::Right); // Flashing: Reduced
+    press(input::Key::Down);
+    press(input::Key::Right); // Text size: Large
     for (int i = 0; i < 5; ++i) {
         press(input::Key::Down); // to Interact
     }
@@ -3071,6 +3073,8 @@ TEST_CASE("The Options page sets volumes, text speed, graphics and flashing, reb
     REQUIRE(lines.size() > 6);
     CHECK(lines[4] == "Graphics  Medium");
     CHECK(lines[5] == "Flashing  Reduced");
+    CHECK(lines[6] == "Text size  Large");
+    CHECK(options.text_size == 2);
     REQUIRE(options.keys.size() == 9);
     CHECK(options.keys[4].first == "interact");
     CHECK(options.keys[4].second == "C");
@@ -3092,6 +3096,7 @@ TEST_CASE("The Options page sets volumes, text speed, graphics and flashing, reb
     CHECK(second->menu().options().keys[4].second == "C");
     CHECK(second->menu().options().graphics == 1);
     CHECK(second->menu().options().reduced_flashing);
+    CHECK(second->menu().options().text_size == 2);
     for (int i = 0; i < 4; ++i) {
         second->step();
     }
@@ -3125,7 +3130,7 @@ TEST_CASE("Rebinding a key another action has takes it; an action left with none
         press(input::Key::Down);
     }
     press(input::Key::Z); // Options
-    for (int i = 0; i < 10; ++i) {
+    for (int i = 0; i < 11; ++i) {
         press(input::Key::Down); // to Interact
     }
     press(input::Key::Z);

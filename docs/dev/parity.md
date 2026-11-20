@@ -27,8 +27,8 @@
 | H. Characters | 3 | 2 | 0 |
 | I. Physics | 3 | 2 | 0 |
 | J. Audio | 2 | 4 | 0 (+1 later) |
-| K. UI | 4 | 3 | 0 |
-| **All** | **46** | **56** | **0** (+6 later) |
+| K. UI | 5 | 2 | 0 |
+| **All** | **47** | **55** | **0** (+6 later) |
 
 The strongest areas match or pass their references: the RPG kit and window skins (RPG
 Maker), auto-tiles and tile variants (RPG Maker, LDtk), no-code Rules with tags, *it*,
@@ -198,5 +198,5 @@ action kits (GameMaker), audio mixing (zones, reverb), and team features.
 | K3 | Templates | RPG Maker | **Done**: title, pause, options, save and load, items, equipment, shop, battle, dialogue box, quest log |
 | K4 | Navigation and prompts | | **Done**: keyboard and gamepad menus, button prompts for the last device |
 | K5 | Pixel-perfect UI and bitmap fonts | | **Done**: whole-number scaling, the game's own pixel font |
-| K6 | Accessibility options | | **Partial**: text speed, volumes, key remapping (Jump and Attack too), reduced flashing (no hurt flashes, blinking or camera shakes); no text size |
+| K6 | Accessibility options | | **Done**: text speed, a larger text size, volumes, key remapping (Jump and Attack too), and reduced flashing (no hurt flashes, blinking or camera shakes), all kept between runs |
 | K7 | UI animations | RPG Maker | **Partial**: boxes open and fade, the typewriter; no tweens to author |

@@ -178,3 +178,44 @@ TEST_CASE("Fonts from a strip of letters: widths found, white where drawn, misma
     CHECK_FALSE(ui::PixelFont::from_strip({}, 0, 0, "", error).has_value());
     CHECK(ui::PixelFont::ascii_characters().size() == 95);
 }
+
+TEST_CASE("Rich text drawn twice the size: every pixel a 2 x 2 block, twice as far on") {
+    render::Device* device = test_support::gpu();
+    if (device == nullptr) {
+        return;
+    }
+    const ui::PixelFont& font = ui::PixelFont::builtin();
+    const auto atlas =
+        device->create_texture(font.atlas_width(), font.atlas_height(), font.atlas());
+    const auto target = device->create_render_target(32, 20);
+    const auto sprites = render::SpriteRenderer::create(*device);
+    REQUIRE(atlas != nullptr);
+    REQUIRE(target != nullptr);
+    REQUIRE(sprites != nullptr);
+    ui::RichText rich = ui::parse_rich("Hi");
+    for (ui::RichText::Style& style : rich.styles) {
+        style.color = render::Color{255, 200, 0, 255};
+    }
+    sprites->begin(*target, render::Color{0, 0, 0, 255});
+    ui::draw_rich(*sprites, *atlas, font, rich, 0, rich.plain.size(), 2.0F, 2.0F, 0.0, 99, 2);
+    REQUIRE(sprites->end());
+    const std::vector<std::uint8_t> pixels = target->read_pixels();
+    const auto lit = [&pixels](int x, int y) {
+        const std::size_t i = (static_cast<std::size_t>(y) * 32 + static_cast<std::size_t>(x)) * 4;
+        return pixels.at(i) == 255 && pixels.at(i + 1) == 200 && pixels.at(i + 2) == 0;
+    };
+    // H's left side: two pixels wide, fourteen tall; its bar on rows 8 and 9 from the top.
+    for (int row = 0; row < 14; ++row) {
+        CHECK(lit(2, 2 + row));
+        CHECK(lit(3, 2 + row));
+    }
+    CHECK_FALSE(lit(4, 2));
+    CHECK(lit(6, 8));
+    CHECK(lit(6, 9));
+    CHECK_FALSE(lit(6, 7));
+    // i, twice as far on: its dot at 16 and 17.
+    CHECK(lit(16, 2));
+    CHECK(lit(17, 3));
+    CHECK_FALSE(lit(16, 4));
+    CHECK_FALSE(lit(2, 16)); // nothing below H
+}

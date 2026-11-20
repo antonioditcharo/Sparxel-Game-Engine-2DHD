@@ -202,7 +202,8 @@ constexpr std::array<LookNumber, 11> look_numbers{{
 }
 
 /// Where the message box goes in a target of `width` x `height` pixels: three lines of
-/// text at the bottom, fewer on very small screens.
+/// text at the bottom, fewer on very small screens or with the words `scale` times the
+/// size (the player's Text size). `text_width` is in the font's own pixels.
 struct MessageLayout {
     float x = 0.0F;
     float y = 0.0F;
@@ -210,28 +211,33 @@ struct MessageLayout {
     float height = 0.0F;
     int lines = 1;
     int text_width = 0;
+    int scale = 1;
 };
 
 constexpr float message_margin = 4.0F;
 constexpr float message_padding = 5.0F;
 
-MessageLayout message_layout(std::uint32_t width, std::uint32_t height, const ui::PixelFont& font) {
-    const int line = font.line_height();
+MessageLayout message_layout(std::uint32_t width, std::uint32_t height, const ui::PixelFont& font,
+                             int scale = 1) {
     MessageLayout layout;
+    layout.scale = std::clamp(scale, 1, 2);
+    const int line = font.line_height() * layout.scale;
     layout.lines = std::clamp(((static_cast<int>(height) / 3) - 10) / line, 1, 3);
     layout.height = static_cast<float>((layout.lines * line) - 1) + (2.0F * message_padding);
     layout.x = message_margin;
     layout.width = std::max(static_cast<float>(width) - (2.0F * message_margin), 1.0F);
     layout.y = static_cast<float>(height) - message_margin - layout.height;
-    layout.text_width = std::max(static_cast<int>(layout.width - (2.0F * message_padding)), 1);
+    layout.text_width = std::max(static_cast<int>((layout.width - (2.0F * message_padding)) /
+                                                  static_cast<float>(layout.scale)),
+                                 1);
     return layout;
 }
 
 /// How many pages the message showing takes in a game of `settings`' size (1 if none).
 std::size_t message_pages(const DialogueObject& dialogue, const ProjectSettings& settings,
-                          const ui::PixelFont& font) {
+                          const ui::PixelFont& font, int scale) {
     const std::string* message = dialogue.current();
-    const MessageLayout layout = message_layout(settings.width, settings.height, font);
+    const MessageLayout layout = message_layout(settings.width, settings.height, font, scale);
     const std::size_t lines =
         message == nullptr
             ? 0
@@ -740,6 +746,7 @@ serialize::Json options_to_json(const GameMenu::Options& options, const input::I
     json["language"] = options.language;
     json["graphics"] = options.graphics >= 2 ? "high" : options.graphics == 1 ? "medium" : "low";
     json["flashing"] = options.reduced_flashing ? "reduced" : "on";
+    json["text_size"] = options.text_size >= 2 ? "large" : "normal";
     serialize::Json keys = serialize::Json::object();
     for (const std::string_view action : rebindable) {
         serialize::Json codes = serialize::Json::array();
@@ -781,6 +788,9 @@ void options_from_json(const serialize::Json& json, GameMenu::Options& options,
     if (const auto flashing = json.find("flashing");
         flashing != json.end() && flashing->is_string()) {
         options.reduced_flashing = flashing->get<std::string>() == "reduced";
+    }
+    if (const auto size = json.find("text_size"); size != json.end() && size->is_string()) {
+        options.text_size = size->get<std::string>() == "large" ? 2 : 1;
     }
     const auto keys = json.find("keys");
     if (keys == json.end() || !keys->is_object()) {
@@ -2113,7 +2123,8 @@ void Runtime::step() {
         // A question's answers show on its last page; Up and Down move the cursor there.
         const std::vector<std::string>& choices = r.dialogue.choices();
         const bool choosing = talking && !choices.empty() &&
-                              r.page + 1 >= message_pages(r.dialogue, r.settings, r.font_face);
+                              r.page + 1 >= message_pages(r.dialogue, r.settings, r.font_face,
+                                                          r.menu.options().text_size);
         if (choosing && (action == "move_up" || action == "move_down")) {
             r.choice = action == "move_up" ? (r.choice + choices.size() - 1) % choices.size()
                                            : (r.choice + 1) % choices.size();
@@ -2121,8 +2132,8 @@ void Runtime::step() {
         }
         if (talking && action == "interact" && r.typed < static_cast<double>(r.rich.plain.size())) {
             // Still typing: the page shows whole first.
-            const MessageLayout box =
-                message_layout(r.settings.width, r.settings.height, r.font_face);
+            const MessageLayout box = message_layout(r.settings.width, r.settings.height,
+                                                     r.font_face, r.menu.options().text_size);
             const std::vector<std::string> lines =
                 ui::wrap(r.font_face, r.rich.plain, box.text_width);
             const std::vector<std::size_t> starts = ui::line_starts(r.rich.plain, lines);
@@ -2143,7 +2154,8 @@ void Runtime::step() {
         }
         if (talking && action == "interact") {
             // The next page, or the next message; the last one closing tells Rules.
-            if (!choosing && r.page + 1 < message_pages(r.dialogue, r.settings, r.font_face)) {
+            if (!choosing && r.page + 1 < message_pages(r.dialogue, r.settings, r.font_face,
+                                                        r.menu.options().text_size)) {
                 ++r.page;
                 continue;
             }
@@ -2692,8 +2704,8 @@ bool Runtime::draw() {
 
     // The message box, over everything.
     if (const std::string* message = r.dialogue.current()) {
-        const MessageLayout box =
-            message_layout(r.target->width(), r.target->height(), r.font_face);
+        const MessageLayout box = message_layout(r.target->width(), r.target->height(), r.font_face,
+                                                 r.menu.options().text_size);
         const ui::PixelFont& font = r.font_face;
         const ui::RichText rich =
             *message == r.typing_for ? r.rich : themed_rich(*message, r.settings.ui);
@@ -2758,8 +2770,9 @@ bool Runtime::draw() {
             ui::draw_rich(*r.sprites, *r.font, font, rich, starts[i], starts[i] + lines[i].size(),
                           box.x + message_padding,
                           box.y + message_padding +
-                              static_cast<float>(static_cast<int>(i - first) * font.line_height()),
-                          r.message_seconds, shown);
+                              static_cast<float>(static_cast<int>(i - first) * font.line_height() *
+                                                 box.scale),
+                          r.message_seconds, shown, box.scale);
         }
         // A question's answers, on its last page: a box above the message, at the right,
         // with a cursor on the answer chosen.

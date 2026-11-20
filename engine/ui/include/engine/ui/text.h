@@ -113,7 +113,7 @@ struct RichText {
 /// only those before byte `shown` (the typewriter).
 void draw_rich(render::SpriteRenderer& sprites, const render::Texture& atlas, const PixelFont& font,
                const RichText& rich, std::size_t begin, std::size_t end, float x, float y,
-               double seconds, std::size_t shown);
+               double seconds, std::size_t shown, int scale = 1);
 
 /// Where each of `lines` (wrap() of `plain`) starts in `plain`: they are its bytes in order,
 /// with the spaces wrap() drops at breaks skipped.
