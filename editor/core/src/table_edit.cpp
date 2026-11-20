@@ -7,6 +7,8 @@
 #include <iterator>
 #include <utility>
 
+#include "editor/core/xliff.h"
+
 namespace editor {
 
 namespace fs = std::filesystem;
@@ -200,6 +202,12 @@ bool TableEditor::remove_column(std::string_view column) {
             r.cells.erase(std::string(column));
         }
         return removed > 0;
+    });
+}
+
+bool TableEditor::import_xliff(std::string_view xliff, XliffRead& read, std::string& error) {
+    return history_.apply("Bring in translations", [&](game::Table& t) {
+        return translations_from_xliff(t, xliff, read, error);
     });
 }
 

@@ -253,6 +253,7 @@ add_executable(editor_core_tests
     editor/sprite_test.cpp
     editor/story_test.cpp
     editor/table_test.cpp
+    editor/xliff_test.cpp
     editor/versions_test.cpp
 )
 target_link_libraries(editor_core_tests PRIVATE

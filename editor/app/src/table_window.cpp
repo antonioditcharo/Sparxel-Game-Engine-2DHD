@@ -11,6 +11,7 @@
 #include <QFileDialog>
 #include <QFormLayout>
 #include <QHeaderView>
+#include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenuBar>
@@ -24,6 +25,8 @@
 #include <fstream>
 #include <iterator>
 #include <map>
+
+#include "editor/core/xliff.h"
 
 namespace editor {
 
@@ -133,6 +136,44 @@ TableWindow::TableWindow(QWidget* parent) : QMainWindow(parent) {
             QFileDialog::getSaveFileName(this, tr("Export as CSV"), {}, tr("CSV (*.csv)"));
         std::string error;
         if (!to.isEmpty() && !export_csv(path_of(to), error)) {
+            report(text_of(error));
+        }
+    });
+    file->addSeparator();
+    file->addAction(tr("Export for &translators (XLIFF)…"), this, [this] {
+        if (editor_ == nullptr) {
+            return;
+        }
+        // The language columns: every one but the words as written and the notes.
+        QStringList languages;
+        for (const engine::game::TableColumn& column : editor_->table().columns) {
+            if (column.id != "source" && column.id != "notes") {
+                languages.append(text_of(column.id));
+            }
+        }
+        if (languages.isEmpty()) {
+            report(tr("Add a column for the language to translate into first."));
+            return;
+        }
+        bool picked = false;
+        const QString language = QInputDialog::getItem(
+            this, tr("Export for translators"), tr("The language:"), languages, 0, false, &picked);
+        if (!picked) {
+            return;
+        }
+        const QString to = QFileDialog::getSaveFileName(this, tr("Export as XLIFF"),
+                                                        language + QStringLiteral(".xlf"),
+                                                        tr("XLIFF (*.xlf *.xliff)"));
+        std::string error;
+        if (!to.isEmpty() && !export_xliff(path_of(to), language.toStdString(), error)) {
+            report(text_of(error));
+        }
+    });
+    file->addAction(tr("&Bring in translations (XLIFF)…"), this, [this] {
+        const QString from = QFileDialog::getOpenFileName(this, tr("Bring in translations"), {},
+                                                          tr("XLIFF (*.xlf *.xliff)"));
+        std::string error;
+        if (!from.isEmpty() && !import_xliff(path_of(from), error)) {
             report(text_of(error));
         }
     });
@@ -353,6 +394,48 @@ bool TableWindow::import_csv(const fs::path& from, std::string& error) {
         return error.empty(); // nothing new is not a failure
     }
     refresh();
+    return true;
+}
+
+bool TableWindow::export_xliff(const fs::path& to, const std::string& language,
+                               std::string& error) {
+    if (editor_ == nullptr) {
+        return false;
+    }
+    std::ofstream out(to, std::ios::binary | std::ios::trunc);
+    const std::string xliff = translations_to_xliff(editor_->table(), language);
+    out.write(xliff.data(), static_cast<std::streamsize>(xliff.size()));
+    if (!out) {
+        error = "The XLIFF file could not be written.";
+        return false;
+    }
+    statusBar()->showMessage(tr("Exported %1 for translators").arg(path_text(to.filename())), 4000);
+    return true;
+}
+
+bool TableWindow::import_xliff(const fs::path& from, std::string& error) {
+    std::ifstream in(from, std::ios::binary);
+    if (!in || editor_ == nullptr) {
+        error = "The XLIFF file cannot be opened.";
+        return false;
+    }
+    const std::string xliff((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    XliffRead read;
+    if (!editor_->import_xliff(xliff, read, error)) {
+        return error.empty(); // nothing new is not a failure
+    }
+    refresh();
+    statusBar()->showMessage(
+        read.unknown == 0
+            ? tr("Brought in %1 translation(s) into %2")
+                  .arg(read.filled)
+                  .arg(text_of(read.language))
+            : tr("Brought in %1 translation(s) into %2; %3 for texts this table does not have "
+                 "were left out")
+                  .arg(read.filled)
+                  .arg(text_of(read.language))
+                  .arg(read.unknown),
+        8000);
     return true;
 }
 

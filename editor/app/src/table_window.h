@@ -47,6 +47,11 @@ public:
     void edit_column_dialog(int column);
     bool export_csv(const std::filesystem::path& to, std::string& error);
     bool import_csv(const std::filesystem::path& from, std::string& error);
+    /// The translations of `language` (a column) as XLIFF, for translation tools; and
+    /// what they send back, read into its column as one step.
+    bool export_xliff(const std::filesystem::path& to, const std::string& language,
+                      std::string& error);
+    bool import_xliff(const std::filesystem::path& from, std::string& error);
     void set_quiet(bool quiet) noexcept { quiet_ = quiet; }
     void refresh();
 

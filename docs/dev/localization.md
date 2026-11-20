@@ -29,7 +29,19 @@ table, and nothing in the game's logic changes.
    again whenever words are added: new texts get rows, and translations already written
    stay. A **notes** column, if added, is for translators and is never shown.
 3. Translators fill in the language columns there, or in a spreadsheet: the Table window
-   exports CSV and reads it back.
+   exports CSV and reads it back. **Translation tools and services** take XLIFF 1.2: the
+   Table window's *Export for translators (XLIFF)…* writes one language's texts
+   (`translations_to_xliff()`: a `<trans-unit>` per text, its id the text's key, its
+   `<source>` the words as written, its `<target>` the translation so far, and the
+   **notes** a `<note>`), and *Bring in translations (XLIFF)…* reads what comes back into
+   that language's column by key, as one undo step (`translations_from_xliff()`: entities,
+   character references and CDATA read; a language not yet a column made one, `pt-BR` as
+   `pt_BR`; empty targets leave the cell as it was; texts the table no longer has left out
+   and counted in the status bar). Tested: a table out with its markup escaped, a
+   translation and a note, the untranslated text with no target; back in, two
+   translations filled, one unknown key counted, the words as written untouched; a new
+   language made a column; not XLIFF, or no target language, refused with the table
+   unchanged; in the Table editor, one step undone together.
 4. **Shown in** (`language`) is the language the game starts in: a language column, or
    empty for the words as written. Players choose another on the pause menu's Options page
    (*Language*: *The game's own*, then each language column, kept with their options:
@@ -62,4 +74,4 @@ language would overflow. `[tags]` of rich text and `{names}` stay as they are.
 1. **Everything else translated**: item, skill and enemy names from the data tables, the
    battle's messages, and the rest of the menus' words.
 2. **Fonts per language**, for letters the built-in pixel font lacks (accents, kana).
-3. **XLIFF** for translation tools, and an in-editor view of each text where it is used.
+3. **An in-editor view** of each text where it is used.

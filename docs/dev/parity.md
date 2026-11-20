@@ -154,7 +154,7 @@ action kits (GameMaker), audio mixing (zones, reverb), and team features.
 | G4 | Text effects | RPG Maker | **Done**: colour, wave, shake, speed, pauses |
 | G5 | Quests | | **Done**: stages, journal |
 | G6 | Story outline | | **Partial** (conversations, flags; no chapters view) |
-| G7 | Localization | Unity Localization | **Partial**: tables, CSV, pseudo language, the player's choice; no XLIFF or per-language fonts |
+| G7 | Localization | Unity Localization | **Partial**: tables, CSV and XLIFF for translation tools, pseudo language, the player's choice; no per-language fonts |
 | G8 | ink and Yarn import | | Later |
 
 ## H. Characters

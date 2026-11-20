@@ -13,6 +13,7 @@
 #include <string_view>
 
 #include "editor/core/history.h"
+#include "editor/core/xliff.h"
 
 namespace editor {
 
@@ -51,6 +52,9 @@ public:
     bool remove_column(std::string_view column);
     /// Reads CSV into the table (engine::game::table_from_csv()), as one step.
     bool import_csv(std::string_view csv, std::string& error);
+    /// Reads an XLIFF file's translations into the table (translations_from_xliff()), as
+    /// one step; `read` says what it did.
+    bool import_xliff(std::string_view xliff, XliffRead& read, std::string& error);
 
 private:
     History<engine::game::Table> history_;
