@@ -584,8 +584,14 @@ public:
     /// True if the scene has changes that are not saved.
     [[nodiscard]] bool dirty() const noexcept;
     /// Writes the scene to its file, atomically. Returns false with `error` if it could not.
-    /// Saving removes the recovery file: the work is safe in the project's own files.
+    /// Saving removes the recovery file: the work is safe in the project's own files. A
+    /// scene with baked lights (or a bake already) is baked again first, so what is saved
+    /// is never stale.
     bool save(std::string& error);
+    /// Game > Bake lighting: bakes the scene's baked lights, with their shadows, and its
+    /// corners' shading into its maps (scene2d::bake_lighting()), as one undo step (*Bake
+    /// lighting*). Returns how many maps changed (0 records nothing).
+    std::size_t bake_lighting();
 
     // ----- Autosave and crash recovery (plan/06 §5) -----
 

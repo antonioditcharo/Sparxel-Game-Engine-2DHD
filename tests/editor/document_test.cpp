@@ -3555,6 +3555,50 @@ TEST_CASE("Smooth terrain: raising moves the nearest corner, and Smooth evens it
     CHECK_FALSE(doc->smooth_terrain(ground, x0 + 1.0, y0 + 1.0));
 }
 
+TEST_CASE("Baked lighting: baked on command as one undo step, and again on saving") {
+    const Sample sample;
+    const std::unique_ptr<editor::Document> doc = sample.open();
+    const auto baked_maps = [&doc] {
+        std::size_t count = 0;
+        for (const world::Entity e : doc->entities()) {
+            if (const auto* map = doc->world().get<scene2d::Tilemap>(e);
+                map != nullptr && !map->baked_light.empty()) {
+                ++count;
+            }
+        }
+        return count;
+    };
+    // No baked lights, but the village's walls shade the ground's corners beside them.
+    CHECK(doc->bake_lighting() > 0);
+    CHECK(doc->undo_label() == "Bake lighting");
+    CHECK(baked_maps() > 0);
+    REQUIRE(doc->undo());
+    CHECK(baked_maps() == 0);
+    REQUIRE(doc->redo());
+    // The same again changes nothing, and records nothing.
+    CHECK(doc->bake_lighting() == 0);
+    CHECK(doc->undo_label() == "Bake lighting");
+    REQUIRE(doc->undo());
+    // The village's lamp, baked: saving bakes it, and the bake is saved with the scene.
+    const std::vector<world::Entity> lamps = doc->world().find_named("lamp");
+    REQUIRE(lamps.size() == 1);
+    doc->world().get<scene2d::Light>(lamps[0])->baked = true;
+    std::string error;
+    REQUIRE(doc->save(error));
+    CHECK(baked_maps() > 0);
+    std::vector<serialize::Issue> issues;
+    const auto again = editor::Document::open(sample.path, issues);
+    REQUIRE(again != nullptr);
+    std::size_t reopened = 0;
+    for (const world::Entity e : again->entities()) {
+        if (const auto* map = again->world().get<scene2d::Tilemap>(e);
+            map != nullptr && !map->baked_light.empty()) {
+            ++reopened;
+        }
+    }
+    CHECK(reopened == baked_maps());
+}
+
 TEST_CASE("Prefabs: made from an entity, placed as copies, and the copies updated") {
     const Sample sample;
     const std::unique_ptr<editor::Document> doc = sample.open();

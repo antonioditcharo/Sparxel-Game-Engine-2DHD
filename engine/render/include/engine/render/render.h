@@ -453,6 +453,11 @@ public:
     void draw(const Texture& texture, const std::array<Vec3, 4>& corners, Rect source,
               std::array<float, 4> color = {1.0F, 1.0F, 1.0F, 1.0F}, const Surface& surface = {},
               const SpriteEffects& effects = {});
+    /// The same with a colour at each corner, in the corners' order, blended across the
+    /// quad: baked light that varies over a tile.
+    void draw_shaded(const Texture& texture, const std::array<Vec3, 4>& corners, Rect source,
+                     const std::array<std::array<float, 4>, 4>& colors, const Surface& surface = {},
+                     const SpriteEffects& effects = {});
     /// Queues triangles, three corners each (a model's meshes): textured with `texture`,
     /// each corner's colour multiplying it (ambient and sun light times tint) and point
     /// lights added at its own normal, as `surface` says otherwise (wrap, albedo, whether it

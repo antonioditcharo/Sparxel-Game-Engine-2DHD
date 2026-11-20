@@ -2403,3 +2403,113 @@ TEST_CASE("Smooth terrain: heights at corners, slopes between, sprites standing 
     CHECK(scene2d::draw_diorama(*w, textures, *renderer, *target, camera, f.background, light)
               .drawn == 9 + 8);
 }
+
+TEST_CASE("Baked lighting: lights and their shadows baked into map corners, and probes") {
+    const Fixture f;
+    const auto w = f.make_world();
+    // Red ground 6 x 3 tiles at the origin (one tile is the 2 x 2 picture at ppu 2).
+    const world::Entity ground = w->create("ground");
+    w->add<scene2d::Transform2D>(ground)->layer = -1;
+    scene2d::Tilemap* map = w->add<scene2d::Tilemap>(ground);
+    map->tileset = f.red_image.to_string();
+    map->tiles = "0,0,0,0,0,0\n0,0,0,0,0,0\n0,0,0,0,0,0";
+    // A white lamp a tile up over corner (1, 1), reaching 8 tiles, baked.
+    const world::Entity lamp = w->create("lamp");
+    scene2d::Transform2D* at = w->add<scene2d::Transform2D>(lamp);
+    at->x = 1.0;
+    at->y = 1.0;
+    scene2d::Light* light = w->add<scene2d::Light>(lamp);
+    light->color_r = 255;
+    light->color_g = 255;
+    light->color_b = 255;
+    light->radius = 8.0;
+    light->height = 1.0;
+    // Not baked: a live light, and nothing to bake.
+    CHECK(scene2d::diorama_lights(*w, 0.0, 0.0).size() == 1);
+    CHECK(scene2d::bake_lighting(*w, 2) == 0);
+    map = w->get<scene2d::Tilemap>(ground);
+    CHECK(map->baked_light.empty());
+    w->get<scene2d::Light>(lamp)->baked = true;
+    CHECK(scene2d::diorama_lights(*w, 0.0, 0.0).empty()); // baked: not live
+    CHECK(scene2d::bake_lighting(*w, 2) == 1);
+    CHECK(scene2d::bake_lighting(*w, 2) == 0); // the same again
+    map = w->get<scene2d::Tilemap>(ground);
+    // Right under it: 1 tile away, square on: (1 - 1/64)^2 of white.
+    const float under = (1.0F - (1.0F / 64.0F)) * (1.0F - (1.0F / 64.0F));
+    CHECK(map->baked_at(1, 1)[0] == doctest::Approx(under).epsilon(0.02));
+    CHECK(map->baked_at(1, 1)[3] == doctest::Approx(1.0)); // in the open
+    // Further, weaker; three tiles off, 0.225.
+    CHECK(map->baked_at(4, 1)[0] == doctest::Approx(0.225).epsilon(0.05));
+    CHECK(map->baked_at(4, 1)[0] < map->baked_at(2, 1)[0]);
+    CHECK(map->baked_at(99, 99) == std::array<float, 4>{0, 0, 0, 1});
+    // A probe at a corner is that corner; between two, between them.
+    const std::array<float, 3> probe = scene2d::baked_light_at(*w, 1.0, 1.0, 2);
+    CHECK(probe[0] == doctest::Approx(map->baked_at(1, 1)[0]));
+    const float halfway = scene2d::baked_light_at(*w, 1.5, 1.0, 2)[0];
+    CHECK(halfway < map->baked_at(1, 1)[0]);
+    CHECK(halfway > map->baked_at(2, 1)[0]);
+    CHECK(scene2d::baked_light_at(*w, -5.0, 1.0, 2)[0] == 0.0F);
+
+    // A wall two tiles tall on its own map, at cell (2, 1): the corner behind it, away
+    // from the lamp, is in its shadow; the corner beside the wall is darkened as a corner.
+    const world::Entity walls = w->create("walls");
+    w->add<scene2d::Transform2D>(walls);
+    scene2d::Tilemap* wall = w->add<scene2d::Tilemap>(walls);
+    wall->tileset = f.blue_image.to_string();
+    wall->tiles = ",,\n,,0";
+    wall->height = 2.0;
+    CHECK(scene2d::bake_lighting(*w, 2) >= 1);
+    map = w->get<scene2d::Tilemap>(ground);
+    CHECK(map->baked_at(4, 1)[0] == 0.0F);                                // behind the wall
+    CHECK(map->baked_at(4, 0)[0] > 0.0F);                                 // past its end
+    CHECK(map->baked_at(2, 1)[3] == doctest::Approx(0.85).epsilon(0.01)); // its corner
+    CHECK(map->baked_at(0, 0)[3] == doctest::Approx(1.0));
+
+    render::Device* device = gpu();
+    if (device == nullptr) {
+        return;
+    }
+    // Drawn in the dark: the ground under the lamp lit, and a sprite standing there lit
+    // by the probe, more than one standing in the wall's shadow.
+    Fixture::place(*w, "near", 1.0, 2.0, f.blue_image);
+    constexpr std::uint32_t size = 64;
+    const auto target = device->create_render_target(size, size);
+    const auto renderer = render::WorldRenderer::create(*device);
+    REQUIRE(target != nullptr);
+    REQUIRE(renderer != nullptr);
+    scene2d::TextureCache textures(*device, f.db);
+    scene2d::DioramaCamera camera;
+    camera.x = 2.0;
+    camera.y = 1.5;
+    camera.pitch = 60.0;
+    camera.distance = 12.0;
+    camera.ppu = 2;
+    scene2d::DioramaLight dark;
+    dark.ambient = 0.05F;
+    dark.diffuse = 0.0F;
+    dark.sprite_shadow = 0.0F;
+    dark.block_shadow = 0.0F;
+    scene2d::draw_diorama(*w, textures, *renderer, *target, camera, f.background, dark);
+    const std::vector<std::uint8_t> baked = target->read_pixels();
+    const render::Mat4 vp = scene2d::diorama_view_projection(camera, 1.0F);
+    const auto at_point = [&](float x, float up, float y, const std::vector<std::uint8_t>& image) {
+        const std::array<float, 4> c = vp.transform(render::Vec3{x, up, y});
+        const auto px = static_cast<std::uint32_t>(((c[0] / c[3]) + 1.0F) / 2.0F * size);
+        const auto py = static_cast<std::uint32_t>((1.0F - (c[1] / c[3])) / 2.0F * size);
+        return pixel(image, size, px, py);
+    };
+    const Color lit_ground = at_point(1.2F, -0.002F, 1.2F, baked);
+    CAPTURE(lit_ground);
+    CHECK(lit_ground.r > 150);
+    const Color lit_sprite = at_point(1.0F, 0.5F, 2.0F, baked);
+    CAPTURE(lit_sprite);
+    CHECK(lit_sprite.b > 100);
+    // Without the bake, both are dark.
+    for (const world::Entity e : {ground, walls}) {
+        w->get<scene2d::Tilemap>(e)->baked_light.clear();
+    }
+    scene2d::draw_diorama(*w, textures, *renderer, *target, camera, f.background, dark);
+    const std::vector<std::uint8_t> unbaked = target->read_pixels();
+    CHECK(at_point(1.2F, -0.002F, 1.2F, unbaked).r < 40);
+    CHECK(at_point(1.0F, 0.5F, 2.0F, unbaked).b < 40);
+}

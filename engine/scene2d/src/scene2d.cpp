@@ -179,6 +179,10 @@ void register_types(reflect::Registry& registry) {
         .display_name("Tile heights")
         .tooltip("Each tile's own height in the Diorama style, painted with the Raise and "
                  "Lower brushes; empty cells stand at Height.");
+    tilemap.property<&Tilemap::baked_light>("baked_light")
+        .flags(reflect::property_flag::hidden)
+        .display_name("Baked light")
+        .tooltip("Written by Bake lighting.");
     tilemap.property<&Tilemap::smooth>("smooth")
         .display_name("Smooth terrain")
         .tooltip("In the Diorama style, heights are at the tiles' corners and the ground "
@@ -238,6 +242,9 @@ void register_types(reflect::Registry& registry) {
         .unit(reflect::Unit::Tiles)
         .tooltip("How high above the ground the light is.");
     light.property<&Light::enabled>("enabled").tooltip("Turn the light off without removing it.");
+    light.property<&Light::baked>("baked").tooltip(
+        "Worked out once, with the shadows of walls and hills, when the project is saved or "
+        "Bake lighting is chosen: as many as you like, for still scenes. It does not move.");
 
     auto model = registry.add_type<Model3D>("model_3d")
                      .display_name("Model")
@@ -494,6 +501,50 @@ std::string format_heights(const std::vector<std::vector<double>>& heights) {
         }
     }
     return out;
+}
+
+std::array<float, 4> Tilemap::baked_at(std::uint32_t x, std::uint32_t y) const {
+    if (!baked_once_ || baked_text_ != baked_light) {
+        baked_.clear();
+        const auto digit = [](char c) -> int {
+            if (c >= '0' && c <= '9') {
+                return c - '0';
+            }
+            if (c >= 'a' && c <= 'f') {
+                return c - 'a' + 10;
+            }
+            return -1;
+        };
+        std::size_t start = 0;
+        while (start <= baked_light.size() && !baked_light.empty()) {
+            std::size_t end = baked_light.find('\n', start);
+            if (end == std::string::npos) {
+                end = baked_light.size();
+            }
+            const std::string_view line(baked_light.data() + start, end - start);
+            std::vector<std::array<float, 4>> row;
+            for (std::size_t i = 0; i + 8 <= line.size(); i += 8) {
+                std::array<float, 4> corner{0.0F, 0.0F, 0.0F, 1.0F};
+                bool good = true;
+                for (std::size_t k = 0; k < 4; ++k) {
+                    const int hi = digit(line[i + (2 * k)]);
+                    const int lo = digit(line[i + (2 * k) + 1]);
+                    good = good && hi >= 0 && lo >= 0;
+                    const float v = static_cast<float>((hi * 16) + lo) / 255.0F;
+                    corner.at(k) = k < 3 ? v * 4.0F : v;
+                }
+                row.push_back(good ? corner : std::array<float, 4>{0.0F, 0.0F, 0.0F, 1.0F});
+            }
+            baked_.push_back(std::move(row));
+            start = end + 1;
+        }
+        baked_text_ = baked_light;
+        baked_once_ = true;
+    }
+    if (y >= baked_.size() || x >= baked_[y].size()) {
+        return {0.0F, 0.0F, 0.0F, 1.0F};
+    }
+    return baked_[y][x];
 }
 
 double Tilemap::surface_at(double column, double row) const {
@@ -2160,6 +2211,17 @@ std::array<float, 4> lit(float light, render::Color tint) {
             light * static_cast<float>(tint.b) / 255.0F, static_cast<float>(tint.a) / 255.0F};
 }
 
+/// `colour` (lit()) darkened by how open a baked corner is, and its baked light added in
+/// the tint (`baked`: red, green, blue, openness).
+std::array<float, 4> with_baked(std::array<float, 4> colour, const std::array<float, 4>& baked,
+                                render::Color tint) {
+    for (std::size_t k = 0; k < 3; ++k) {
+        const std::uint8_t t = k == 0 ? tint.r : (k == 1 ? tint.g : tint.b);
+        colour.at(k) = (colour.at(k) * baked[3]) + (baked.at(k) * static_cast<float>(t) / 255.0F);
+    }
+    return colour;
+}
+
 } // namespace
 
 render::Vec3 sun_direction(double angle, double height) noexcept {
@@ -2290,7 +2352,7 @@ std::vector<render::PointLight> diorama_lights(const world::World& world, double
         world.each(*type, [&](world::Entity entity, reflect::ObjectRef ref) {
             const Light* light = ref.as<Light>();
             const Transform2D* transform = world.get<Transform2D>(entity);
-            if (light == nullptr || transform == nullptr || !light->enabled) {
+            if (light == nullptr || transform == nullptr || !light->enabled || light->baked) {
                 return;
             }
             const double radius = std::clamp(light->radius, 0.0, 32.0);
@@ -2357,6 +2419,216 @@ std::optional<float> ground_top(const world::World& world, double x, double y, s
         top = top ? std::max(*top, here) : here;
     });
     return top;
+}
+
+std::size_t bake_lighting(world::World& world, std::uint32_t ppu) {
+    const reflect::TypeInfo* map_type = world.registry().find_type<Tilemap>();
+    if (map_type == nullptr) {
+        return 0;
+    }
+    // The baked lights, as the renderer would take them.
+    struct Baked {
+        double x, height, z, radius;
+        std::array<double, 3> color;
+    };
+    std::vector<Baked> lights;
+    if (const reflect::TypeInfo* type = world.registry().find_type<Light>()) {
+        world.each(*type, [&](world::Entity entity, reflect::ObjectRef ref) {
+            const Light* light = ref.as<Light>();
+            const Transform2D* t = world.get<Transform2D>(entity);
+            if (light == nullptr || t == nullptr || !light->enabled || !light->baked) {
+                return;
+            }
+            const double radius = std::clamp(light->radius, 0.0, 32.0);
+            const double intensity = std::clamp(light->intensity, 0.0, 8.0);
+            const double height = std::clamp(light->height, 0.0, 16.0);
+            if (!std::isfinite(t->x) || !std::isfinite(t->y) || !std::isfinite(radius) ||
+                !std::isfinite(intensity) || !std::isfinite(height) || radius <= 0.0 ||
+                intensity <= 0.0) {
+                return;
+            }
+            lights.push_back(
+                Baked{t->x,
+                      height,
+                      t->y,
+                      radius,
+                      {light->color_r / 255.0 * intensity, light->color_g / 255.0 * intensity,
+                       light->color_b / 255.0 * intensity}});
+        });
+    }
+    const double units = static_cast<double>(std::max<std::uint32_t>(ppu, 1));
+    // How high the ground stands anywhere: the tallest visible map there.
+    const auto ground = [&](double x, double z) {
+        return static_cast<double>(ground_top(world, x, z, ppu).value_or(0.0F));
+    };
+    // Whether something taller stands between a point and a light.
+    const auto shadowed = [&](double px, double py, double pz, const Baked& light) {
+        const double dx = light.x - px;
+        const double dz = light.z - pz;
+        const double across = std::hypot(dx, dz);
+        const auto steps = static_cast<int>(std::ceil(across / 0.25));
+        for (int i = 1; i < steps; ++i) {
+            const double f = static_cast<double>(i) / static_cast<double>(steps);
+            // Not right beside the point itself, so its own tile does not shade it.
+            if (f * across < 0.3) {
+                continue;
+            }
+            const double ray_height = py + (f * (light.height - py));
+            if (ground(px + (f * dx), pz + (f * dz)) > ray_height + 0.01) {
+                return true;
+            }
+        }
+        return false;
+    };
+    const auto hex = [](double v, double scale) {
+        const auto n = static_cast<int>(std::lround(std::clamp(v / scale, 0.0, 1.0) * 255.0));
+        constexpr std::string_view digits = "0123456789abcdef";
+        return std::string{digits[static_cast<std::size_t>(n / 16)],
+                           digits[static_cast<std::size_t>(n % 16)]};
+    };
+    // Each map's corners, worked out first and written after, so one map's bake does not
+    // change what another sees.
+    std::vector<std::pair<world::Entity, std::string>> bakes;
+    world.each(*map_type, [&](world::Entity entity, reflect::ObjectRef ref) {
+        const Tilemap* map = ref.as<Tilemap>();
+        const Transform2D* t = world.get<Transform2D>(entity);
+        std::string error;
+        const TileGrid* grid = map != nullptr ? map->grid(error) : nullptr;
+        if (t == nullptr || grid == nullptr) {
+            return;
+        }
+        const double tile =
+            (map->tile_size == 0 ? units : static_cast<double>(map->tile_size)) / units;
+        const auto filled = [&](std::int64_t x, std::int64_t y) {
+            return x >= 0 && y >= 0 &&
+                   grid->at(static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y)) >= 0;
+        };
+        std::string text;
+        for (std::uint32_t j = 0; j <= grid->height; ++j) {
+            if (j > 0) {
+                text += '\n';
+            }
+            for (std::uint32_t i = 0; i <= grid->width; ++i) {
+                // The corner's top: on smooth terrain its own height; else the tallest of
+                // this map's tiles meeting there.
+                double top = 0.0;
+                if (map->smooth) {
+                    top = map->height_at(i, j);
+                } else {
+                    for (const auto& [ci, cj] :
+                         {std::pair{0, 0}, std::pair{-1, 0}, std::pair{0, -1}, std::pair{-1, -1}}) {
+                        const std::int64_t cx = static_cast<std::int64_t>(i) + ci;
+                        const std::int64_t cy = static_cast<std::int64_t>(j) + cj;
+                        if (filled(cx, cy)) {
+                            top = std::max(top, map->height_at(static_cast<std::uint32_t>(cx),
+                                                               static_cast<std::uint32_t>(cy)));
+                        }
+                    }
+                }
+                top += static_cast<double>(t->layer) * 0.002;
+                const double px = t->x + (static_cast<double>(i) * tile);
+                const double pz = t->y + (static_cast<double>(j) * tile);
+                std::array<double, 3> sum{};
+                for (const Baked& light : lights) {
+                    const double dx = light.x - px;
+                    const double dy = light.height - top;
+                    const double dz = light.z - pz;
+                    const double distance = std::sqrt((dx * dx) + (dy * dy) + (dz * dz));
+                    if (distance >= light.radius) {
+                        continue;
+                    }
+                    const double facing = distance > 1e-6 ? std::max(dy / distance, 0.0) : 1.0;
+                    const double x = distance / light.radius;
+                    const double falloff = (1.0 - (x * x)) * (1.0 - (x * x));
+                    if (facing <= 0.0 || shadowed(px, top, pz, light)) {
+                        continue;
+                    }
+                    for (std::size_t k = 0; k < 3; ++k) {
+                        sum.at(k) += light.color.at(k) * falloff * facing;
+                    }
+                }
+                // How open the corner is: the four tiles around it, darker for each that
+                // stands taller than it (on any map).
+                int taller = 0;
+                for (const auto& [ci, cj] : {std::pair{0.5, 0.5}, std::pair{-0.5, 0.5},
+                                             std::pair{0.5, -0.5}, std::pair{-0.5, -0.5}}) {
+                    if (ground(px + (ci * tile), pz + (cj * tile)) > top + 0.25) {
+                        ++taller;
+                    }
+                }
+                const double open = 1.0 - (0.15 * static_cast<double>(std::min(taller, 3)));
+                text += hex(sum[0], 4.0) + hex(sum[1], 4.0) + hex(sum[2], 4.0) + hex(open, 1.0);
+            }
+        }
+        // Nothing baked and nothing shaded: no bake at all.
+        bool plain = true;
+        for (std::size_t k = 0; k + 8 <= text.size() && plain; k += 8) {
+            if (text[k] == '\n') {
+                ++k;
+            }
+            plain = text.compare(k, 8, "000000ff") == 0;
+        }
+        bakes.emplace_back(entity, plain ? std::string() : std::move(text));
+    });
+    std::size_t changed = 0;
+    for (auto& [entity, text] : bakes) {
+        if (Tilemap* map = world.get<Tilemap>(entity); map != nullptr && map->baked_light != text) {
+            map->baked_light = std::move(text);
+            ++changed;
+        }
+    }
+    return changed;
+}
+
+std::array<float, 3> baked_light_at(const world::World& world, double x, double y,
+                                    std::uint32_t ppu) {
+    const reflect::TypeInfo* type = world.registry().find_type<Tilemap>();
+    if (type == nullptr || !std::isfinite(x) || !std::isfinite(y)) {
+        return {};
+    }
+    const double units = static_cast<double>(std::max<std::uint32_t>(ppu, 1));
+    std::array<float, 3> light{};
+    double best = -1.0;
+    world.each(*type, [&](world::Entity entity, reflect::ObjectRef ref) {
+        const Tilemap* map = ref.as<Tilemap>();
+        const Transform2D* t = world.get<Transform2D>(entity);
+        if (map == nullptr || t == nullptr || !map->visible || map->baked_light.empty()) {
+            return;
+        }
+        std::string error;
+        const TileGrid* grid = map->grid(error);
+        if (grid == nullptr) {
+            return;
+        }
+        const double tile =
+            (map->tile_size == 0 ? units : static_cast<double>(map->tile_size)) / units;
+        const double column = (x - t->x) / tile;
+        const double row = (y - t->y) / tile;
+        if (column < 0.0 || row < 0.0 || column >= static_cast<double>(grid->width) ||
+            row >= static_cast<double>(grid->height) ||
+            grid->at(static_cast<std::uint32_t>(column), static_cast<std::uint32_t>(row)) < 0) {
+            return;
+        }
+        const double top = map->surface_at(column, row);
+        if (top <= best) {
+            return;
+        }
+        best = top;
+        const auto cx = static_cast<std::uint32_t>(column);
+        const auto cy = static_cast<std::uint32_t>(row);
+        const auto fx = static_cast<float>(column - std::floor(column));
+        const auto fy = static_cast<float>(row - std::floor(row));
+        const std::array<float, 4> nw = map->baked_at(cx, cy);
+        const std::array<float, 4> ne = map->baked_at(cx + 1, cy);
+        const std::array<float, 4> sw = map->baked_at(cx, cy + 1);
+        const std::array<float, 4> se = map->baked_at(cx + 1, cy + 1);
+        for (std::size_t k = 0; k < 3; ++k) {
+            const float north = nw.at(k) + (fx * (ne.at(k) - nw.at(k)));
+            const float south = sw.at(k) + (fx * (se.at(k) - sw.at(k)));
+            light.at(k) = north + (fy * (south - north));
+        }
+    });
+    return light;
 }
 
 std::optional<std::array<double, 2>> terrain_hit(const world::World& world, const Ray& ray,
@@ -2576,6 +2848,8 @@ DrawStats draw_diorama(const world::World& world, TextureCache& textures,
             if (loaded == nullptr) {
                 ++stats.missing;
             } else {
+                const std::array<float, 3> probe =
+                    baked_light_at(world, transform->x, transform->y, camera.ppu);
                 std::vector<render::MeshCorner> corners;
                 for (std::size_t m = 0; m < loaded->model.meshes.size(); ++m) {
                     const assets::ModelMesh& mesh = loaded->model.meshes[m];
@@ -2598,8 +2872,8 @@ DrawStats draw_diorama(const world::World& world, TextureCache& textures,
                                      static_cast<float>(scale))},
                             v.uv[0],
                             v.uv[1],
-                            {mesh.color[0] * shade, mesh.color[1] * shade, mesh.color[2] * shade,
-                             1.0F},
+                            {mesh.color[0] * (shade + probe[0]), mesh.color[1] * (shade + probe[1]),
+                             mesh.color[2] * (shade + probe[2]), 1.0F},
                             normal});
                     }
                     render::Surface model_surface;
@@ -2687,7 +2961,11 @@ DrawStats draw_diorama(const world::World& world, TextureCache& textures,
                         const render::Vec3 normal = corner_normal(cx, cy);
                         return render::MeshCorner{
                             render::Vec3{px, corner_height(cx, cy) + lift, pz}, u, v,
-                            lit(brightness(normal, light), tint), normal};
+                            with_baked(lit(brightness(normal, light), tint),
+                                       tilemap->baked_at(static_cast<std::uint32_t>(cx),
+                                                         static_cast<std::uint32_t>(cy)),
+                                       tint),
+                            normal};
                     };
                     const render::MeshCorner nw = corner(gx, gy, left, north, u0, v0);
                     const render::MeshCorner ne = corner(gx + 1, gy, right, north, u1, v0);
@@ -2747,12 +3025,24 @@ DrawStats draw_diorama(const world::World& world, TextureCache& textures,
                         }
                         const auto height = static_cast<float>(tilemap->height_at(x, y));
                         const float top = height + lift;
-                        // The top face: the tile as seen from above, north edge at the top.
-                        renderer.draw(
-                            *texture,
-                            {render::Vec3{left, top, north}, render::Vec3{right, top, north},
-                             render::Vec3{right, top, south}, render::Vec3{left, top, south}},
-                            source, lit(top_light, tint), face(render::Vec3{0, 1, 0}));
+                        // The top face: the tile as seen from above, north edge at the top;
+                        // with baked light, shaded corner by corner.
+                        const std::array<render::Vec3, 4> top_face{
+                            render::Vec3{left, top, north}, render::Vec3{right, top, north},
+                            render::Vec3{right, top, south}, render::Vec3{left, top, south}};
+                        if (tilemap->baked_light.empty()) {
+                            renderer.draw(*texture, top_face, source, lit(top_light, tint),
+                                          face(render::Vec3{0, 1, 0}));
+                        } else {
+                            const std::array<float, 4> plain = lit(top_light, tint);
+                            renderer.draw_shaded(
+                                *texture, top_face, source,
+                                {with_baked(plain, tilemap->baked_at(x, y), tint),
+                                 with_baked(plain, tilemap->baked_at(x + 1, y), tint),
+                                 with_baked(plain, tilemap->baked_at(x + 1, y + 1), tint),
+                                 with_baked(plain, tilemap->baked_at(x, y + 1), tint)},
+                                face(render::Vec3{0, 1, 0}));
+                        }
                         ++stats.drawn;
                         if (height <= 0.0F) {
                             continue;
@@ -2886,7 +3176,15 @@ DrawStats draw_diorama(const world::World& world, TextureCache& textures,
             }
             renderer.draw(
                 *texture, {at(card[0]), at(card[1]), at(card[2]), at(card[3])}, source,
-                lit(sprite_light,
+                with_baked(
+                    lit(sprite_light, render::Color{sprite->tint_r, sprite->tint_g, sprite->tint_b,
+                                                    sprite->tint_a}),
+                    [&] {
+                        // A light probe: the baked light where it stands.
+                        const std::array<float, 3> probe =
+                            baked_light_at(world, transform->x, transform->y - 0.001, camera.ppu);
+                        return std::array<float, 4>{probe[0], probe[1], probe[2], 1.0F};
+                    }(),
                     render::Color{sprite->tint_r, sprite->tint_g, sprite->tint_b, sprite->tint_a}),
                 [&] {
                     // Billboards take point lights from all round, softly, and in their

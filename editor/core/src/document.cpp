@@ -2339,8 +2339,36 @@ bool Document::dirty() const noexcept {
     return impl_->snapshot() != impl_->saved;
 }
 
+std::size_t Document::bake_lighting() {
+    Impl& d = *impl_;
+    serialize::Json before = d.snapshot();
+    const std::size_t changed = scene2d::bake_lighting(*d.world, d.settings.ppu);
+    if (changed > 0) {
+        d.record("Bake lighting", std::move(before));
+    }
+    return changed;
+}
+
 bool Document::save(std::string& error) {
     Impl& d = *impl_;
+    // Baked lighting is kept up to date with what is saved: baked lights moved, walls
+    // built, since the last bake. Derived from the scene, so it is no undo step.
+    bool bake = false;
+    if (const reflect::TypeInfo* type = d.world->registry().find_type<scene2d::Light>()) {
+        d.world->each(*type, [&bake](world::Entity, reflect::ObjectRef ref) {
+            const auto* light = ref.as<scene2d::Light>();
+            bake = bake || (light != nullptr && light->baked);
+        });
+    }
+    if (const reflect::TypeInfo* type = d.world->registry().find_type<scene2d::Tilemap>()) {
+        d.world->each(*type, [&bake](world::Entity, reflect::ObjectRef ref) {
+            const auto* map = ref.as<scene2d::Tilemap>();
+            bake = bake || (map != nullptr && !map->baked_light.empty());
+        });
+    }
+    if (bake) {
+        static_cast<void>(scene2d::bake_lighting(*d.world, d.settings.ppu));
+    }
     serialize::Json state = d.snapshot();
     if (!game::write_file_atomically(d.folder / "assets" / d.scene_path,
                                      serialize::to_text(state.at("scene")), error)) {

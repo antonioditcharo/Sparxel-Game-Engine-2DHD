@@ -1567,6 +1567,15 @@ void WorldRenderer::draw_triangles(const Texture& texture, std::span<const MeshC
 void WorldRenderer::draw(const Texture& texture, const std::array<Vec3, 4>& given, Rect source,
                          std::array<float, 4> color, const Surface& surface,
                          const SpriteEffects& effects) {
+    draw_shaded(texture, given, source,
+                std::array<std::array<float, 4>, 4>{color, color, color, color}, surface, effects);
+}
+
+void WorldRenderer::draw_shaded(const Texture& texture, const std::array<Vec3, 4>& given,
+                                Rect source, const std::array<std::array<float, 4>, 4>& colors,
+                                const Surface& surface, const SpriteEffects& effects) {
+    // The quad is see-through if any corner is.
+    const float alpha = std::min({colors[0][3], colors[1][3], colors[2][3], colors[3][3]});
     if (native_->target == nullptr) {
         return;
     }
@@ -1604,7 +1613,7 @@ void WorldRenderer::draw(const Texture& texture, const std::array<Vec3, 4>& give
         relief ? std::array<float, 4>{tx / across, ty / across, tz / across, 1.0F}
                : std::array<float, 4>{};
     const Texture* normal_map = relief ? surface.normal_map : nullptr;
-    const auto corner = [&](const Vec3& p, float u, float v) {
+    const auto corner = [&](const Vec3& p, float u, float v, const std::array<float, 4>& color) {
         return WorldVertex{p.x,
                            p.y,
                            p.z,
@@ -1624,12 +1633,12 @@ void WorldRenderer::draw(const Texture& texture, const std::array<Vec3, 4>& give
                            fx,
                            tangent};
     };
-    const WorldVertex tl = corner(corners[0], u0, v0);
-    const WorldVertex tr = corner(corners[1], u1, v0);
-    const WorldVertex br = corner(corners[2], u1, v1);
-    const WorldVertex bl = corner(corners[3], u0, v1);
-    if (color[3] < 0.999F || texture.translucent()) {
-        if (!(color[3] > 0.0F)) {
+    const WorldVertex tl = corner(corners[0], u0, v0, colors[0]);
+    const WorldVertex tr = corner(corners[1], u1, v0, colors[1]);
+    const WorldVertex br = corner(corners[2], u1, v1, colors[2]);
+    const WorldVertex bl = corner(corners[3], u0, v1, colors[3]);
+    if (alpha < 0.999F || texture.translucent()) {
+        if (!(alpha > 0.0F)) {
             return; // fully clear: nothing to draw
         }
         const Vec3 middle{(corners[0].x + corners[2].x) / 2.0F,

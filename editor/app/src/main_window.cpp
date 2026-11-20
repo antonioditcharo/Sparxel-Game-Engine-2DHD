@@ -1605,6 +1605,24 @@ void MainWindow::build_actions() {
     QAction* doctor = game->addAction(tr("Check the &project"), this, [this] { check_project(); });
     QAction* translate = game->addAction(tr("Collect texts to &translate"), this,
                                          [this] { collect_translations(); });
+    QAction* bake = game->addAction(tr("&Bake lighting"), this, [this] {
+        if (document_ == nullptr) {
+            return;
+        }
+        const std::size_t changed = document_->bake_lighting();
+        view_->refresh();
+        update_title_and_actions();
+        statusBar()->showMessage(
+            changed == 0 ? tr("The lighting is baked already.")
+                         : tr("Baked the lighting of %n map(s): baked lights and their shadows, "
+                              "and the shade of corners. Saving bakes it again.",
+                              nullptr, static_cast<int>(changed)),
+            8000);
+    });
+    bake->setObjectName(QStringLiteral("bake_lighting"));
+    bake->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+B")));
+    bake->setToolTip(tr("Works out Lights marked Baked, with the shadows of walls and hills, "
+                        "into the maps once, instead of every frame"));
     translate->setToolTip(tr("Puts every text the game shows in data/translations, with a "
                              "column for each language to translate into"));
     doctor->setObjectName(QStringLiteral("check_project"));

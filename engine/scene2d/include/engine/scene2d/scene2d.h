@@ -255,6 +255,11 @@ struct Tilemap {
     /// Painting picks each tile's shape from its neighbours: for a tileset expanded from
     /// auto-tile blocks (assets/autotile.h), where each 48 tiles are one terrain.
     bool autotile = false;
+    /// Baked light (bake_lighting()): at each corner of the tiles, (columns + 1) x
+    /// (rows + 1) of them, what baked lights add there and how open the corner is, as
+    /// "rrggbboo" in hexadecimal (light 0 to 4 in 0 to ff; openness 0 to 1), corners side
+    /// by side, a line a row. Written by the bake; empty for none.
+    std::string baked_light;
     /// Smooth terrain (plan/02 C14): in the Diorama style, `heights` are at the tiles'
     /// corners, (columns + 1) x (rows + 1) of them, and each tile's top slopes between its
     /// four, as hills and valleys; the map's edges drop to the ground. Off, each tile is a
@@ -280,6 +285,10 @@ struct Tilemap {
     /// fractions allowed: a block's height, or on smooth terrain the slope between the
     /// tile's corners, as it is drawn (two triangles split from north-west to south-east).
     [[nodiscard]] double surface_at(double column, double row) const;
+    /// The baked light at corner (x, y) of the tiles: red, green and blue added, and how
+    /// open it is (1 in the open; less in a corner between walls). {0, 0, 0, 1} where
+    /// nothing is baked.
+    [[nodiscard]] std::array<float, 4> baked_at(std::uint32_t x, std::uint32_t y) const;
 
 private:
     // A cache only: not reflected, so never saved.
@@ -290,6 +299,9 @@ private:
     mutable std::optional<TileGrid> parsed_;
     mutable bool parsed_once_ = false;
     mutable bool heights_once_ = false;
+    mutable std::vector<std::vector<std::array<float, 4>>> baked_;
+    mutable std::string baked_text_;
+    mutable bool baked_once_ = false;
 };
 
 /// Reads a heights grid: rows by line, cells by comma, each a number from 0 to 16 or empty.
@@ -336,6 +348,11 @@ struct Light {
     double radius = 4.0;    ///< In tiles, 0 to 32.
     double height = 1.0;    ///< Above the ground, in tiles, 0 to 16.
     bool enabled = true;
+    /// Baked (plan/02 D17): worked out once by bake_lighting(), with the shadows of blocks
+    /// and hills, into the maps around it, instead of every frame. A scene may have as many
+    /// as it likes (only the 16 nearest live lights count); they light the ground, and
+    /// sprites and models standing in them, but do not move.
+    bool baked = false;
 };
 
 /// Registers Transform2D ("transform_2d"), Sprite ("sprite"), SpriteAnimation
@@ -676,6 +693,18 @@ constexpr double max_shadow_length = 3.0;
 /// Nothing if no tile is there.
 [[nodiscard]] std::optional<float> ground_top(const world::World& world, double x, double y,
                                               std::uint32_t ppu);
+/// Bakes the light of every enabled baked Light into every Tilemap's baked_light (plan/02
+/// D17): at each corner of its tiles, standing on its top, each light within reach adds
+/// its colour times its falloff and how squarely it shines down, unless something taller
+/// (a block, a wall on another map, a hill) stands between, as the shadows it casts; and
+/// each corner is darkened where the tiles around it stand taller, as in a corner
+/// between walls. Returns how many maps' bakes changed.
+std::size_t bake_lighting(world::World& world, std::uint32_t ppu);
+/// The baked light at map point (x, y): blended between the corners of the highest map
+/// baked there; nothing (zero) where none is. Sprites and models add it, as light probes.
+[[nodiscard]] std::array<float, 3> baked_light_at(const world::World& world, double x, double y,
+                                                  std::uint32_t ppu);
+
 /// How high smooth terrain stands under map point (x, y), the highest of the visible
 /// smooth maps with a tile there; 0 where there is none. Sprites stand on it in the
 /// Diorama style.

@@ -20,7 +20,7 @@
 | A. Project and workflow | 5 | 7 | 0 (+1 later) |
 | B. Pixel art | 5 | 9 | 0 (+1 later) |
 | C. World building | 4 | 9 | 1 |
-| D. Rendering and the look | 4 | 10 | 1 (+1 later) |
+| D. Rendering and the look | 4 | 11 | 0 (+1 later) |
 | E. No-code logic | 5 | 6 | 0 (+1 later) |
 | F. Genre kits | 4 | 2 | 0 |
 | G. Story | 5 | 2 | 0 (+1 later) |
@@ -28,7 +28,7 @@
 | I. Physics | 3 | 2 | 0 |
 | J. Audio | 2 | 4 | 0 (+1 later) |
 | K. UI | 3 | 4 | 0 |
-| **All** | **43** | **57** | **2** (+6 later) |
+| **All** | **43** | **58** | **1** (+6 later) |
 
 The strongest areas match or pass their references: the RPG kit and window skins (RPG
 Maker), auto-tiles and tile variants (RPG Maker, LDtk), no-code Rules with tags, *it*,
@@ -114,7 +114,7 @@ action kits (GameMaker), audio mixing (zones, reverb), and team features.
 | D13 | Material effects | GameMaker shaders | **Partial**: palette swap, tint, flash, outline and dissolve in both styles; no scrolling textures or custom shaders |
 | D14 | Quality tiers | Unity | **Done**: the player's Graphics option, High, Medium (no bloom, no sun shadow map) and Low (no tilt-shift either), kept with their options |
 | D15, D16 | Shader graph, palette-locked lighting | | Later |
-| D17 | Baked lighting | Unity | **Not yet** |
+| D17 | Baked lighting | Unity | **Partial**: baked lights with their shadows and the shade of corners, baked into map corners on command and on save; light probes for sprites and models; no bounce light, block sides unlit by it |
 
 ## E. No-code logic
 

@@ -334,6 +334,24 @@ the style ([game.md](game.md) §2).
   and block faces take them from the front; sprites, as billboards, softly from all round
   and in their tint. Lights add to the ambient and sun light, so they show best when
   those are low: the game's `lighting` object sets them ([game.md](game.md) §3).
+- **Baked lighting** (`Light::baked`, *Baked*; `plan/02` D17): a baked Light is not one of
+  the 16 live ones; `bake_lighting()` works it out once into the maps around it, so a
+  scene can hold as many torches, windows and braziers as it likes. At each corner of
+  every map's tiles, standing on its top (a block's, the slope's, the ground), each baked
+  light within reach adds its colour times its falloff and how squarely it shines down,
+  unless something taller stands between: a block, a wall on another map or a hill
+  (marched in quarter tiles: `ground_top()`), so walls cast their shadows from baked
+  lights too. Each corner is also darkened by 15 % for each of the four tiles around it
+  standing taller (at most three), as the corners between walls and floor are in real
+  rooms. The result is kept in the map (`Tilemap::baked_light`, hidden: "rrggbboo" in
+  hexadecimal per corner, a line a row; `baked_at()`), saved with the scene, and drawn
+  for nothing each frame: tile tops and slopes take it corner by corner, blended across
+  the tile (`WorldRenderer::draw_shaded()`). **Light probes:** sprites and models add the
+  baked light where they stand (`baked_light_at()`, blended between the corners of the
+  highest baked map there), so a character walking past a baked torch warms and cools.
+  The editor bakes with *Game > Bake lighting* (Ctrl+Shift+B, one undo step) and before
+  every save of a scene with baked lights or a bake, so the saved bake is never stale.
+  Block sides take no baked light, and baked lights do not light Classic 2D.
 - **Lights in Classic 2D** (`draw_lights_2d()`): drawn over the frame once the Look has
   graded and darkened it, each brightens what is there in its colour, fading to nothing at
   its `radius`, with its middle `height` tiles above its position (a torch's flame). What
@@ -443,6 +461,7 @@ the others run anywhere:
 | A sprite's corners | `sprite_corners()` upright; a quarter turn clockwise, exactly, and the same at -270; 45 degrees; flipped across and twice as tall; a rotation or scale that is not a number counts as none |
 | Turned, scaled and flipped (GPU) | A picture red on the left and blue on the right, at exact pixels: upright; flipped (blue on the left); a quarter turn about its feet (red on top, standing to the right of them), the same at -270; twice as wide; half as tall; a NaN rotation drawn upright. In the Diorama style, points a quarter and three quarters of a tile above the feet show the sprite; at half height only the lower one; turned upside down, neither |
 | Lighting maps (GPU) | `red_normal.png` and `red_glow.png` beside the red picture are found; a normal map of another size, and a glow map that is not there, are not; drawn, one sprite has relief and glows and the other not; the normal map removed and the change applied, neither |
+| Baked lighting | Unbaked, a lamp is live and there is nothing to bake; baked, it is not live, the bake changes one map and then nothing; under the lamp a tile up and reaching 8, (1 − 1/64)² of white; three tiles off, 0.225; weaker further; nothing off the map; a probe at a corner is that corner, halfway between two is between them, off the map nothing. A wall two tiles tall on another map: the corner behind it is in shadow, one past its end lit, the corner beside it 0.85 open, an open corner 1. On the GPU, in the dark: the ground under the lamp bright red, a sprite near it lit blue by its probe; both dark without the bake |
 | Smooth terrain | `surface_at()` on a hill of one raised corner: 2 at the top, 1 halfway, 0.5 either side of a tile's diagonal, 0 at the foot, the map's height for NaN; as blocks, each cell's own height. `terrain_height()` and `ground_top()` on the hill, 0 off the map and for blocks; a ray through a point of the south slope meets the hill there, where the flat ground lies further up the map. On the GPU, with the sun in the east: the east slope brighter than the west, a sprite standing on the top (blue half a tile above it, the sky there on flat ground), eight triangles and a sprite drawn, and eight skirts once the map's edges are raised |
 | Models (GPU) | A flat square in `models/square.gltf` with its buffer beside it, green, seen from above under even light: green in the middle and the background in the corner; two triangles drawn; half the width at scale 0.5; wider than a quarter more turned 45 degrees; nothing hidden; a missing model counted |
 | Frames and tilemaps (GPU) | Exact pixels for frames 0, 1 and a wrapped 2; a 2 × 2 map with an empty cell and a skipped tile; a sprite over its map; tiles in view counted for an aligned and an offset camera; bad text and a missing tileset counted |

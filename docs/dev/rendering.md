@@ -208,6 +208,9 @@ world->end();
   wall with the sun at 45 degrees darkens exactly the wall 2 to its left, by half (128
   of 255); nothing without the sun's shadows, with a card that does not cast, or on a
   wall facing away from the sun.
+- **Colours by corner** (`draw_shaded()`): as `draw()`, with a colour at each corner
+  blended across the quad, for baked light that varies over a tile (scene2d §7); the
+  quad is see-through if any corner's alpha is.
 - **Normal and glow maps** (`Surface::normal_map`, `Surface::glow`): a quad's normal map
   is read texel for texel with its texture (red along u, green up the picture, blue out
   of it); its tangent comes from the top-left and top-right corners, so flipped and
