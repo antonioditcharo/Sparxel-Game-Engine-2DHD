@@ -1772,11 +1772,11 @@ void MainWindow::build_actions() {
                 folders.append(folder.empty() ? tr("(assets)") : text_of(folder));
             }
             bool picked = false;
-            const QString chosen =
+            const QString destination =
                 QInputDialog::getItem(this, tr("Move to folder"), tr("Move %1 to:").arg(relative),
                                       folders, 0, false, &picked);
             if (picked) {
-                move_asset(relative, chosen == tr("(assets)") ? QString() : chosen);
+                move_asset(relative, destination == tr("(assets)") ? QString() : destination);
             }
         });
         offer_pack(menu, relative);
