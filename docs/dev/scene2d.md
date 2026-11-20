@@ -334,6 +334,12 @@ the style ([game.md](game.md) §2).
   and block faces take them from the front; sprites, as billboards, softly from all round
   and in their tint. Lights add to the ambient and sun light, so they show best when
   those are low: the game's `lighting` object sets them ([game.md](game.md) §3).
+  **Flicker** (`flicker`; `plan/02` D3): *Steady*; a *Torch*'s quick, uneven flicker, a
+  quarter either way; a *Candle*'s gentle one, a tenth; or a slow *Pulse*, three tenths, as
+  a glowing crystal breathes (`flicker_factor()`). Each light is set apart in time by
+  where it stands, so a row of torches does not flicker together; its hidden `elapsed`
+  runs on with `animate()`. It brightens and dims the light in both styles; baked lights
+  stay steady.
 - **Baked lighting** (`Light::baked`, *Baked*; `plan/02` D17): a baked Light is not one of
   the 16 live ones; `bake_lighting()` works it out once into the maps around it, so a
   scene can hold as many torches, windows and braziers as it likes. At each corner of
@@ -468,6 +474,7 @@ the others run anywhere:
 | Turned, scaled and flipped (GPU) | A picture red on the left and blue on the right, at exact pixels: upright; flipped (blue on the left); a quarter turn about its feet (red on top, standing to the right of them), the same at -270; twice as wide; half as tall; a NaN rotation drawn upright. In the Diorama style, points a quarter and three quarters of a tile above the feet show the sprite; at half height only the lower one; turned upside down, neither |
 | Lighting maps (GPU) | `red_normal.png` and `red_glow.png` beside the red picture are found; a normal map of another size, and a glow map that is not there, are not; drawn, one sprite has relief and glows and the other not; the normal map removed and the change applied, neither |
 | Large maps (GPU) | `diorama_draw_reach()` beyond 16 and within 160 for a camera at 60 degrees, 160 turned; a map 400 tiles square draws at most the square within reach, under a quarter of its 160 000 tiles, and the ground in the middle and at the bottom of the picture is the same as a map 20 square |
+| Flickering lights | `flicker_factor()` steady at 1; over ten seconds a torch within 0.75 to 1.25, a candle 0.9 to 1.1 and a pulse 0.7 to 1.3, each moving over at least a quarter of its range; two torches side by side out of step; NaN time steady. `animate()` moves a torch's time on and not a steady lamp's; the torch's live strength changes over a second while the lamp stays at 1 |
 | Baked lighting | Unbaked, a lamp is live and there is nothing to bake; baked, it is not live, the bake changes one map and then nothing; under the lamp a tile up and reaching 8, (1 − 1/64)² of white; three tiles off, 0.225; weaker further; nothing off the map; a probe at a corner is that corner, halfway between two is between them, off the map nothing. A wall two tiles tall on another map: the corner behind it is in shadow, one past its end lit, the corner beside it 0.85 open, an open corner 1. On the GPU, in the dark: the ground under the lamp bright red, a sprite near it lit blue by its probe; both dark without the bake |
 | Smooth terrain | `surface_at()` on a hill of one raised corner: 2 at the top, 1 halfway, 0.5 either side of a tile's diagonal, 0 at the foot, the map's height for NaN; as blocks, each cell's own height. `terrain_height()` and `ground_top()` on the hill, 0 off the map and for blocks; a ray through a point of the south slope meets the hill there, where the flat ground lies further up the map. On the GPU, with the sun in the east: the east slope brighter than the west, a sprite standing on the top (blue half a tile above it, the sky there on flat ground), eight triangles and a sprite drawn, and eight skirts once the map's edges are raised |
 | Models (GPU) | A flat square in `models/square.gltf` with its buffer beside it, green, seen from above under even light: green in the middle and the background in the corner; two triangles drawn; half the width at scale 0.5; wider than a quarter more turned 45 degrees; nothing hidden; a missing model counted |

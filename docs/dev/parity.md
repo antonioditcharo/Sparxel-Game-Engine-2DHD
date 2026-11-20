@@ -17,7 +17,7 @@
 
 | Area | Done | Partial | Not yet |
 |---|---|---|---|
-| A. Project and workflow | 5 | 7 | 0 (+1 later) |
+| A. Project and workflow | 6 | 6 | 0 (+1 later) |
 | B. Pixel art | 5 | 9 | 0 (+1 later) |
 | C. World building | 4 | 10 | 0 |
 | D. Rendering and the look | 4 | 11 | 0 (+1 later) |
@@ -28,7 +28,7 @@
 | I. Physics | 3 | 2 | 0 |
 | J. Audio | 2 | 4 | 0 (+1 later) |
 | K. UI | 3 | 4 | 0 |
-| **All** | **43** | **59** | **0** (+6 later) |
+| **All** | **44** | **58** | **0** (+6 later) |
 
 The strongest areas match or pass their references: the RPG kit and window skins (RPG
 Maker), auto-tiles and tile variants (RPG Maker, LDtk), no-code Rules with tags, *it*,
@@ -43,8 +43,8 @@ action kits (GameMaker), audio mixing (zones, reverb), and team features.
 | ID | Feature | Best today | Sparxel |
 |---|---|---|---|
 | A1 | Project hub | Godot's project manager | **Partial**: a start page with recent projects and the sample; no thumbnails of projects |
-| A2 | Project wizard | GDevelop's | **Partial**: name and template (Classic 2D, Diorama, Platformer, Visual novel, RPG); resolution, PPU and palette are set after, in Project |
-| A3 | Templates | RPG Maker's sample games | **Partial**: playable RPG, action, platformer, visual novel and top-down templates; none yet for tactics |
+| A2 | Project wizard | GDevelop's | **Partial**: name, one of eight templates and the game's size; the palette and pixels per tile are set after, in Project |
+| A3 | Templates | RPG Maker's sample games | **Done**: a playable game for each kind: top-down, Diorama, platformer, visual novel, RPG, action, point-and-click adventure and tactics |
 | A4 | Asset browser | Unity's Project window | **Partial**: thumbnails, search, find usages, safe rename (with companions and references); no tags, favourites or move between folders |
 | A5 | Undo and redo everywhere | Godot | **Partial**: one history for scenes, logic and settings, Sprite Studio and the Story editor each their own; no visual history list |
 | A6 | Autosave and crash recovery | Unity | **Done**: unsaved work kept every minute and offered back after a crash |
@@ -101,7 +101,7 @@ action kits (GameMaker), audio mixing (zones, reverb), and team features.
 |---|---|---|---|
 | D1 | Render styles | Octopath (HD-2D) | **Partial**: Diorama and Classic 2D; no Retro 3D |
 | D2 | Billboard sprites | Octopath | **Partial**: upright billboards, depth-correct; other modes not yet |
-| D3 | Lights | Octopath | **Partial**: point lights in both styles with sun and moon; no spot or area lights, cookies, or flicker presets |
+| D3 | Lights | Octopath | **Partial**: point lights in both styles with sun and moon, flickering as torches, candles or pulses, and baked lights; no spot or area lights, or cookies |
 | D4 | Sprite shadows | Octopath | **Done**: round or cast shadows, block shadows |
 | D5 | Time of day | Octopath | **Done**: a clock with dawns, dusks and nights |
 | D6 | Post-processing | Unity URP | **Partial**: tilt-shift, bloom, grading, vignette, fog; no SSAO, grain, CRT |

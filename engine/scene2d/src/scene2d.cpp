@@ -221,6 +221,12 @@ void register_types(reflect::Registry& registry) {
         "How solid the tiles look: lower for water over a riverbed, or glass, so "
         "what is behind shows through.");
 
+    registry.add_choice_list<Flicker>("flicker")
+        .display_name("Flicker")
+        .entry(Flicker::Steady, "steady")
+        .entry(Flicker::Torch, "torch")
+        .entry(Flicker::Candle, "candle")
+        .entry(Flicker::Pulse, "pulse");
     auto light =
         registry.add_type<Light>("light").display_name("Light").category("Visuals").tooltip(
             "Light from a point, such as a torch or a lamp, in the Diorama style.");
@@ -242,6 +248,13 @@ void register_types(reflect::Registry& registry) {
         .unit(reflect::Unit::Tiles)
         .tooltip("How high above the ground the light is.");
     light.property<&Light::enabled>("enabled").tooltip("Turn the light off without removing it.");
+    light.property<&Light::flicker>("flicker").tooltip(
+        "Steady; a Torch's quick uneven flicker; a Candle's gentle one; or a slow Pulse, as "
+        "a glowing crystal breathes.");
+    light.property<&Light::elapsed>("elapsed")
+        .unit(reflect::Unit::Seconds)
+        .flags(reflect::property_flag::hidden)
+        .tooltip("How long the light has flickered.");
     light.property<&Light::baked>("baked").tooltip(
         "Worked out once, with the shadows of walls and hills, when the project is saved or "
         "Bake lighting is chosen: as many as you like, for still scenes. It does not move.");
@@ -501,6 +514,30 @@ std::string format_heights(const std::vector<std::vector<double>>& heights) {
         }
     }
     return out;
+}
+
+double flicker_factor(Flicker flicker, double elapsed, double x, double y) noexcept {
+    if (flicker == Flicker::Steady || !std::isfinite(elapsed)) {
+        return 1.0;
+    }
+    // Each light a little apart in time, by where it is.
+    const double t =
+        elapsed + (std::isfinite(x) ? x * 1.7 : 0.0) + (std::isfinite(y) ? y * 2.3 : 0.0);
+    double f = 1.0;
+    switch (flicker) {
+    case Flicker::Torch:
+        f = 1.0 + (0.12 * std::sin(t * 9.1)) + (0.08 * std::sin((t * 23.7) + 1.3)) +
+            (0.05 * std::sin((t * 37.3) + 2.1));
+        return std::clamp(f, 0.75, 1.25);
+    case Flicker::Candle:
+        f = 1.0 + (0.06 * std::sin(t * 5.3)) + (0.04 * std::sin((t * 17.9) + 0.7));
+        return std::clamp(f, 0.9, 1.1);
+    case Flicker::Pulse:
+        return 1.0 + (0.3 * std::sin(t * 2.0));
+    case Flicker::Steady:
+        break;
+    }
+    return f;
 }
 
 std::array<float, 4> Tilemap::baked_at(std::uint32_t x, std::uint32_t y) const {
@@ -1140,6 +1177,17 @@ animate(world::World& world, double seconds, SheetLibrary* sheets,
     std::vector<world::Entity> finished;
     if (!std::isfinite(seconds) || seconds < 0.0) {
         seconds = 0.0;
+    }
+    // Flickering lights: their time runs on.
+    if (const reflect::TypeInfo* lights = world.registry().find_type<Light>()) {
+        world.each(*lights, [seconds](world::Entity, reflect::ObjectRef ref) {
+            Light* light = ref.as<Light>();
+            if (light != nullptr && light->flicker != Flicker::Steady) {
+                light->elapsed = std::isfinite(light->elapsed)
+                                     ? std::fmod(light->elapsed + seconds, 3600.0)
+                                     : seconds;
+            }
+        });
     }
     // Animated tiles: their time runs on; Tilemap::frame() wraps it.
     if (const reflect::TypeInfo* maps = world.registry().find_type<Tilemap>()) {
@@ -1915,7 +1963,8 @@ std::size_t draw_lights_2d(const world::World& world, TextureCache& textures,
         // more than double: drawn again, each time by an even share of the factor.
         const double scale_by =
             std::isfinite(shading.strength) ? std::clamp(shading.strength, 0.0, 1.0) : 1.0;
-        const double intensity = std::min(light->intensity, 8.0) * scale_by;
+        const double intensity = std::min(light->intensity, 8.0) * scale_by *
+                                 flicker_factor(light->flicker, light->elapsed, where->x, where->y);
         if (intensity <= 0.0) {
             return;
         }
@@ -2356,7 +2405,9 @@ std::vector<render::PointLight> diorama_lights(const world::World& world, double
                 return;
             }
             const double radius = std::clamp(light->radius, 0.0, 32.0);
-            const double intensity = std::clamp(light->intensity, 0.0, 8.0);
+            const double intensity =
+                std::clamp(light->intensity, 0.0, 8.0) *
+                flicker_factor(light->flicker, light->elapsed, transform->x, transform->y);
             const double height = std::clamp(light->height, 0.0, 16.0);
             if (!std::isfinite(transform->x) || !std::isfinite(transform->y) ||
                 !std::isfinite(radius) || !std::isfinite(intensity) || !std::isfinite(height) ||

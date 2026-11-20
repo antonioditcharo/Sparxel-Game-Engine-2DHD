@@ -1280,6 +1280,35 @@ TEST_CASE("The preview draws the scene as the game would") {
           std::array<int, 3>{60, 96, 200});
 }
 
+TEST_CASE("A new project can be made at another size") {
+    const fs::path folder =
+        fs::temp_directory_path() / ("sparxel-new-" + Guid::generate().to_string());
+    std::string error;
+    // A size no game can be: refused before anything is made.
+    CHECK_FALSE(
+        editor::create_project(folder, "Tiny", error, editor::ProjectTemplate::TopDown2D, 10, 10));
+    CHECK(error == "A game is 64 to 3840 pixels across and 64 to 2160 down.");
+    CHECK_FALSE(fs::exists(folder));
+    // 480 x 270, the platformer.
+    REQUIRE(editor::create_project(folder, "Wide", error, editor::ProjectTemplate::Platformer, 480,
+                                   270));
+    std::vector<serialize::Issue> issues;
+    const std::optional<engine::game::ProjectSettings> settings =
+        engine::game::read_project(folder, issues);
+    CHECK(issues.empty());
+    REQUIRE(settings.has_value());
+    CHECK(settings.value_or(engine::game::ProjectSettings{}).width == 480);
+    CHECK(settings.value_or(engine::game::ProjectSettings{}).height == 270);
+    CHECK(settings.value_or(engine::game::ProjectSettings{}).name == "Wide");
+    // Every size the dialog offers is one a game can be.
+    for (const auto& [w, h] : editor::game_sizes) {
+        CHECK(w >= 64);
+        CHECK(h >= 64);
+    }
+    std::error_code ignored;
+    fs::remove_all(folder, ignored);
+}
+
 TEST_CASE("A new project draws: grass, a path, stone walls and the hero") {
     if (test_support::gpu() == nullptr) {
         return;

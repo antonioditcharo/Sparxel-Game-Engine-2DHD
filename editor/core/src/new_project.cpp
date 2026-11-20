@@ -3,6 +3,7 @@
 #include "engine/assets/assets.h"
 #include "engine/game/conversation.h"
 #include "engine/game/runtime.h"
+#include "engine/game/save.h"
 #include "engine/game/tables.h"
 #include "engine/logic/ir.h"
 #include "engine/scene2d/scene2d.h"
@@ -1189,8 +1190,45 @@ bool create_action(const fs::path& folder, std::string_view name, std::string& e
 
 } // namespace
 
+namespace {
+
+bool create_template(const fs::path& folder, std::string_view name, std::string& error,
+                     ProjectTemplate kind);
+
+} // namespace
+
 bool create_project(const fs::path& folder, std::string_view name, std::string& error,
-                    ProjectTemplate kind) {
+                    ProjectTemplate kind, std::uint32_t width, std::uint32_t height) {
+    const bool sized = width != 0 || height != 0;
+    if (sized && (width < 64 || width > 3840 || height < 64 || height > 2160)) {
+        error = "A game is 64 to 3840 pixels across and 64 to 2160 down.";
+        return false;
+    }
+    if (!create_template(folder, name, error, kind)) {
+        return false;
+    }
+    if (!sized) {
+        return true;
+    }
+    // The size chosen, in place of the template's.
+    std::vector<serialize::Issue> issues;
+    std::optional<engine::game::ProjectSettings> settings =
+        engine::game::read_project(folder, issues);
+    if (!settings) {
+        error = "The new project's file could not be read back.";
+        return false;
+    }
+    settings->width = width;
+    settings->height = height;
+    return engine::game::write_file_atomically(
+        folder / engine::game::project_file,
+        serialize::to_text(engine::game::project_to_json(*settings)), error);
+}
+
+namespace {
+
+bool create_template(const fs::path& folder, std::string_view name, std::string& error,
+                     ProjectTemplate kind) {
     if (name.empty()) {
         error = "Give the game a name.";
         return false;
@@ -1320,5 +1358,7 @@ bool create_project(const fs::path& folder, std::string_view name, std::string& 
     database.refresh(); // the scene's ".meta"
     return true;
 }
+
+} // namespace
 
 } // namespace editor

@@ -91,7 +91,8 @@ public:
     /// Makes a new project named `name` in `folder` (new or empty), a small starter game,
     /// and opens it. Returns false, with the reason shown, if it cannot.
     bool new_project(const std::filesystem::path& folder, const QString& name,
-                     ProjectTemplate kind = ProjectTemplate::TopDown2D);
+                     ProjectTemplate kind = ProjectTemplate::TopDown2D, std::uint32_t width = 0,
+                     std::uint32_t height = 0);
     /// Edits another scene of the project (its path in assets/), saving the open one
     /// first if it changed. Returns false, showing why, if it cannot.
     bool open_scene(const QString& path);

@@ -7,6 +7,7 @@
 
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cmath>
@@ -19,6 +20,7 @@
 #include <ostream>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -2575,4 +2577,52 @@ TEST_CASE("Large maps: the Diorama style draws only the tiles around the camera"
           pixel(from_small, size, size / 2, size / 2));
     CHECK(pixel(from_huge, size, size / 2, size - 2) ==
           pixel(from_small, size, size / 2, size - 2));
+}
+
+TEST_CASE("Flickering lights: torches, candles and pulses, each in its own time") {
+    using scene2d::Flicker;
+    CHECK(scene2d::flicker_factor(Flicker::Steady, 3.0, 1.0, 2.0) == 1.0);
+    // Over ten seconds each stays within its range, and moves.
+    for (const auto& [kind, low, high] :
+         {std::tuple{Flicker::Torch, 0.75, 1.25}, std::tuple{Flicker::Candle, 0.9, 1.1},
+          std::tuple{Flicker::Pulse, 0.7, 1.3}}) {
+        double least = 2.0;
+        double most = 0.0;
+        for (int i = 0; i < 1000; ++i) {
+            const double f = scene2d::flicker_factor(kind, i * 0.01, 0.0, 0.0);
+            least = std::min(least, f);
+            most = std::max(most, f);
+        }
+        CHECK(least >= low - 1e-9);
+        CHECK(most <= high + 1e-9);
+        CHECK(most - least > (high - low) / 4.0);
+    }
+    // Two torches side by side are not in step; time that is not a number is steady.
+    CHECK(scene2d::flicker_factor(Flicker::Torch, 1.0, 0.0, 0.0) !=
+          scene2d::flicker_factor(Flicker::Torch, 1.0, 3.0, 0.0));
+    CHECK(scene2d::flicker_factor(Flicker::Torch, std::nan(""), 0.0, 0.0) == 1.0);
+
+    // animate() moves a flickering light's time on, not a steady one's; the live light's
+    // strength follows.
+    const Fixture f;
+    const auto w = f.make_world();
+    const world::Entity torch = w->create("torch");
+    w->add<scene2d::Transform2D>(torch);
+    w->add<scene2d::Light>(torch)->flicker = Flicker::Torch;
+    const world::Entity lamp = w->create("lamp");
+    w->add<scene2d::Transform2D>(lamp)->x = 5.0;
+    w->add<scene2d::Light>(lamp);
+    static_cast<void>(scene2d::animate(*w, 0.5));
+    CHECK(w->get<scene2d::Light>(torch)->elapsed == doctest::Approx(0.5));
+    CHECK(w->get<scene2d::Light>(lamp)->elapsed == 0.0);
+    std::vector<float> reds;
+    for (int i = 0; i < 20; ++i) {
+        static_cast<void>(scene2d::animate(*w, 0.05));
+        const std::vector<render::PointLight> live = scene2d::diorama_lights(*w, 0.0, 0.0);
+        REQUIRE(live.size() == 2);
+        reds.push_back(live[0].color[0]);
+        CHECK(live[1].color[0] == doctest::Approx(1.0F)); // the steady lamp
+    }
+    CHECK(*std::max_element(reds.begin(), reds.end()) >
+          *std::min_element(reds.begin(), reds.end()) + 0.05F);
 }

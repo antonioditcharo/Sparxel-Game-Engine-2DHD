@@ -1514,6 +1514,18 @@ void MainWindow::build_actions() {
         if (!named) {
             return;
         }
+        QStringList sizes;
+        for (const auto& [w, h] : game_sizes) {
+            sizes.append(tr("%1 × %2 pixels").arg(w).arg(h));
+        }
+        sizes.front() += tr(" (the usual: 6 times on a 1080p screen)");
+        const QString size = QInputDialog::getItem(this, tr("New project"), tr("The game's size:"),
+                                                   sizes, 0, false, &named);
+        if (!named) {
+            return;
+        }
+        const auto size_index =
+            static_cast<std::size_t>(std::max<qsizetype>(sizes.indexOf(size), 0));
         const QString folder =
             QFileDialog::getExistingDirectory(this, tr("Choose an empty folder for %1").arg(name));
         if (!folder.isEmpty()) {
@@ -1523,7 +1535,8 @@ void MainWindow::build_actions() {
                 ProjectTemplate::TopDown2D,  ProjectTemplate::Diorama, ProjectTemplate::VisualNovel,
                 ProjectTemplate::Platformer, ProjectTemplate::Rpg,     ProjectTemplate::Action,
                 ProjectTemplate::Adventure,  ProjectTemplate::Tactics};
-            new_project(path_of(folder), name, templates.at(chosen));
+            new_project(path_of(folder), name, templates.at(chosen), game_sizes.at(size_index)[0],
+                        game_sizes.at(size_index)[1]);
         }
     });
     fresh->setObjectName(QStringLiteral("new_project"));
@@ -1898,12 +1911,13 @@ void MainWindow::build_actions() {
     }
 }
 
-bool MainWindow::new_project(const fs::path& folder, const QString& name, ProjectTemplate kind) {
+bool MainWindow::new_project(const fs::path& folder, const QString& name, ProjectTemplate kind,
+                             std::uint32_t width, std::uint32_t height) {
     std::string error;
     const QByteArray bytes = name.trimmed().toUtf8();
     if (!create_project(folder,
                         std::string_view(bytes.constData(), static_cast<std::size_t>(bytes.size())),
-                        error, kind)) {
+                        error, kind, width, height)) {
         report(tr("The project could not be made:\n%1").arg(text_of(error)));
         return false;
     }

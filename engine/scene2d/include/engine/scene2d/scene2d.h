@@ -340,6 +340,14 @@ struct Parallax {
 /// ground, walls and characters around it, fading smoothly to nothing at its radius. In the
 /// Diorama style it adds to the scene's ambient and sun light; in Classic 2D it brightens
 /// what is drawn (draw_lights_2d()). Either way it shows best at dusk and night.
+/// How a Light's brightness moves (plan/02 D3): steady, or as a flame or a magic glow.
+enum class Flicker : std::uint8_t {
+    Steady,
+    Torch,  ///< A torch or a campfire: quick, uneven, a quarter either way.
+    Candle, ///< A candle or a lamp: gentle, a tenth either way.
+    Pulse,  ///< A glowing crystal or a portal: slow and even, breathing in and out.
+};
+
 struct Light {
     std::uint8_t color_r = 255; ///< A warm torchlight by default.
     std::uint8_t color_g = 180;
@@ -348,6 +356,8 @@ struct Light {
     double radius = 4.0;    ///< In tiles, 0 to 32.
     double height = 1.0;    ///< Above the ground, in tiles, 0 to 16.
     bool enabled = true;
+    Flicker flicker = Flicker::Steady;
+    double elapsed = 0.0; ///< Seconds it has flickered (hidden; animate() moves it on).
     /// Baked (plan/02 D17): worked out once by bake_lighting(), with the shadows of blocks
     /// and hills, into the maps around it, instead of every frame. A scene may have as many
     /// as it likes (only the 16 nearest live lights count); they light the ground, and
@@ -362,10 +372,16 @@ void register_types(reflect::Registry& registry);
 /// Makes them all usable as components of `world`. register_types() must have run first.
 bool register_components(world::World& world);
 
+/// How bright a light is now for its flicker, times its intensity: 1 when steady; a Torch
+/// between 0.75 and 1.25, a Candle 0.9 to 1.1, a Pulse 0.7 to 1.3, by `elapsed` and the
+/// light's place (`x`, `y`), so lights side by side do not flicker together. Baked lights
+/// do not flicker.
+[[nodiscard]] double flicker_factor(Flicker flicker, double elapsed, double x, double y) noexcept;
+
 /// Advances every playing SpriteAnimation by `seconds` and sets its Sprite's frame, and
-/// moves animated tilemaps on (they loop, and never finish). Call it once per fixed step.
-/// Returns the entities whose animation reached its end this time (animations that do not
-/// loop), so their "finished" event can be sent. With `frame_events`, each animation that
+/// moves animated tilemaps and flickering lights on (they loop, and never finish). Call it once per
+/// fixed step. Returns the entities whose animation reached its end this time (animations that do
+/// not loop), so their "finished" event can be sent. With `frame_events`, each animation that
 /// reached a frame with a frame event (its sheet's `events`) adds itself and the event's
 /// name, so its "frame_event" can be sent.
 std::vector<world::Entity>

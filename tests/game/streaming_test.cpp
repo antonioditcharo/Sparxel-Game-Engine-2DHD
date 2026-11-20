@@ -12,6 +12,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace game = engine::game;
@@ -70,7 +71,7 @@ struct Worlds {
         return [this](std::string_view path, std::string& error) -> std::optional<serialize::Json> {
             ++reads;
             if (path == "maps/forest.dscene") {
-                return scene;
+                return std::optional<serialize::Json>(std::in_place, scene);
             }
             error = "there is no scene " + std::string(path) + " in assets/.";
             return std::nullopt;

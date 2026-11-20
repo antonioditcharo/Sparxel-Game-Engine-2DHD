@@ -5,6 +5,7 @@
 //
 // See docs/dev/editor.md.
 
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <string>
@@ -63,7 +64,16 @@ enum class ProjectTemplate : std::uint8_t {
 /// Tactics: a turn-based battle on a field with rocks (Tactics, game.md): a knight, a
 /// guard and an archer (who shoots two tiles away) against three slimes; the battle starts
 /// with the game, and assets/logic/battle.drules says who won.
+///
+/// `width` and `height`, if not 0, are the game's size in pixels (64 to 3840 across, 64 to
+/// 2160 down) in place of the template's own; the art stays at 16 pixels a tile.
 bool create_project(const std::filesystem::path& folder, std::string_view name, std::string& error,
-                    ProjectTemplate kind = ProjectTemplate::TopDown2D);
+                    ProjectTemplate kind = ProjectTemplate::TopDown2D, std::uint32_t width = 0,
+                    std::uint32_t height = 0);
+
+/// The game sizes the New project dialog offers, (width, height) in pixels: 16:9 sizes
+/// that scale to common screens by whole numbers.
+inline constexpr std::array<std::array<std::uint32_t, 2>, 5> game_sizes{
+    {{320, 180}, {384, 216}, {480, 270}, {640, 360}, {256, 224}}};
 
 } // namespace editor
